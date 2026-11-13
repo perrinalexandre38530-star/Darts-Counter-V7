@@ -1,11 +1,36 @@
 // @ts-nocheck
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
+import { resolveBotGameDifficulty, resolveBotStars } from "../lib/botSkillLevel";
 import { createPortal } from "react-dom";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import cricketDartSvg from "../ui_assets/cricket-dart.svg";
+import ShovePennyCricketBoard from "../components/ShovePennyCricketBoard";
+import KeypadTargets from "../components/KeypadTargets";
+import ShoveActivePlayerCard from "../components/ShoveActivePlayerCard";
+import ShoveObjectivesModal from "../components/ShoveObjectivesModal";
+import ShoveStatsDashboard from "../components/ShoveStatsDashboard";
+import ShoveTurnBriefing from "../components/ShoveTurnBriefing";
+import shovePlayersTicker from "../assets/tickers/ticker_shove_players.webp";
+import shoveMarksTicker from "../assets/tickers/ticker_shove_marks.webp";
+
+function ShoveRankingNavIcon({ color = "currentColor", size = 18 }: { color?: string; size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M7 20h10" stroke={color} strokeWidth="1.9" strokeLinecap="round"/>
+    <path d="M9 20v-6" stroke={color} strokeWidth="1.9" strokeLinecap="round"/>
+    <path d="M15 20v-9" stroke={color} strokeWidth="1.9" strokeLinecap="round"/>
+    <path d="M12 20v-3" stroke={color} strokeWidth="1.9" strokeLinecap="round"/>
+    <path d="M8.5 5.5h7l-.55 3.25a3.15 3.15 0 0 1-3.1 2.63h-.7a3.15 3.15 0 0 1-3.1-2.63L8.5 5.5Z" stroke={color} strokeWidth="1.9" strokeLinejoin="round"/>
+    <path d="M8.35 6H6.9a1.4 1.4 0 0 0-1.38 1.66l.07.39A2.75 2.75 0 0 0 8.29 10h.52" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M15.65 6h1.45a1.4 1.4 0 0 1 1.38 1.66l-.07.39A2.75 2.75 0 0 1 15.71 10h-.52" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>;
+}
+import { x01PlaySfxV3 } from "../lib/x01SfxV3";
+import { projectShoveMarks, shoveNextTarget, shoveTargets, shoveRuleSet, shoveClosedCases, shoveTotalMarks } from "../lib/gameEngines/shoveAPennyTargets";
+import { buildShoveAdvice } from "../lib/gameEngines/shoveAPennyAdvice";
+import { rankShovePlayers } from "../lib/gameEngines/shoveAPennyRanking";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
@@ -129,7 +154,7 @@ function familyRules(spec: any, preset: any) {
     replicat: "Le premier joueur crée la référence. Ensuite chaque volée doit copier la précédente : numéros en Facile, segments exacts en Normal, séquence parfaite en Difficile.",
     double_down: "Parcours 15 · 16 · DOUBLE · 17 · 18 · TRIPLE · 19 · 20 · BULL. Si aucun dart ne valide le contrat du round, le score est divisé par deux.",
     nine_dart_century: "Neuf fléchettes maximum pour viser 100. À la fin, 100 exact est parfait ; sinon le plus proche sans dépasser gagne. Si tous dépassent, le plus petit dépassement l’emporte.",
-    shove_a_penny: "Complète trois marques sur 15, 16, 17, 18, 19, 20 et BULL. Les surplus au-delà de trois sont poussés vers l'adversaire suivant.",
+    shove_a_penny: "Traditionnel : ferme librement les numéros 1 à 9, trois marques par case. Électronique : 15 à 20 puis BULL dans l'ordre. Les marques en trop sont offertes au joueur suivant.",
     black_vs_white: "Même écran et mêmes formats que GREEN VS RED, mais avec les pistes NOIRE et BLANCHE : les simples de sa piste marquent, la piste adverse et les MISS pénalisent, les D/T et le BULL suivent la configuration. Le meilleur total après les rounds gagne.",
     green_vs_red: "Trois formats : DUEL, TEAM ou MULTI. VERT suit 1·4·6·15·17·19·16·11·9·5 ; ROUGE suit 20·12·14·8·7·3·2·10·13·18. Les variantes règlent le nombre de D/T comptables par volée, le scoring (touches ou valeurs réelles), l’accès au BULL et le barème des pénalités. Le simple peut être saisi uniquement pour enregistrer une erreur et sa pénalité ; il ne valide jamais un objectif GREEN VS RED.",
     three_colors: "Chaque volée doit contenir trois couleurs différentes parmi NOIR, BLANC, VERT et ROUGE. Les simples donnent NOIR/BLANC, les doubles et triples VERT/ROUGE selon le secteur. Les Bulls peuvent représenter VERT/ROUGE selon la configuration. Une combinaison valide marque la somme configurée des trois impacts ; sinon la volée vaut 0 ou applique la pénalité choisie.",
@@ -320,14 +345,6 @@ function CenturyPanel({ state, accent }: any) {
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
     <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>9 DART CENTURY · OBJECTIF {state?.config?.goal || 100}</div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6, marginTop: 8 }}>{state.players.map((p:any)=>{ const st=state.statsByPlayer?.[p.id]||{}; const score=Number(state.scores?.[p.id]||0); return <div key={p.id} style={{borderRadius:10,padding:"7px 8px",background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.08)"}}><div style={{fontSize:9,color:SOFT,fontWeight:900}}>{p.name}</div><div style={{fontSize:18,color:"#fff",fontWeight:1100}}>{score}<span style={{fontSize:9,color:SOFT}}> / {state.config.goal}</span></div><div style={{fontSize:8.5,color:score>state.config.goal?"#ff8d8d":accent}}>{Math.min(9,Number(st.darts||0))}/9 darts · {state.special?.centuryBustsByPlayer?.[p.id]||0} bust</div></div>})}</div>
-  </div>;
-}
-
-function ShovePennyPanel({ state, accent }: any) {
-  const targets = [15,16,17,18,19,20,25];
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ color: accent, fontSize: 10, fontWeight: 1100, marginBottom: 7 }}>SHOVE A PENNY · 3 MARQUES PAR CASE</div>
-    <div style={{ overflowX:"auto" }}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:4,fontSize:9}}><thead><tr><th style={{color:SOFT,textAlign:"left"}}>JOUEUR</th>{targets.map(n=><th key={n} style={{color:SOFT}}>{n===25?"BULL":n}</th>)}</tr></thead><tbody>{state.players.map((p:any)=>{ const marks=state.special?.shoveMarksByPlayer?.[p.id]||{}; return <tr key={p.id}><td style={{color:"#fff",fontWeight:1000,whiteSpace:"nowrap"}}>{p.name}</td>{targets.map(n=>{const m=Number(marks[String(n)]||0);return <td key={n} style={{textAlign:"center",minWidth:34,borderRadius:8,padding:"6px 4px",background:m>=3?`${accent}1c`:"rgba(255,255,255,.035)",border:`1px solid ${m>=3?accent+"66":"rgba(255,255,255,.08)"}`,color:m>=3?accent:"#fff",fontWeight:1100}}>{m}/3</td>})}</tr>})}</tbody></table></div>
   </div>;
 }
 
@@ -989,6 +1006,15 @@ function ThreeColorsPanel({ state, currentThrow, accent }:any){
 }
 function quickModeMeta(state:any, modeId:string, playerId:string, accent:string){
   const id=String(playerId||""); const score=Number(state?.scores?.[id]||0); const visits=(state?.visits||[]).filter((v:any)=>String(v?.playerId||"")===id).length; const darts=Number(state?.statsByPlayer?.[id]?.darts||0);
+  if(modeId==="shove_a_penny"){
+    const marks=state?.special?.shoveMarksByPlayer?.[id]||{};
+    const rule=shoveRuleSet(state.config?.modeOptions?.ruleSet);
+    const targets=shoveTargets(rule); const per=Math.max(2,Number(state.config?.modeOptions?.marksPerBox||3));
+    const count=shoveTotalMarks(marks,rule);
+    const closed=shoveClosedCases(marks,per,rule);
+    const st=state?.statsByPlayer?.[id]||{};
+    return {tone:accent,rank:closed,sub:`${closed}/${targets.length} cases fermées · ${count}/${targets.length*per} marques`,items:[['MARQUES',`${count}/${targets.length*per}`],['CASES FERMÉES',`${closed}/${targets.length}`],['FLÉCHETTES',darts],['VOLÉES',visits],['DOUBLES',Number(st.doubles||0)],['TRIPLES',Number(st.triples||0)]]};
+  }
   if(modeId==="green_vs_red"){const color=String(state?.special?.greenRedColorByPlayer?.[id]||"GREEN");const tone=color==="RED"?GVR_RED:GVR_GREEN;const step=Number(state?.special?.greenRedStepByPlayer?.[id]||0);return {tone,rank:score,sub:`${color} · étape ${step}/11`,items:[["SCORE",score],["PROGRESSION",`${step}/11`],["PÉNALITÉS",Number(state?.special?.greenRedPenaltyByPlayer?.[id]||0)],["BONUS",Number(state?.special?.greenRedBullBonusByPlayer?.[id]||0)]]};}
   if(modeId==="black_vs_white"){const color=String(state?.special?.blackWhiteColorByPlayer?.[id]||"BLACK");const tone=color==="WHITE"?BW_WHITE:BW_BLACK;return {tone,rank:score,sub:`PISTE ${color} · ${Number(state?.special?.blackWhiteValidHitsByPlayer?.[id]||0)} valides`,items:[["SCORE",score],["VALIDES",Number(state?.special?.blackWhiteValidHitsByPlayer?.[id]||0)],["ERREURS",Number(state?.special?.blackWhiteWrongColorByPlayer?.[id]||0)],["PARFAITES",Number(state?.special?.blackWhitePerfectVisitsByPlayer?.[id]||0)]]};}
   if(modeId==="three_colors"){const ok=Number(state?.special?.threeColorsValidVisitsByPlayer?.[id]||0),ko=Number(state?.special?.threeColorsInvalidVisitsByPlayer?.[id]||0),total=ok+ko;return {tone:accent,rank:score,sub:`${ok} volée(s) validée(s) · ${total?Math.round(ok/total*100):0}%`,items:[["SCORE",score],["VOLÉES OK",ok],["RÉUSSITE",`${total?Math.round(ok/total*100):0}%`],["BEST",Number(state?.special?.threeColorsBestVisitByPlayer?.[id]||0)]]};}
@@ -1161,17 +1187,6 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
   </div>;
 }
 
-function wave61BotDifficultyForProfile(profile: any, fallback: any = "normal"): "easy" | "normal" | "hard" {
-  const raw = profile?.botLevel ?? profile?.level ?? profile?.difficulty ?? profile?.skill ?? profile?.stars ?? profile?.profileStarring ?? "";
-  const s = String(raw ?? "").trim().toLowerCase().replace(",", ".");
-  const fraction = s.match(/(\d+(?:\.\d+)?)\s*\/\s*5/);
-  let n = fraction ? Number(fraction[1]) : Number((s.match(/\d+(?:\.5)?/) || [""])[0]);
-  if (Number.isFinite(n) && n > 5) n = n / 20;
-  if (Number.isFinite(n) && n > 0) return n >= 3.5 ? "hard" : n >= 2 ? "normal" : "easy";
-  if (/elite|legend|l[ée]gende|pro|hard|difficile|fort|strong/.test(s)) return "hard";
-  if (/easy|facile|rookie|beginner|d[ée]butant/.test(s)) return "easy";
-  return fallback === "easy" || fallback === "hard" ? fallback : "normal";
-}
 
 function HiScorePanel({ state, accent }: any) {
   const rows = state.players.map((p:any) => {
@@ -1238,6 +1253,7 @@ export default function Wave61SharedPlay(props: any) {
   const restoredThrow = resumeRecord?.resume?.currentThrow || resumeRecord?.payload?.currentThrow || [];
   const restoredMultiplier = Number(resumeRecord?.resume?.multiplier ?? resumeRecord?.payload?.multiplier ?? 1);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(restoredThrow) ? restoredThrow.slice(0, 3) : []);
+  const [shoveGiftRecipientId, setShoveGiftRecipientId] = React.useState("");
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => restoredMultiplier === 2 || restoredMultiplier === 3 ? restoredMultiplier : 1);
   const [undo, setUndo] = React.useState<Wave61State[]>([]);
   const [notice, setNotice] = React.useState("");
@@ -1245,7 +1261,10 @@ export default function Wave61SharedPlay(props: any) {
   // Un récap humain reste éphémère; seul CONTINUER peut débloquer le BOT.
   const [visitRecap, setVisitRecap] = React.useState<any>(() => getWave61PendingBotVisitRecap(state));
   const [adviceText, setAdviceText] = React.useState("");
-  const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective" | "situation">(null);
+  const [shoveOverlay, setShoveOverlay] = React.useState<any>(null);
+  const shoveAnnouncedTurnRef = React.useRef("");
+  const shoveFallbackSfxCountRef = React.useRef(currentThrow.length);
+  const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective" | "situation" | "shove_marks" | "shove_advice" | "shove_objective">(null);
   const adviceTimerRef = React.useRef<number | null>(null);
   const adviceSpeechTimerRef = React.useRef<number | null>(null);
   const lastAdviceKeyRef = React.useRef("");
@@ -1262,13 +1281,74 @@ export default function Wave61SharedPlay(props: any) {
   const activePlayer = state.players[state.activePlayerIndex];
   const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
+  const shoveGiftCandidates = state.players.filter((p:any) => p.id !== activePlayer?.id && !state.eliminated[p.id]
+    && (state.config.participantMode !== "teams" || state.config.teamByPlayer?.[p.id] !== state.config.teamByPlayer?.[activePlayer?.id]));
+  const shoveNextGiftRecipientId = (() => {
+    const ordered = state.players;
+    const index = Math.max(0, state.activePlayerIndex);
+    for (let i = 1; i < ordered.length; i++) {
+      const id = ordered[(index + i) % ordered.length]?.id;
+      if (shoveGiftCandidates.some((p:any) => p.id === id)) return id;
+    }
+    return "";
+  })();
+  const shoveActualGiftRecipientId = shoveGiftCandidates.some((p:any) => p.id === shoveGiftRecipientId)
+    ? shoveGiftRecipientId : shoveNextGiftRecipientId;
+  React.useEffect(() => setShoveGiftRecipientId(""), [state.activePlayerIndex, state.turnIndex]);
   const target = getWave61Target(state);
+  const shoveRule = shoveRuleSet(state.config?.modeOptions?.ruleSet);
+  const shoveMarksPerBox = Math.max(2, Math.min(5, Number(state.config?.modeOptions?.marksPerBox || 3)));
+  const shoveProjectedMarks = spec.id === "shove_a_penny"
+    ? projectShoveMarks(state.special?.shoveMarksByPlayer?.[activePlayer?.id], currentThrow.map(uiToGameDart), shoveMarksPerBox, shoveRule)
+    : {};
+  const shoveCurrentTarget = spec.id === "shove_a_penny" ? shoveNextTarget(shoveProjectedMarks, shoveMarksPerBox, shoveRule) : null;
+  const shoveClosedCount = spec.id === "shove_a_penny"
+    ? shoveClosedCases(shoveProjectedMarks, shoveMarksPerBox, shoveRule) : 0;
   const accent = preset.accent;
   const modeTicker = React.useMemo(() => getTicker(spec.id, lang), [spec.id, lang]);
-  const dedicatedPlayHint = String(props?.dedicatedPlayHint || "");
+  const dedicatedPlayHint = spec.id === "shove_a_penny"
+    ? shoveRule === "traditional" ? "1 à 9 libres · 3 marques/case · surplus offert · dernière marque personnelle" : "15 → 20 → BULL · 3 marques/case · ordre imposé"
+    : String(props?.dedicatedPlayHint || "");
   const targetAdviceEnabled = config?.targetAdviceEnabled !== false;
   const awenaCommentaryEnabled = config?.awenaCommentaryEnabled !== false;
   const wave61SfxEnabled = config?.wave61SfxEnabled !== false;
+  // La cible interactive et le clavier classique passent aussi par le hit X01.
+  // Le clavier ciblé appelle directement le son lors du geste utilisateur.
+  React.useEffect(() => {
+    const count = currentThrow.length;
+    if (spec.id === 'shove_a_penny' && config.scoreInputMethod !== 'target' && wave61SfxEnabled && count > shoveFallbackSfxCountRef.current) {
+      const dart = currentThrow[count - 1];
+      if (dart && dart.v !== 0) void x01PlaySfxV3('dart_hit', {rateLimitMs:0});
+    }
+    shoveFallbackSfxCountRef.current = count;
+  }, [currentThrow.length, spec.id, config.scoreInputMethod, wave61SfxEnabled]);
+  // Le texte suit instantanément les marques projetées et chaque hit/UNDO du joueur actif.
+  const shoveAdviceText = spec.id === "shove_a_penny"
+    ? buildShoveAdvice(state, String(activePlayer?.id || ""), shoveProjectedMarks, currentThrow)
+    : adviceText;
+
+  // L'annonce ne se déclenche qu'une fois par tour, et attend la fermeture du bilan précédent.
+  React.useEffect(() => {
+    if (spec.id !== "shove_a_penny" || state.phase !== "playing" || shoveOverlay || !activePlayer) return;
+    const key = `${state.startedAt}:${state.turnIndex}:${state.activePlayerIndex}:${activePlayer.id}`;
+    if (shoveAnnouncedTurnRef.current === key) return;
+    shoveAnnouncedTurnRef.current = key;
+    const marks = { ...(state.special?.shoveMarksByPlayer?.[activePlayer.id] || {}) };
+    const closed = shoveTargets(shoveRule).filter(n => Number(marks[String(n)] || 0) >= shoveMarksPerBox).length;
+    const avatar = (profileById.get(String(activePlayer.id)) as any)?.avatarDataUrl || (profileById.get(String(activePlayer.id)) as any)?.avatarUrl || null;
+    setShoveOverlay({ phase: "before", seq: key + ":before", name: activePlayer.name, avatar, marks, ruleSet: shoveRule,
+      message: `À toi de jouer ${activePlayer.name} ! ${closed} case${closed > 1 ? "s" : ""} fermée${closed > 1 ? "s" : ""}. Bonne volée !` });
+  }, [spec.id, state.startedAt, state.turnIndex, state.activePlayerIndex, state.phase, activePlayer?.id, shoveOverlay?.seq]);
+
+  React.useEffect(() => {
+    if (!shoveOverlay || spec.id !== "shove_a_penny") return;
+    if (awenaCommentaryEnabled && awena?.say) {
+      lastVoiceAtRef.current = Date.now();
+      void awena.say(shoveOverlay.message).catch(() => undefined);
+    }
+    const timer = window.setTimeout(() => setShoveOverlay((current:any) => current?.seq === shoveOverlay.seq ? null : current), 5000);
+    return () => window.clearTimeout(timer);
+  }, [shoveOverlay?.seq, spec.id]);
 
   const buildRecord = React.useCallback((s: Wave61State, status: "in_progress" | "finished") => {
     const rankings = buildWave61EndRows(s, profiles);
@@ -1297,6 +1377,16 @@ export default function Wave61SharedPlay(props: any) {
       damageTaken: row.damageTaken,
       safeReveals: row.safeReveals,
       accuracy: row.accuracy,
+      ...(spec.id === "shove_a_penny" ? {
+        shoveAPenny: {
+          marks: Number(s.progress?.[row.id] || 0),
+          closedCases: shoveTargets(shoveRuleSet(s.config?.modeOptions?.ruleSet)).filter((n) => Number(s.special?.shoveMarksByPlayer?.[row.id]?.[String(n)] || 0) >= Number(s.config?.modeOptions?.marksPerBox || 3)).length,
+          marksBySector: { ...(s.special?.shoveMarksByPlayer?.[row.id] || {}) },
+          finishPosition: (s.special?.shoveFinishOrder || []).indexOf(row.id) + 1 || null,
+          darts: row.darts, visits: row.visits, accuracy: row.accuracy,
+          doubles: row.doubles, triples: row.triples, misses: row.misses,
+        },
+      } : {}),
       ...(spec.id === "black_vs_white" ? {
         blackVsWhite: {
           validHits: Number(s.special?.blackWhiteValidHitsByPlayer?.[row.id] || 0),
@@ -1363,7 +1453,7 @@ export default function Wave61SharedPlay(props: any) {
         };
       }),
       game: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION, resumeRoute: "wave61_play" },
-      summary: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config, series, outcome: s.special?.troupeauSoloDefeat ? "defeat" : (status === "finished" ? "victory" : null) },
+      summary: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config, series, shoveAPenny: spec.id === "shove_a_penny" ? { ruleSet: s.config?.modeOptions?.ruleSet, endMode: s.config?.modeOptions?.endMode, marksPerBox: s.config?.modeOptions?.marksPerBox || 3, finishOrder: [...(s.special?.shoveFinishOrder || [])], marksByPlayer: { ...(s.special?.shoveMarksByPlayer || {}) } } : undefined, outcome: s.special?.troupeauSoloDefeat ? "defeat" : (status === "finished" ? "victory" : null) },
       resume: { mode: "wave61", modeId: spec.id, variantId: s.config?.variantId, config: s.config, state: cloneWave61State(s), route: "wave61_play", currentThrow: currentThrow.slice(0, 3), multiplier, updatedAt: Date.now() },
       payload: { kind: spec.id, mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, sport: "darts", winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, config: s.config, stateSnapshot: cloneWave61State(s), currentThrow: currentThrow.slice(0, 3), multiplier, visits: s.visits, series, stats: { players: playerStats, match: matchStats } },
     };
@@ -1373,6 +1463,9 @@ export default function Wave61SharedPlay(props: any) {
   // (BOT recap then CONTINUER) must never finish in the opposite order.
   const historyWriteQueueRef = React.useRef<Promise<void>>(Promise.resolve());
   const persist = React.useCallback((s: Wave61State, clearDraft = false) => {
+    // Une partie n'existe dans l'Historique V4 qu'après sa première volée validée.
+    // Les saisies partielles restent enregistrables après cette première volée.
+    if (spec.id === "shove_a_penny" && s.phase === "playing" && !(s.visits || []).length) return;
     if (s.phase === "finished" && finishedRef.current) return;
     const record = buildRecord(s, s.phase === "finished" ? "finished" : "in_progress");
     // Committing a visit consumes the draft. The React state setters below are
@@ -1388,7 +1481,7 @@ export default function Wave61SharedPlay(props: any) {
       .catch(() => undefined)
       .then(() => History.upsert(record))
       .catch(() => undefined);
-  }, [buildRecord]);
+  }, [buildRecord, spec.id]);
 
   const commit = React.useCallback((next: Wave61State, previous = state) => {
     setUndo((u) => [...u.slice(-39), cloneWave61State(previous)]);
@@ -1524,6 +1617,21 @@ export default function Wave61SharedPlay(props: any) {
         };
       }
     }
+    if (spec.id === "shove_a_penny") {
+      const actorId = String(previous.players[previous.activePlayerIndex]?.id || "");
+      const actorName = String(previous.players[previous.activePlayerIndex]?.name || "Joueur");
+      const oldMarks = { ...(previous.special?.shoveMarksByPlayer?.[actorId] || {}) };
+      const newMarks = { ...(next.special?.shoveMarksByPlayer?.[actorId] || {}) };
+      const targets = shoveTargets(shoveRuleSet(previous.config?.modeOptions?.ruleSet));
+      const delta = targets.reduce((sum,n) => sum + Math.max(0,Number(newMarks[String(n)] || 0)-Number(oldMarks[String(n)] || 0)),0);
+      const completed = targets.filter(n => Number(newMarks[String(n)] || 0)>=Number(previous.config?.modeOptions?.marksPerBox || 3)).length;
+      const profile = profileById.get(actorId) as any;
+      const avatar = profile?.avatarDataUrl || profile?.avatarUrl || null;
+      const giftEvent = (next.visits[next.visits.length-1]?.events || []).find((e:any)=>String(e).includes('surplus'));
+      setShoveOverlay({ phase: "after", seq: `${next.startedAt}:${next.turnIndex}:${next.visits.length}:after`, name: actorName,
+        avatar, marks: newMarks, previousMarks: oldMarks, ruleSet: shoveRuleSet(previous.config?.modeOptions?.ruleSet),
+        message: `${actorName}, ${delta} nouvelle${delta>1?'s':''} marque${delta>1?'s':''}. ${completed} case${completed>1?'s':''} fermée${completed>1?'s':''}. ${giftEvent ? 'Des surplus ont été attribués.' : 'Bien joué !'}` });
+    }
     // Keep one non-recursive undo checkpoint across History/Android reloads.
     // A winning BO/FT leg already has seriesIntermissionUndo instead.
     committed = withWave61EightModeUndoCheckpoint(committed, previous);
@@ -1532,7 +1640,7 @@ export default function Wave61SharedPlay(props: any) {
     setMultiplier(1);
     setNotice(seriesNotice || (committed.phase === "finished" ? `🏆 ${next.players.find((p) => p.id === next.winnerId)?.name || "Victoire"} remporte ${spec.label}` : (last?.events || []).join(" · ")));
     playWave61FeedbackTone(wave61ToneForVisit(next, last), wave61SfxEnabled);
-    if (awenaCommentaryEnabled) {
+    if (awenaCommentaryEnabled && spec.id !== "shove_a_penny") {
       const comment = buildWave61VisitComment(next, last);
       if (comment && awena?.say) {
         lastVoiceAtRef.current = Date.now();
@@ -1543,9 +1651,15 @@ export default function Wave61SharedPlay(props: any) {
   }, [state, spec.id, spec.label, config, players, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena, profileById, botIds, accent]);
 
   const validate = () => {
-    if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap || state.special?.seriesIntermission) return;
+    if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap || (spec.id === "shove_a_penny" && shoveOverlay) || state.special?.seriesIntermission) return;
     if (state.special?.pendingBotVisitRecap) return;
-    commit(playWave61Visit(state, currentThrow.map(uiToGameDart)));
+    if (spec.id === "shove_a_penny" && state.config?.modeOptions?.giftTargetRule === "shooter_choice" && shoveGiftCandidates.length > 1) {
+      const beforeThrow = cloneWave61State(state);
+      beforeThrow.config.modeOptions = { ...(beforeThrow.config.modeOptions || {}), giftRecipientId: shoveActualGiftRecipientId };
+      commit(playWave61Visit(beforeThrow, currentThrow.map(uiToGameDart)));
+    } else {
+      commit(playWave61Visit(state, currentThrow.map(uiToGameDart)));
+    }
   };
 
   const persistedSeriesUndo = state.special?.seriesIntermission?.modeId === spec.id
@@ -1564,6 +1678,8 @@ export default function Wave61SharedPlay(props: any) {
     setCurrentThrow([]);
     setMultiplier(1);
     setVisitRecap(null);
+    setShoveOverlay(null);
+    shoveAnnouncedTurnRef.current = "";
     setNotice("Dernière volée annulée");
     persist(restored, true);
   };
@@ -1608,7 +1724,7 @@ export default function Wave61SharedPlay(props: any) {
   }, [visitRecap?.visitId, visitRecap?.isBot, spec.id]);
 
   React.useEffect(() => {
-    if (!activeIsBot || state.phase === "finished" || visitRecap || state.special?.seriesIntermission) return;
+    if (!activeIsBot || state.phase === "finished" || visitRecap || (spec.id === "shove_a_penny" && shoveOverlay) || state.special?.seriesIntermission) return;
     if (state.special?.pendingBotVisitRecap) return;
     let cancelled = false;
     const scheduledPlayerId = String(activePlayer?.id || "");
@@ -1616,8 +1732,8 @@ export default function Wave61SharedPlay(props: any) {
       if (cancelled || botBusy.current) return;
       botBusy.current = true;
       try {
-        const botDifficulty = wave61BotDifficultyForProfile(activeProfile, config.botLevel);
-        const generated = pickWave61BotDarts(state, botDifficulty);
+        const botDifficulty = resolveBotGameDifficulty(activeProfile, "normal");
+        const generated = pickWave61BotDarts(state, botDifficulty, resolveBotStars(activeProfile));
         const botDarts = Array.isArray(generated) && generated.length
           ? generated.slice(0, 3)
           : ([{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }] as any);
@@ -1641,7 +1757,7 @@ export default function Wave61SharedPlay(props: any) {
       // nettoyé en développement. Le verrou ne doit jamais survivre à ce cleanup.
       botBusy.current = false;
     };
-  }, [state, activeIsBot, activePlayer?.id, activeProfile, config.botLevel, spec.id, commit, visitRecap, state.special?.seriesIntermission]);
+  }, [state, activeIsBot, activePlayer?.id, activeProfile, config.botLevel, spec.id, commit, visitRecap, shoveOverlay?.seq, state.special?.seriesIntermission]);
 
   React.useEffect(() => { if (state.phase === "playing") persist(state); }, []);
 
@@ -1669,12 +1785,16 @@ export default function Wave61SharedPlay(props: any) {
     const adviceKey = `${spec.id}:${state.turnIndex}:${state.roundIndex}:${activePlayer?.id || ""}`;
     if (lastAdviceKeyRef.current === adviceKey) return;
     lastAdviceKeyRef.current = adviceKey;
-    const advice = buildWave61Advice(state);
+    const advice = spec.id === "shove_a_penny"
+      ? (shoveRule === "traditional"
+        ? "Choisis librement une case de 1 à 9 encore ouverte. Trois marques ferment une case ; une marque de victoire doit être obtenue par toi-même."
+        : "Ferme la case " + (shoveCurrentTarget === 25 ? "BULL" : shoveCurrentTarget ?? "finale") + " avant de passer à la suivante.")
+      : buildWave61Advice(state);
     if (!advice) return;
     setAdviceText(advice);
     playWave61FeedbackTone("turn", wave61SfxEnabled);
-    adviceTimerRef.current = window.setTimeout(() => setAdviceText(""), 3000);
-    if (awenaCommentaryEnabled && awena?.say) {
+    if (spec.id !== "shove_a_penny") adviceTimerRef.current = window.setTimeout(() => setAdviceText(""), 3000);
+    if (awenaCommentaryEnabled && awena?.say && spec.id !== "shove_a_penny") {
       const elapsed = Date.now() - lastVoiceAtRef.current;
       const delay = Math.max(220, 1650 - Math.max(0, elapsed));
       adviceSpeechTimerRef.current = window.setTimeout(() => {
@@ -1718,13 +1838,15 @@ export default function Wave61SharedPlay(props: any) {
     setNotice("");
     setAdviceText("");
     setVisitRecap(null);
+    setShoveOverlay(null);
+    shoveAnnouncedTurnRef.current = "";
     lastAdviceKeyRef.current = "";
     setCurrentThrow([]);
     setMultiplier(1);
     setState(createWave61State(players, spec.id, config));
   }
 
-  const roundLabel = Math.min(config.rounds, state.roundIndex + 1);
+  const roundLabel = spec.id === "shove_a_penny" && String(state.config?.modeOptions?.endMode || "first_finish") !== "fixed_rounds" ? state.roundIndex + 1 : Math.min(config.rounds, state.roundIndex + 1);
   const teamMode = config.participantMode === "teams";
 
   const renderModeSpecificPanel = () => <>
@@ -1736,7 +1858,6 @@ export default function Wave61SharedPlay(props: any) {
     {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
     {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
     {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
-    {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
     {spec.id === "green_vs_red" ? <GreenRedPanel state={state} /> : spec.id === "black_vs_white" ? <BlackWhitePanel state={state} currentThrow={currentThrow} /> : spec.id === "three_colors" ? <ThreeColorsPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "la_suite" ? <LaSuitePanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "color_call" ? <ColorCallPanel state={state} currentThrow={currentThrow} accent={accent} /> : null}
     {spec.id === "bim_bam_boum" ? <BimBamBoumPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "saute_moutons" ? <SauteMoutonsPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "troupeau_en_danger" ? <TroupeauDangerPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "une_ptite_raclette" ? <RaclettePanel state={state} currentThrow={currentThrow} accent={accent} /> : null}
     {spec.id === "hi_score" ? <HiScorePanel state={state} accent={accent} /> : null}
@@ -1802,7 +1923,7 @@ export default function Wave61SharedPlay(props: any) {
   const classicObjective = (() => {
     if (spec.id === "double_down") return target?.label || "Contrat du round";
     if (spec.id === "nine_dart_century") return "100 en 9 fléchettes";
-    if (spec.id === "shove_a_penny") return target?.label || "Fermer la case courante";
+    if (spec.id === "shove_a_penny") return shoveCurrentTarget === null ? "TOUTES LES CASES FERMÉES" : shoveRule === "traditional" ? "1 À 9 · ORDRE LIBRE" : "Fermer " + (shoveCurrentTarget === 25 ? "BULL" : shoveCurrentTarget);
     if (spec.id === "green_vs_red") return target?.label || "D/T du numéro courant · finale BULL";
     if (spec.id === "black_vs_white") return "Jouer uniquement les secteurs de sa piste";
     if (spec.id === "three_colors") return "Obtenir 3 couleurs différentes";
@@ -1820,6 +1941,11 @@ export default function Wave61SharedPlay(props: any) {
 
   const renderClassicQuickModal = () => {
     if (!quickPanel) return null;
+    if (spec.id === "shove_a_penny" && quickPanel === "shove_objective") return <ShoveObjectivesModal
+      name={String(activePlayer?.name || 'Joueur')} marks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox}
+      ruleSet={shoveRule} round={roundLabel} maxRounds={String(state.config?.modeOptions?.endMode || "first_finish") === "fixed_rounds" ? config.rounds : 0} advice={shoveAdviceText}
+      accent={accent} config={state.config} onClose={()=>setQuickPanel(null)}
+      onConfigure={()=>{setQuickPanel(null);go?.("wave61_config",{gameId:spec.id});}} />;
     const titles: Record<string,string> = {
       rules: "RÈGLES DU MODE",
       settings: "RÉGLAGES DE LA PARTIE",
@@ -1829,6 +1955,8 @@ export default function Wave61SharedPlay(props: any) {
       stats: "STATISTIQUES DE LA PARTIE",
       objective: "OBJECTIFS DÉTAILLÉS",
       situation: "SITUATION DE PARTIE",
+      shove_marks: "TABLEAU DE MARQUES",
+      shove_advice: "CONSEIL AWENA",
     };
     const optionRows = Object.entries(config?.modeOptions || {});
     return <div
@@ -1885,15 +2013,20 @@ export default function Wave61SharedPlay(props: any) {
         {quickPanel === "objective" && spec.id === "une_ptite_raclette" ? <div data-raclette-objective-modal="1" style={{marginTop:12,display:"grid",gap:8}}><div style={{...panelStyle("#f4b24f55"),padding:12,textAlign:"center"}}><div style={{color:"#f4c15d",fontSize:9,fontWeight:1100}}>SERVICE À TABLE</div><div style={{color:"#fff",fontSize:21,fontWeight:1200,marginTop:4}}>SERVIR {Math.max(1,Number(config?.goal||3))} RACLETTES</div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginTop:9}}>{[["🧀",Number(config?.modeOptions?.recipeCheese??6),"FROMAGE"],["🥔",Number(config?.modeOptions?.recipePotato??3),"PDT"],["🥓",Number(config?.modeOptions?.recipeCharcuterie??3),"CHARCUT."]].map(([icon,v,label]:any)=><div key={label} style={{borderRadius:10,padding:8,border:"1px solid rgba(244,178,79,.28)",background:"rgba(244,178,79,.08)"}}><b style={{display:"block",color:"#f4b24f",fontSize:14}}>{icon} × {v}</b><span style={{color:SOFT,fontSize:7.4}}>{label}</span></div>)}</div><div style={{color:SOFT,fontSize:9.2,marginTop:8}}>1/4/7/10/13/16/19 = fromage · 2/5/8/11/14/17/20 = pommes de terre · 3/6/9/12/15/18 = charcuterie. Bulls : coup de chaud bonus.</div></div></div> : null}
 
         {quickPanel === "ranking" ? <div data-seven-mode-ranking="1" style={{ marginTop:12, display:"grid", gap:6 }}>
-          {[...(state.players||[])].map((p:any)=>({p,meta:quickModeMeta(state,spec.id,String(p.id),accent)})).sort((a:any,b:any)=>Number(b.meta.rank||0)-Number(a.meta.rank||0)).map(({p,meta}:any,i:number)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:12,border:`1px solid ${meta.tone}45`,background:"rgba(255,255,255,.025)"}}><b style={{color:meta.tone}}>#{i+1}</b><div><b style={{color:"#fff",fontSize:10}}>{p.name}</b><div style={{color:meta.tone,fontSize:8,marginTop:1}}>{meta.sub}</div></div><strong style={{color:meta.tone,fontSize:18}}>{Math.round(Number(meta.rank||0))}</strong></div>)}
+          {[...(state.players||[])].map((p:any)=>({p,meta:quickModeMeta(state,spec.id,String(p.id),accent)})).sort((a:any,b:any)=>spec.id==="shove_a_penny" ? rankShovePlayers(state).indexOf(String(a.p.id))-rankShovePlayers(state).indexOf(String(b.p.id)) : Number(b.meta.rank||0)-Number(a.meta.rank||0)).map(({p,meta}:any,i:number)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:12,border:`1px solid ${meta.tone}45`,background:"rgba(255,255,255,.025)"}}><b style={{color:meta.tone}}>#{i+1}</b><div><b style={{color:"#fff",fontSize:10}}>{p.name}</b><div style={{color:meta.tone,fontSize:8,marginTop:1}}>{meta.sub}</div></div><strong style={{color:meta.tone,fontSize:18}}>{Math.round(Number(meta.rank||0))}</strong></div>)}
         </div> : null}
 
-        {quickPanel === "stats" ? <div data-seven-mode-stats="1" style={{ marginTop:12, display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:7 }}>
-          {(() => { const id=String(activePlayer?.id||""); const meta=quickModeMeta(state,spec.id,id,accent); return meta.items.map(([label,value]:any)=><div key={label} style={{...panelStyle(meta.tone+"30"),padding:10,textAlign:"center"}}><div style={{color:SOFT,fontSize:7.5,fontWeight:950}}>{label}</div><b style={{display:"block",marginTop:3,color:meta.tone,fontSize:20}}>{value}</b></div>); })()}
-        </div> : null}
+        {quickPanel === "shove_marks" && spec.id === "shove_a_penny" ? <div style={{marginTop:12}}><ShovePennyCricketBoard state={state} profiles={profiles} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} ruleSet={shoveRule}/></div> : null}
+        {quickPanel === "shove_advice" && spec.id === "shove_a_penny" ? <div style={{marginTop:12,display:"grid",gridTemplateColumns:"44px minmax(0,1fr)",gap:12,alignItems:"center",border:`1px solid ${accent}44`,borderRadius:14,padding:12}}><img src="/awena/awena-avatar.webp" alt="Awena" style={{width:44,height:44,borderRadius:999}}/><div style={{color:"#fff",fontSize:13,lineHeight:1.5}}>{shoveAdviceText || "Aucun nouveau conseil pour cette volée."}</div></div> : null}
+        {quickPanel === "stats" ? (spec.id === "shove_a_penny" ?
+          <ShoveStatsDashboard state={state} profiles={profiles} accent={accent} activePlayerId={activePlayer?.id} /> :
+          <div data-seven-mode-stats="1" style={{ marginTop:12, display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:7 }}>
+            {(() => { const id=String(activePlayer?.id||""); const meta=quickModeMeta(state,spec.id,id,accent); return meta.items.map(([label,value]:any)=><div key={label} style={{...panelStyle(meta.tone+"30"),padding:10,textAlign:"center"}}><div style={{color:SOFT,fontSize:7.5,fontWeight:950}}>{label}</div><b style={{display:"block",marginTop:3,color:meta.tone,fontSize:20}}>{value}</b></div>); })()}
+          </div>) : null}
 
         {quickPanel === "players" ? <div data-seven-mode-players="1" style={{ marginTop:12, display:"grid", gap:7 }}>
-          {state.players.map((p:any,i:number)=>{ const prof=profileById.get(String(p.id))||p; const meta=quickModeMeta(state,spec.id,String(p.id),accent); return <PlayerCard key={p.id} profile={prof} active={state.activePlayerIndex===i} accent={meta.tone} value={meta.rank} subValue={meta.sub} />; })}
+          {spec.id === "shove_a_penny" ? <b style={{fontSize:10,letterSpacing:.8,color:accent,marginBottom:2}}>ORDRE DE PASSAGE · DE 1 À {state.players.length}</b> : null}
+          {state.players.map((p:any,i:number)=>{ const prof=profileById.get(String(p.id))||p; const meta=quickModeMeta(state,spec.id,String(p.id),accent); return <div key={p.id} style={{display:'grid',gridTemplateColumns:spec.id==='shove_a_penny'?'26px minmax(0,1fr)':'1fr',gap:6,alignItems:'center'}}>{spec.id==='shove_a_penny'?<b style={{fontSize:13,color:accent,textAlign:'center'}}>{i+1}</b>:null}<PlayerCard profile={prof} active={state.activePlayerIndex===i} accent={meta.tone} value={meta.rank} subValue={meta.sub} /></div>; })}
         </div> : null}
 
         {quickPanel === "history" ? <div style={{ marginTop:12 }}>
@@ -1909,7 +2042,12 @@ export default function Wave61SharedPlay(props: any) {
     const dartsPlayed = Number(activeStats?.darts || 0);
     const visitCount = activePlayer ? (state.visits || []).filter((v:any)=>String(v.playerId)===String(activePlayer.id)).length : 0;
     const tickerHeight = isLandscapeTablet ? 54 : 82;
-    const quickButtons = (isFinishedColorVariant(spec.id) ? [
+    const quickButtons = (spec.id === "shove_a_penny" ? [
+      { id:"stats", icon:"▥", label:"STATS" },
+      { id:"ranking", icon:"🏆", label:"CLASSEMENT" },
+      { id:"players", icon:"◉", label:"JOUEURS", wide:true },
+      { id:"history", icon:"↺", label:"ACTIONS" },
+    ] : isFinishedColorVariant(spec.id) ? [
       { id:"ranking", label:"CLASSEMENT" },
       { id:"players", label:"LISTE DE JOUEURS", wide:true },
       { id:"stats", label:"STATS" },
@@ -1919,7 +2057,11 @@ export default function Wave61SharedPlay(props: any) {
       { id:"settings", icon:"⚙", label:"RÉGLAGES" },
       { id:"players", icon:"◉", label:"JOUEURS" },
       { id:"history", icon:"↺", label:"ACTIONS" },
+
     ]) as any[];
+    const shovePassingOrder = spec.id === "shove_a_penny"
+      ? Array.from({ length: state.players.length }, (_, index) => state.players[(state.activePlayerIndex + index) % state.players.length]).filter(Boolean)
+      : [];
     const gvrActiveId = String(activePlayer?.id || "");
     const gvrColor = spec.id === "green_vs_red" ? String(state.special?.greenRedColorByPlayer?.[gvrActiveId] || "GREEN") : "";
     const gvrTone = gvrColor === "RED" ? GVR_RED : GVR_GREEN;
@@ -1940,12 +2082,16 @@ export default function Wave61SharedPlay(props: any) {
         tickerBottomGap={isColorDuelMode(spec.id) ? (isLandscapeTablet?8:16) : (isLandscapeTablet?3:5)}
         tickerFit="cover"
         left={<BackDot onClick={()=>go?.("wave61_config",{gameId:spec.id})} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}88`} />}
-        right={<InfoDot title={`${spec.label} — règles`} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}77`} content={familyRules(spec,preset)} />}
+        right={<div style={{position:'relative',display:'grid',placeItems:'center'}}>
+          <InfoDot title={`${spec.label} — règles`} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}77`} content={familyRules(spec,preset)} />
+          {spec.id === 'shove_a_penny' ? <button type="button" data-shove-awena-bubble="1" title="Conseil d’Awena" aria-label="Afficher le conseil d’Awena en temps réel" onClick={()=>setQuickPanel('shove_advice')}
+            style={{position:'absolute',top:-5,left:-11,width:21,height:19,zIndex:4,display:'grid',placeItems:'center',borderRadius:'9px 9px 4px 9px',background:accent,color:'#231507',border:'1px solid #ffe3a3',fontSize:12,fontWeight:1100,cursor:'pointer',boxShadow:`0 1px 7px ${accent}77`,transform:'rotate(-9deg)'}}>!</button> : null}
+        </div>}
       />
       {isColorDuelMode(spec.id) ? <div aria-hidden="true" style={{height:isLandscapeTablet?4:8,flex:`0 0 ${isLandscapeTablet?4:8}px`}} /> : null}
       {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : spec.id === "black_vs_white" ? (state.players?.length===2 && String(state?.config?.modeOptions?.matchFormat||"duel")==="duel" ? <BlackWhiteDuelScoreboard state={state} profiles={profiles} /> : <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} />) : ["three_colors","la_suite","color_call","bim_bam_boum","saute_moutons","troupeau_en_danger","une_ptite_raclette"].includes(spec.id) ? <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} /> : null}
 
-      {adviceText && !isColorDuelMode(spec.id) ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
+      {adviceText && !isColorDuelMode(spec.id) && spec.id !== "shove_a_penny" ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width:34,height:34,borderRadius:"50%",objectFit:"cover",border:`1px solid ${accent}88` }}/>
         <div><div style={{ color:accent,fontSize:7.5,fontWeight:1100,letterSpacing:.8 }}>AWENA · CONSEIL</div><div style={{ color:"#fff",fontSize:9,lineHeight:1.3,fontWeight:850,marginTop:1 }}>{adviceText}</div></div>
       </div> : null}
@@ -1960,7 +2106,14 @@ export default function Wave61SharedPlay(props: any) {
           ? { minWidth:0,minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"0 2px 8px",display:"grid",gap:7,alignContent:"start" }
           : { flex:"1 1 auto",minHeight:0,overflowY:isFinishedColorVariant(spec.id)?"hidden":"auto",overscrollBehavior:"contain",padding:isFinishedColorVariant(spec.id)?"6px 8px 4px":"5px 8px 7px",display:isFinishedColorVariant(spec.id)?"flex":"grid",flexDirection:isFinishedColorVariant(spec.id)?"column":undefined,gap:isFinishedColorVariant(spec.id)?4:7,alignContent:"start" }
         }>
-          {isColorDuelMode(spec.id) ? <section data-color-duel-active-player={spec.id} style={{ position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:0,borderRadius:18,border:`1px solid ${duelTone}70`,background:`radial-gradient(circle at 18% 50%,${duelTone}20,transparent 34%),linear-gradient(145deg,${duelTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${duelTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7 }}>
+          {spec.id === "shove_a_penny" ? <ShoveActivePlayerCard
+            profile={activeProfile} name={String(activePlayer?.name || "—")}
+            closedCases={shoveClosedCount}
+            totalCases={shoveTargets(shoveRule).length}
+            ruleSet={shoveRule} round={roundLabel} maxRounds={String(state.config?.modeOptions?.endMode || "first_finish") === "fixed_rounds" ? config.rounds : 0}
+            darts={currentThrow} accent={accent}
+            onObjective={()=>setQuickPanel("shove_objective")}
+          /> : isColorDuelMode(spec.id) ? <section data-color-duel-active-player={spec.id} style={{ position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:0,borderRadius:18,border:`1px solid ${duelTone}70`,background:`radial-gradient(circle at 18% 50%,${duelTone}20,transparent 34%),linear-gradient(145deg,${duelTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${duelTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7 }}>
             <div style={{position:"relative",zIndex:1,display:"grid",placeItems:"center",minWidth:0}}>
               <div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${duelTone}66`,background:`linear-gradient(180deg,${duelTone}18,rgba(7,10,16,.96))`,boxShadow:`0 0 18px ${duelTone}18,inset 0 0 20px rgba(255,255,255,.03)`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:duelTone}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
             </div>
@@ -1992,23 +2145,25 @@ export default function Wave61SharedPlay(props: any) {
             </div>
           </div>}
 
-          <div data-color-duel-tool-strip={isFinishedColorVariant(spec.id)?spec.id:undefined} style={{ display:"grid",gridTemplateColumns:isFinishedColorVariant(spec.id)?".68fr 2fr .68fr .68fr":"repeat(4,minmax(0,1fr))",gap:5 }}>
+          <div data-color-duel-tool-strip={isFinishedColorVariant(spec.id)?spec.id:undefined} style={{ display:"grid",gridTemplateColumns:isFinishedColorVariant(spec.id)?".68fr 2fr .68fr .68fr":spec.id==="shove_a_penny"?".85fr 1fr 2fr .85fr":"repeat(4,minmax(0,1fr))",gap:5 }}>
             {quickButtons.map((b:any)=>{
               const toolTone=isColorDuelMode(spec.id)?duelTone:accent;
               const isGvr=isFinishedColorVariant(spec.id);
               const isPlayers=isGvr&&b.id==="players";
-              return <button key={b.id} type="button" onClick={()=>setQuickPanel(b.id as any)} title={b.label} aria-label={b.label} style={{ position:"relative",overflow:"hidden",minHeight:isGvr?42:48,borderRadius:13,border:`1px solid ${toolTone}${isPlayers?"66":"38"}`,background:isPlayers&&modeTicker?`linear-gradient(90deg,rgba(3,8,10,.82),${toolTone}28,rgba(3,8,10,.82)),url(${modeTicker}) center/cover no-repeat`:`linear-gradient(180deg,${toolTone}0b,rgba(7,10,16,.96))`,color:toolTone,display:"grid",placeItems:"center",cursor:"pointer",minWidth:0,boxShadow:isPlayers?`inset 0 0 22px rgba(0,0,0,.52),0 0 14px ${toolTone}12`:"none" }}>
-                {isGvr?<GreenRedToolIcon kind={b.id as any} size={isPlayers?25:21}/>:<><span style={{ color:toolTone,fontSize:17,lineHeight:1 }}>{b.icon}</span><span style={{ fontSize:6.6,fontWeight:1000,letterSpacing:.4,whiteSpace:"nowrap" }}>{b.label}</span></>}
+              return <button key={b.id} type="button" onClick={()=>setQuickPanel(b.id as any)} title={b.label} aria-label={b.label} style={{ position:"relative",overflow:"hidden",minHeight:isGvr?42:48,borderRadius:13,border:`1px solid ${toolTone}${isPlayers?"66":"38"}`,background:spec.id==="shove_a_penny"&&b.id==="players"?`url(${shovePlayersTicker}) center/100% 100% no-repeat`:isPlayers&&modeTicker?`linear-gradient(90deg,rgba(3,8,10,.82),${toolTone}28,rgba(3,8,10,.82)),url(${modeTicker}) center/cover no-repeat`:`linear-gradient(180deg,${toolTone}0b,rgba(7,10,16,.96))`,color:toolTone,display:"grid",placeItems:"center",cursor:"pointer",minWidth:0,boxShadow:isPlayers?`inset 0 0 22px rgba(0,0,0,.52),0 0 14px ${toolTone}12`:"none" }}>
+                {spec.id==="shove_a_penny"&&b.id==="players" ? <><div aria-hidden="true" style={{position:'absolute',inset:0,background:'linear-gradient(180deg,rgba(5,8,14,.18),rgba(5,8,14,.58))'}} /><div style={{position:'relative',zIndex:1,display:'grid',justifyItems:'center',alignContent:'center',padding:'4px 10px',gap:3,width:'100%'}}><span style={{fontSize:'clamp(11px,2.5vw,16px)',fontWeight:1200,letterSpacing:.8,color:toolTone,textShadow:'0 1px 5px rgba(0,0,0,.9)'}}>JOUEURS</span></div></> : isGvr ? <GreenRedToolIcon kind={b.id as any} size={isPlayers?25:21}/> : spec.id==="shove_a_penny"&&b.id==="ranking" ? <><span style={{display:'inline-flex',color:toolTone,lineHeight:1}}><ShoveRankingNavIcon color={toolTone} size={18} /></span><span style={{ fontSize:6.6,fontWeight:1000,letterSpacing:.4,whiteSpace:"nowrap" }}>{b.label}</span></> : <><span style={{ color:toolTone,fontSize:17,lineHeight:1 }}>{b.icon}</span><span style={{ fontSize:6.6,fontWeight:1000,letterSpacing:.4,whiteSpace:"nowrap" }}>{b.label}</span></>}
               </button>;
             })}
           </div>
 
-          {notice ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
+          {spec.id === "shove_a_penny" ? <button type="button" aria-label="Ouvrir le tableau de marques de tous les joueurs" title="Tableau de marques" data-shove-board-trigger="1" onClick={()=>setQuickPanel("shove_marks")} style={{position:'relative',width:'100%',height:67,flex:'0 0 67px',borderRadius:12,border:`1px solid ${accent}85`,background:'#0a0c13',padding:0,overflow:'hidden',cursor:'pointer'}}><img src={shoveMarksTicker} alt="TABLEAU DE MARQUES" style={{width:'100%',height:'100%',display:'block',objectFit:'fill'}}/><div aria-hidden="true" style={{position:'absolute',inset:0,background:'linear-gradient(180deg,rgba(4,7,13,.08),rgba(4,7,13,.34))'}}/><div style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:'clamp(12px,2.7vw,18px)',fontWeight:1200,letterSpacing:.8,color:accent,textTransform:'uppercase',textAlign:'center',textShadow:'0 2px 7px rgba(0,0,0,.95),0 0 6px rgba(0,0,0,.8)',whiteSpace:'nowrap'}}>TABLEAU DES MARQUES</div></button> : null}
+          {spec.id === "shove_a_penny" && state.config?.modeOptions?.giftTargetRule === "shooter_choice" && shoveGiftCandidates.length>1 && !activeIsBot ? <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(135px,1fr)",gap:6,alignItems:"center",padding:"5px 7px",borderRadius:10,border:`1px solid ${accent}44`}}><label htmlFor="shove-gift-pick" style={{color:accent,fontSize:9,fontWeight:950}}>SURPLUS → JOUEUR</label><select id="shove-gift-pick" value={shoveActualGiftRecipientId} onChange={e=>setShoveGiftRecipientId(e.target.value)} style={{width:"100%",background:"#111824",color:"#fff",borderRadius:9,padding:7,border:"1px solid #485669"}}>{shoveGiftCandidates.map((p:any)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div> : null}
+          {notice && spec.id !== "shove_a_penny" ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
 
           {isFinishedColorVariant(spec.id) && !isColorDuelMode(spec.id) ? <div data-variant-live-stack={spec.id} style={{flex:"1 1 0",minHeight:0,overflow:"hidden",display:"grid",gridTemplateRows:"minmax(74px,1fr) auto",gap:4}}><div style={{minHeight:0,overflow:"hidden",display:"grid",alignContent:"start"}}>{renderModeSpecificPanel()}</div><VariantPerformancePanel state={state} modeId={spec.id} accent={accent} /></div> : <>{renderModeSpecificPanel()}{isFinishedColorVariant(spec.id) ? <VariantPerformancePanel state={state} modeId={spec.id} accent={accent} /> : null}</>}
           {isColorDuelMode(spec.id) ? <div style={{flex:"1 1 0",minHeight:viewportH>0&&viewportH<760?132:150,overflow:"hidden"}}>{spec.id==="black_vs_white"?<BlackWhiteSituationPanel state={state} profiles={profiles} stretch />:<GreenRedSituationPanel state={state} profiles={profiles} stretch />}</div> : null}
 
-          {!isFinishedColorVariant(spec.id) ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
+          {!isFinishedColorVariant(spec.id) && spec.id !== "shove_a_penny" ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
             <div style={{ minWidth:0 }}><div style={{ color:accent,fontSize:8,fontWeight:1100,letterSpacing:.7 }}>OBJECTIF ACTIF</div><div style={{ color:"#fff",fontSize:14,fontWeight:1100,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{classicObjective}</div>{dedicatedPlayHint ? <div style={{ color:SOFT,fontSize:8.6,lineHeight:1.3,marginTop:2 }}>{dedicatedPlayHint}</div> : null}</div>
             <div style={{ width:54,height:54,borderRadius:15,border:`1px solid ${accent}55`,background:`${accent}0d`,display:"grid",placeItems:"center",color:accent,fontSize:20 }}>🎯</div>
           </div> : null}
@@ -2018,10 +2173,35 @@ export default function Wave61SharedPlay(props: any) {
           ? { minWidth:0,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column" }
           : { flex:`0 0 ${classicInputHeight}`,height:classicInputHeight,minHeight:0,overflow:"hidden",padding:"0 8px max(6px,env(safe-area-inset-bottom))",background:"linear-gradient(180deg,rgba(4,7,12,.88),rgba(4,7,12,1))",borderTop:"1px solid rgba(255,255,255,.07)",boxShadow:"0 -12px 28px rgba(0,0,0,.42)" }
         }>
-          {!activeIsBot ? (spec.id === "green_vs_red" && config.scoreInputMethod !== "dartboard" ? <GreenVsRedInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "black_vs_white" && config.scoreInputMethod !== "dartboard" ? <BlackWhiteInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} /> : spec.id === "three_colors" && config.scoreInputMethod !== "dartboard" ? <ThreeColorsInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "la_suite" && config.scoreInputMethod !== "dartboard" ? <SequenceInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "color_call" && config.scoreInputMethod !== "dartboard" ? <ColorCallInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={isLandscapeTablet?0.30:0.36} guideSegmentNumbers={spec.id === "green_vs_red" && target?.kind === "number" ? [target.value] : null} guideBull={spec.id === "green_vs_red" && target?.kind === "bull"} />) : <div style={{ ...panelStyle(accent+"35"),height:"100%",display:"grid",placeItems:"center",textAlign:"center",color:SOFT,fontSize:11,padding:12 }}><div><div style={{fontSize:32}}>🤖</div><b style={{color:accent}}>{activePlayer?.name}</b><div style={{marginTop:5}}>calcule son prochain lancer…</div></div></div>}
+          {!activeIsBot ? (spec.id === "green_vs_red" && config.scoreInputMethod !== "dartboard" ? <GreenVsRedInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "black_vs_white" && config.scoreInputMethod !== "dartboard" ? <BlackWhiteInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} /> : spec.id === "three_colors" && config.scoreInputMethod !== "dartboard" ? <ThreeColorsInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "la_suite" && config.scoreInputMethod !== "dartboard" ? <SequenceInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "color_call" && config.scoreInputMethod !== "dartboard" ? <ColorCallInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "shove_a_penny" && config.scoreInputMethod === "target" ? <KeypadTargets
+            allowedNumbers={shoveRule === "traditional" ? [...shoveTargets(shoveRule)] : shoveCurrentTarget !== null && shoveCurrentTarget !== 25 ? [shoveCurrentTarget] : []}
+            showBull={shoveRule === "electronic" && shoveCurrentTarget === 25}
+            showDBull={shoveRule === "electronic" && shoveCurrentTarget === 25}
+            selectedMultiplier={multiplier}
+            onMultiplierChange={setMultiplier}
+            darts={currentThrow}
+            onDart={(dart) => {
+              if (wave61SfxEnabled && dart.v !== 0) void x01PlaySfxV3('dart_hit', {rateLimitMs:0});
+              setCurrentThrow((previous) => previous.length >= 3 ? previous : [...previous, dart]);
+            }}
+            onBackspace={() => setCurrentThrow((previous) => previous.slice(0, -1))}
+            onUndoVisit={doUndo}
+            canUndoVisit={canUndo}
+            onValidate={validate}
+            disabled={state.phase !== "playing" || !!shoveOverlay || !!visitRecap || !!state.special?.seriesIntermission || !!state.special?.pendingBotVisitRecap}
+            accent={accent}
+            title={shoveRule === "traditional" ? "FERMER 1 À 9 · ORDRE LIBRE" : shoveCurrentTarget === 25 ? "DERNIÈRE CASE · BULL" : "CASE À FERMER"}
+            progressLabel={shoveRule === "traditional" ? shoveClosedCount + "/9 CASES" : shoveCurrentTarget === null ? "TERMINÉ" : String(shoveProjectedMarks[String(shoveCurrentTarget)] || 0) + "/" + shoveMarksPerBox + " MARQUES"}
+            validateLabel="VALIDER"
+          /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={isLandscapeTablet?0.30:0.36} guideSegmentNumbers={spec.id === "green_vs_red" && target?.kind === "number" ? [target.value] : null} guideBull={spec.id === "green_vs_red" && target?.kind === "bull"} />) : <div style={{ ...panelStyle(accent+"35"),height:"100%",display:"grid",placeItems:"center",textAlign:"center",color:SOFT,fontSize:11,padding:12 }}><div><div style={{fontSize:32}}>🤖</div><b style={{color:accent}}>{activePlayer?.name}</b><div style={{marginTop:5}}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
       {renderClassicQuickModal()}
+      {spec.id === "shove_a_penny" && shoveOverlay ? <ShoveTurnBriefing
+        phase={shoveOverlay.phase} name={shoveOverlay.name} avatar={shoveOverlay.avatar}
+        marks={shoveOverlay.marks} previousMarks={shoveOverlay.previousMarks} accent={accent}
+        marksPerBox={shoveMarksPerBox} ruleSet={shoveOverlay.ruleSet} message={shoveOverlay.message}
+        onClose={()=>setShoveOverlay(null)} /> : null}
       {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={isColorDuelMode(spec.id) ? duelTone : accent} onClose={closeVisitRecap} durationMs={isFinishedColorVariant(spec.id) ? 5000 : 3000} /> : null}
       {!visitRecap && state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={isColorDuelMode(spec.id) ? duelTone : accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
@@ -2123,7 +2303,6 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
       {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
       {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
-      {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
       {spec.id === "green_vs_red" ? <><GreenRedDuelScoreboard state={state} profiles={profiles} accent={accent} /><GreenRedPanel state={state} accent={accent} /></> : spec.id === "black_vs_white" ? <><BlackWhiteDuelScoreboard state={state} profiles={profiles} /><BlackWhitePanel state={state} currentThrow={currentThrow} /></> : null}
       {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
       {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}

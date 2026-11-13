@@ -7,7 +7,7 @@ import { buildChallengeArchiveReliability } from './challengeArchiveReliability.
 import { arcadeRuleDetails } from './challengeArcadeEngine.ts';
 
 export type ChallengeAuditProblem = {
- code: 'NO_CONFIG'|'NO_DATE'|'NO_SCORE'|'NO_DARTS'|'JOURNAL_CONFLICT'|'SUMMARY_ONLY'|'NO_DETAIL';
+ code: 'NO_CONFIG'|'NO_DATE'|'NO_SCORE'|'NO_DARTS'|'JOURNAL_CONFLICT'|'SUMMARY_ONLY'|'NO_DETAIL'|'DARTS_RECOVERED';
  count:number;
  message:string;
  severity:'warning'|'info';
@@ -16,7 +16,7 @@ export type ChallengeArchiveAudit = {
  schema:'mss-challenge-audit-v1';
  scope:'selected-challenge-and-profile';
  total:number;finished:number;inProgress:number;recordEligible:number;notEligible:number;duplicateSnapshots:number;
- journalVerified:number;summaryOnly:number;withoutDetail:number;
+ journalVerified:number;summaryOnly:number;withoutDetail:number;recoveredDarts:number;
  problems:ChallengeAuditProblem[];
  eligibleByMode:Array<{modeId:string;finished:number;eligible:number;goal:'min'|'max'}>;
 };
@@ -59,11 +59,12 @@ export function buildChallengeArchiveAudit(items:readonly ChallengeArchiveItem[]
  add('JOURNAL_CONFLICT',quality.dartCountConflicts,'Compteur de fléchettes différent du journal : à vérifier');
  add('SUMMARY_ONLY',quality.summaryOnly,'Ancienne partie avec résumé uniquement', 'info');
  add('NO_DETAIL',quality.withoutDetail,'Partie sans télémétrie détaillée', 'info');
+ add('DARTS_RECOVERED',quality.recoveredDarts,'Compteur de fléchettes retrouvé grâce au journal exact du joueur', 'info');
  return {
   schema:'mss-challenge-audit-v1',scope:'selected-challenge-and-profile',
   total:items.length,finished:quality.finished,inProgress:quality.inProgress,
   recordEligible,notEligible:Math.max(0,quality.finished-recordEligible),duplicateSnapshots,
-  journalVerified:quality.withJournal,summaryOnly:quality.summaryOnly,withoutDetail:quality.withoutDetail,
+  journalVerified:quality.withJournal,summaryOnly:quality.summaryOnly,withoutDetail:quality.withoutDetail,recoveredDarts:quality.recoveredDarts,
   problems,eligibleByMode,
  };
 }

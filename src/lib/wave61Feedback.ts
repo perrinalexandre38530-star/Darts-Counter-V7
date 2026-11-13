@@ -125,8 +125,12 @@ function adviceForNoTarget(state: Wave61State): string | null {
   if (id === "shove_a_penny") {
     const marks = state.special?.shoveMarksByPlayer?.[pid] || {};
     const perBox = Math.max(2, Number(state.config?.modeOptions?.marksPerBox || 3));
-    const target = [15, 16, 17, 18, 19, 20, 25].find((n) => Number(marks[String(n)] || 0) < perBox);
-    return target === 25 ? `Ferme maintenant le BULL : il te manque ${perBox - Number(marks["25"] || 0)} marque(s).` : target ? `Priorité au ${target} : complète cette case avant de pousser les surplus.` : "Ton tableau est fermé : transforme les surplus en pression sur l’adversaire.";
+    const traditional = state.config?.modeOptions?.ruleSet !== 'electronic';
+    const targets = traditional ? [1,2,3,4,5,6,7,8,9] : [15,16,17,18,19,20,25];
+    const target = targets.find((n) => Number(marks[String(n)] || 0) < perBox);
+    if (!target) return "Toutes tes cases sont fermées. Félicitations !";
+    if (traditional) return `À toi de choisir parmi les cases 1 à 9. Le ${target} est encore ouvert : il manque ${perBox - Number(marks[String(target)] || 0)} marque(s).`;
+    return target === 25 ? `Ferme maintenant le BULL : il te manque ${perBox - Number(marks["25"] || 0)} marque(s).` : `Priorité au ${target} : complète cette case avant de pousser les surplus.`;
   }
   if (id === "golden_dart") {
     const clues = Array.isArray(state.special?.goldenClues) ? state.special.goldenClues : [];

@@ -1,4 +1,5 @@
 import React from "react";
+import GameDifficultyStars from "../../../components/GameDifficultyStars";
 import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
@@ -1469,7 +1470,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                     return <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,216,107,.24)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,216,107,.045)" : "rgba(255,255,255,.016)", color: "inherit", cursor: "pointer" }}>
                       <div style={{ fontSize: 6.9, fontWeight: 950, letterSpacing: .6, color: index === 2 ? "#8cffcb" : "#ffd86b" }}>{stepLabel}</div>
                       <div style={{ marginTop: 4, display: "flex", justifyContent: "space-between", gap: 7, alignItems: "center" }}><b style={{ minWidth: 0, fontSize: 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ flex: "0 0 auto", fontSize: 7, fontWeight: 950, color: "#b99cff" }}>NIV. {personal.level}/5</span></div>
-                      <div style={{ marginTop: 4, fontSize: 7.2, opacity: .48 }}>Difficulté {exercise.difficulty}/5</div>
+                      <div style={{ marginTop: 4 }}><GameDifficultyStars level={exercise.difficulty} compact /></div>
                       <div style={{ marginTop: 4, fontSize: 7.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: personal.level > 0 ? "rgba(255,255,255,.62)" : "#8fefff" }}>{personal.level > 0 ? personal.nextObjective : "Créer une première référence"}</div>
                     </button>;
                   })}
@@ -1483,7 +1484,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7, marginTop: 9 }}>
                   {focusNowItems.map(({ exercise, personal }, index) => <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,216,107,.28)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><b style={{ minWidth: 0, fontSize: 9.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ flex: "0 0 auto", fontSize: 7.2, fontWeight: 950, color: personal.level > 0 ? "#b99cff" : "rgba(255,255,255,.48)" }}>NIV. {personal.level}/5</span></div>
-                    <div style={{ marginTop: 4, fontSize: 7.7, opacity: .52 }}>{TRAINING_FAMILY_META[exercise.family].label} • difficulté {exercise.difficulty}/5</div>
+                    <div style={{ marginTop: 4, fontSize: 7.7, opacity: .52 }}>{TRAINING_FAMILY_META[exercise.family].label} <GameDifficultyStars level={exercise.difficulty} compact /></div>
                     <div style={{ marginTop: 5, fontSize: 7.5, color: index === 0 ? "#ffd86b" : "rgba(255,255,255,.48)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.level > 0 ? personal.nextObjective : "Découvrir cet exercice"}</div>
                   </button>)}
                 </div>
@@ -1524,7 +1525,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div>
                   <div style={{ fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>DIFFICULTÉ</div>
                   <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 2px" }}>
-                    {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 34, padding: "0 10px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 8.6, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUTES" : `${value}/5`}</button>)}
+                    {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 34, padding: "0 10px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 8.6, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUTES" : <GameDifficultyStars level={value as 1 | 2 | 3 | 4 | 5} compact />}</button>)}
                   </div>
                 </div>
               </div>
@@ -1535,7 +1536,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   return <button key={item.key} type="button" onClick={() => openExerciseDetail(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : personal.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : personal.mastered ? "rgba(80,255,174,.026)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", alignItems: "center", gap: 10 }}>
                     <span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: personal.mastered ? "rgba(80,255,174,.07)" : "rgba(39,220,255,.07)", color: personal.mastered ? "#8cffcb" : "#27dcff" }}><HubGlyph name={family} size={16}/></span>
                     <span style={{ minWidth: 0 }}><span style={{ display: "block", fontSize: 10.5, lineHeight: 1.15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span><span style={{ display: "block", marginTop: 4, fontSize: 8.6, lineHeight: 1.3, opacity: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</span><span style={{ display: "block", marginTop: 5, fontSize: 7.5, lineHeight: 1.25, color: personal.mastered ? "#8cffcb" : personal.level > 0 ? "#b99cff" : "rgba(255,255,255,.42)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.mastered ? "MAÎTRISE VALIDÉE" : personal.level > 0 ? `Prochain : ${personal.nextObjective}` : "Pas encore commencé"}</span></span>
-                    <span style={{ display: "grid", gap: 5, justifyItems: "end" }}><span style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 950, opacity: .64 }}>DIFF. {item.difficulty}</span><span style={{ padding: "4px 6px", borderRadius: 7, background: personal.mastered ? "rgba(80,255,174,.08)" : "rgba(140,90,255,.07)", border: personal.mastered ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(140,90,255,.14)", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></span>
+                    <span style={{ display: "grid", gap: 5, justifyItems: "end" }}><span style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 950, opacity: .64 }}><GameDifficultyStars level={Math.max(1, Math.min(5, Number(item.difficulty) || 2)) as 1 | 2 | 3 | 4 | 5} compact /></span><span style={{ padding: "4px 6px", borderRadius: 7, background: personal.mastered ? "rgba(80,255,174,.08)" : "rgba(140,90,255,.07)", border: personal.mastered ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(140,90,255,.14)", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></span>
                   </button>;
                 })}
               </div>}
@@ -1571,7 +1572,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             {exercisePanel !== "technique" && exercisePanel !== "challenge" && <>
               <div style={{ marginTop: 10, padding: 11, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 230px" }}>
-                  <div style={{ fontSize: 7.3, fontWeight: 950, opacity: .48 }}>EXERCICE SÉLECTIONNÉ • NIVEAU {selected.difficulty}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:7,fontSize:7.3,fontWeight:950,opacity:.85}}>EXERCICE SÉLECTIONNÉ <GameDifficultyStars level={selected.difficulty} compact /></div>
                   <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{selected.title}</div>
                   <div style={{ marginTop: 3, fontSize: 8.5, opacity: .56 }}>{selected.maxDarts} fléchettes max • {selected.subtitle}</div>
                 </div>

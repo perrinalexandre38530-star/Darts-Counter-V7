@@ -498,7 +498,7 @@ export default function FootballConfig(props: any) {
   const guidedBlocks = [variantBlock, presetBlock, participantsBlock, formatBlock, gameplayBlock, inputBlock, summaryBlock];
 
   return <div className="football-config-page" style={{ color: theme?.text || "#fff" }}>
-    <PageHeader title="FOOTBALL" tickerSrc={tickerFootball} tickerAlt="DARTS FOOTBALL" left={<BackDot onClick={back} color={GREEN} glow={`${GREEN}88`} />} right={<InfoDot title="Règles DARTS FOOTBALL" color={BLUE} glow={`${BLUE}88`} content={<RulesContent />} />} />
+    <PageHeader difficultyGameId="football" title="FOOTBALL" tickerSrc={tickerFootball} tickerAlt="DARTS FOOTBALL" left={<BackDot onClick={back} color={GREEN} glow={`${GREEN}88`} />} right={<InfoDot title="Règles DARTS FOOTBALL" color={BLUE} glow={`${BLUE}88`} content={<RulesContent />} />} />
     <main className="football-config-main">
       <div className="football-config-switch">
         <button type="button" onClick={() => chooseView("guided")} style={{ border: `1px solid ${viewMode === "guided" ? GREEN : "rgba(255,255,255,.10)"}`, background: viewMode === "guided" ? `${GREEN}18` : "rgba(255,255,255,.025)", color: viewMode === "guided" ? GREEN : SOFT }}>CONFIGURATION GUIDÉE</button>

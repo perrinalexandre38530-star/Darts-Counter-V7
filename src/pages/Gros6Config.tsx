@@ -11,6 +11,8 @@
 // =============================================================
 
 import React from "react";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import BackDot from "../components/BackDot";
@@ -803,6 +805,7 @@ export default function Gros6Config({ store, go }: any) {
         </div>
       </header>
 
+      <DartsRelatedModesPanel gameId="gros_6" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
       <div className="msc-mode-config-body gros6-config-content" style={{ width: "100%", maxWidth: 1180, margin: "0 auto" }}>
         <section style={{ background: "rgba(10,12,24,.94)", borderRadius: 18, padding: 12, marginBottom: 14, boxShadow: "0 16px 40px rgba(0,0,0,.55)", border: `1px solid ${primary}33` }}>
           <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>Configuration GROS 6</div>

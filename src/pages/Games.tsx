@@ -35,6 +35,11 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
+import GameDifficultyStars from "../components/GameDifficultyStars";
+import GameDifficultyFilter from "../components/GameDifficultyFilter";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsGameFamily, dartsGameRelatedIds, dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
+import { mssGameDifficulty } from "../lib/mssVisualCharter";
 import BackDot from "../components/BackDot";
 import { PageAdBanner } from "../monetization/AdSlot";
 import { preloadInterstitialAd, showInterstitialAd } from "../monetization/provider";
@@ -117,6 +122,7 @@ type Props = {
 };
 
 type InfoGame = {
+  gameId?: string;
   label: string;
   infoTitle?: string;
   infoBody?: string;
@@ -545,6 +551,8 @@ export default function Games({ setTab, params }: Props) {
   }, [params?.gamesCategory]);
   // Sous-onglet métier de la catégorie active. "all" affiche tous les groupes.
   const [activeSubCat, setActiveSubCat] = React.useState<string>("all");
+  const [difficultyFilter, setDifficultyFilter] = React.useState<number>(0);
+  const [difficultyQuery, setDifficultyQuery] = React.useState("");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
   const [x01RulesIntroOpen, setX01RulesIntroOpen] = React.useState(false);
   const [x01IntroBusy, setX01IntroBusy] = React.useState(false);
@@ -648,7 +656,7 @@ export default function Games({ setTab, params }: Props) {
   // Les modes qui gèrent déjà leur propre page Quick / Arcade ne sont pas
   // encapsulés une seconde fois. Les autres passent par l'entrée commune.
   const NATIVE_ENTRY_TABS = new Set([
-    "x01_config_v3", "cricket", "killer", "killer_config", "five_lives_config",
+    "x01_config_v3", "cricket", "killer", "killer_config", "five_lives_config", "training", "mode_not_ready",
     "shanghai", "halve_it_config", "super_bull_config", "shooter_config",
     "bowling_config", "baseball_config", "president_config", "bss_king_config",
   ]);
@@ -678,6 +686,11 @@ export default function Games({ setTab, params }: Props) {
       gameId: g.id, entryTitle: localizedGameLabel(g, lang), destination,
       destinationParams, gamesCategory: g.category,
     });
+  }
+
+  function openRelatedFamilyGame(gameId: string) {
+    const destination = dartsFamilyGameNavigation(gameId);
+    if (destination) navigate(destination.tab, destination.params);
   }
 
   function navSmart(path: string) {
@@ -717,6 +730,17 @@ export default function Games({ setTab, params }: Props) {
   function configPathForGame(g: any): string {
     const raw = String(g?.configTab || g?.configPath || "");
     if (raw) return raw.startsWith("tab:") ? raw : `tab:${raw}`;
+
+    // Les cartes Training et placeholders n'ont pas de route dédiée avec `_config`.
+    if (g?.tab === "training" || g?.tab === "mode_not_ready") return `tab:${g.tab}`;
+
+    // Trois routes natives n'ont volontairement PAS le suffixe `_config`.
+    // Sinon la carte CRICKET / SHANGHAI / BATTLE ROYALE tombe sur GameSelect.
+    if (g?.id === "enculette") return "tab:enculette_config";
+    if (g?.tab === "cricket") {
+      return g?.variantId ? `tab:cricket?variantId=${encodeURIComponent(String(g.variantId))}` : "tab:cricket";
+    }
+    if (["shanghai", "battle_royale"].includes(String(g?.tab || ""))) return `tab:${g.tab}`;
 
     // ✅ Variantes Cricket : ouvre l'onglet Cricket avec pré-sélection
     const baseGame = String(g?.baseGame || "");
@@ -887,8 +911,13 @@ export default function Games({ setTab, params }: Props) {
   }, [activeCat]);
 
   const gamesForCat = React.useMemo(() => {
-    return filterDartsGamesForCurrentRuntime(DARTS_GAMES).filter((g) => g.category === activeCat).slice().sort(sortByPopularity);
-  }, [activeCat]);
+    const search = difficultyQuery.trim().toLocaleLowerCase();
+    return filterDartsGamesForCurrentRuntime(DARTS_GAMES)
+      .filter((g) => g.category === activeCat)
+      .filter((g) => !difficultyFilter || mssGameDifficulty(g) === difficultyFilter)
+      .filter((g) => !search || `${g.id} ${g.label} ${g.infoTitle || ''}`.toLocaleLowerCase().includes(search))
+      .slice().sort((a,b) => mssGameDifficulty(a) - mssGameDifficulty(b) || sortByPopularity(a,b));
+  }, [activeCat, difficultyFilter, difficultyQuery]);
 
   const subCategoryKeyForGame = React.useCallback((game: DartsGameDef) => {
     if (game.subCategory) return String(game.subCategory);
@@ -1181,6 +1210,7 @@ export default function Games({ setTab, params }: Props) {
           {label}
         </div>
 
+        {g ? <div style={{position:"absolute",right:64,top:"50%",transform:"translateY(-50%)",zIndex:4,pointerEvents:"none"}}><GameDifficultyStars game={g} compact /></div> : null}
         {g ? (
           <div
             style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 4 }}
@@ -2007,6 +2037,10 @@ export default function Games({ setTab, params }: Props) {
          ============================================================ */}
       {gamesView === "all" && (
         <>
+          <section data-mss-difficulty-filter="1" aria-label="Filtrer les jeux par difficulté" style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(135px,170px)",gap:7,padding:"10px 9px",border:`1px solid ${theme.primary}38`,borderRadius:14,background:"rgba(255,255,255,.035)",marginBottom:10}}>
+            <input type="search" value={difficultyQuery} onChange={e=>setDifficultyQuery(e.target.value)} placeholder="Rechercher un mode…" aria-label="Rechercher un jeu" style={{minWidth:0,padding:"9px 10px",borderRadius:10,background:"#121723",color:"#fff",border:"1px solid rgba(255,255,255,.15)",fontSize:11}} />
+<GameDifficultyFilter label="Niveau de difficulté" value={difficultyFilter} onChange={setDifficultyFilter} />
+          </section>
           {/* Cartes de jeux (liste) */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {(() => {
@@ -2085,7 +2119,7 @@ export default function Games({ setTab, params }: Props) {
                           position: "relative",
                           width: "100%",
                           padding: 14,
-                          paddingRight: 46,
+                          paddingRight: 130,
                           textAlign: "left",
                           borderRadius: 16,
                           border: `1px solid ${theme.borderSoft}`,
@@ -2117,6 +2151,11 @@ export default function Games({ setTab, params }: Props) {
                           >
                             {localizedGameLabel(g, lang)}
                           </div>
+                          {dartsGameFamily(g.id) ? <div style={{ marginTop: 4, fontSize: 9, color: "#c9b5f5", fontWeight: 900, letterSpacing: .2 }}>
+                            {g.id === dartsGameFamily(g.id)?.mainId
+                              ? `${dartsGameRelatedIds(g.id).length} VARIANTE${dartsGameRelatedIds(g.id).length > 1 ? "S" : ""} À DÉCOUVRIR`
+                              : `FAMILLE ${DARTS_GAMES.find(item => item.id === dartsGameFamily(g.id)?.mainId)?.label || "DARTS"}`}
+                          </div> : null}
 
                           <div
                             style={{
@@ -2135,6 +2174,9 @@ export default function Games({ setTab, params }: Props) {
                           </div>
                         </div>
 
+                        <div style={{position:"absolute",zIndex:2,right:64,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+                          <GameDifficultyStars game={g} compact />
+                        </div>
                         <div
                           style={{
                             position: "absolute",
@@ -2149,6 +2191,7 @@ export default function Games({ setTab, params }: Props) {
                             onClick={(ev) => {
                               ev.stopPropagation();
                               setInfoGame({
+                                gameId: String(g.id),
                                 label: localizedGameLabel(g, lang),
                                 ready: g.ready,
                                 infoTitle: lang === "fr" ? g.infoTitle : localizedGameLabel(g, lang),
@@ -2232,6 +2275,13 @@ export default function Games({ setTab, params }: Props) {
             >
               {infoGame.infoBody ?? ""}
             </div>
+
+            {infoGame.gameId && dartsGameFamily(infoGame.gameId) ? <DartsRelatedModesPanel
+              gameId={infoGame.gameId}
+              accent={theme.primary}
+              compact
+              onOpenGame={id => { setInfoGame(null); openRelatedFamilyGame(id); }}
+            /> : null}
 
             {!infoGame.ready && (
               <div style={{ fontSize: 12, fontWeight: 600, color: theme.primary, marginBottom: 10 }}>

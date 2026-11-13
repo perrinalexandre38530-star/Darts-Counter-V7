@@ -3,9 +3,10 @@
  */
 import type {ChallengeArchiveItem} from './challengeArchiveCore.ts';
 import {arcadeRuleDetails} from './challengeArcadeEngine.ts';
+import {getChallengeDartEvidence} from './challengeDartEvidence.ts';
 
 export type ChallengeArchiveReliability={
- finished:number;withJournal:number;summaryOnly:number;withoutDetail:number;
+ finished:number;withJournal:number;summaryOnly:number;withoutDetail:number;recoveredDarts:number;
  unknownConfig:number;missingDates:number;missingDartsForMinimum:number;missingScores:number;
  dartCountConflicts:number;inProgress:number;
 };
@@ -16,30 +17,15 @@ function hasPlayerSummary(rec:any,playerId:string):boolean{
  return candidates.some(arr=>Array.isArray(arr)&&arr.some((p:any)=>[p?.id,p?.playerId,p?.profileId,p?.userId,p?.onlineUserId].some(id=>id!=null&&normalizeId(id)===normalizeId(playerId))));
 }
 function playerDartsInJournal(item:ChallengeArchiveItem):number|null{
- const rec=item.record;
- const arcade=item.modeId.startsWith('arcade:');
- const sources=arcade
-  ?[rec?.payload?.state?.hits,rec?.decoded?.state?.hits,rec?.payload?.entries,rec?.decoded?.entries,rec?.resume?.state?.hits,rec?.resume?.state?.log]
-  :[rec?.payload?.entries,rec?.decoded?.entries,rec?.payload?.state?.log,rec?.decoded?.state?.log,rec?.resume?.state?.log];
- const id=normalizeId(item.playerId);
- const roster=Array.isArray(rec?.players)?rec.players:rec?.summary?.perPlayer;
- const onlyPlayer=Array.isArray(roster)&&roster.length===1&&normalizeId(roster[0]?.id??roster[0]?.profileId??roster[0]?.playerId)===id;
- for(const rows of sources){
-  if(!Array.isArray(rows)||!rows.length)continue;
-  const detailed=rows.filter((row:any)=>{
-   const owner=normalizeId(row?.pid??row?.playerId??row?.profileId);
-   return owner?owner===id:onlyPlayer;
-  });
-  if(detailed.length)return detailed.length;
- }
- return null;
+ return getChallengeDartEvidence(item.record,item.playerId)?.darts??null;
 }
 export function buildChallengeArchiveReliability(items:readonly ChallengeArchiveItem[]):ChallengeArchiveReliability{
  const result:ChallengeArchiveReliability={finished:0,withJournal:0,summaryOnly:0,withoutDetail:0,
-  unknownConfig:0,missingDates:0,missingDartsForMinimum:0,missingScores:0,dartCountConflicts:0,inProgress:0};
+  unknownConfig:0,missingDates:0,missingDartsForMinimum:0,missingScores:0,dartCountConflicts:0,inProgress:0,recoveredDarts:0};
  for(const item of items){
   if(item.status==='in_progress'){result.inProgress++;continue;}
   result.finished++;
+  if(item.dartsRecoveredFromJournal)result.recoveredDarts++;
   if(item.configLabel==='CONFIGURATION NON DOCUMENTÉE'||item.configKey.includes('configuration-inconnue:'))result.unknownConfig++;
   if(!item.playedAt)result.missingDates++;
   if(item.scoreKnown===false)result.missingScores++;

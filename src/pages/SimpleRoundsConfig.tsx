@@ -1,5 +1,7 @@
 import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React, { useMemo, useState } from "react";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -51,13 +53,14 @@ export default function SimpleRoundsConfig(props: any) {
 
   return (
     <div className="page">
-      <PageHeader
+      <PageHeader difficultyGameId="simple_rounds"
         title={spec.title}
         tickerSrc={spec.tickerSrc}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title={spec.infoTitle} content={spec.infoText} />}
       />
 
+      <DartsRelatedModesPanel gameId={variantId === "enculette" ? "enculette" : "count_up"} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) props?.setTab?.(target.tab,target.params); }} />
       <Section title={t("config.players", "Joueurs")}>
         <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
           <OptionSelect value={players} options={spec.playersOptions} onChange={setPlayers} />

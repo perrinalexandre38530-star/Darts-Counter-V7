@@ -49,7 +49,7 @@ export default function RugbyConfig(props: any) {
 
   return (
     <div className="page">
-      <PageHeader
+      <PageHeader difficultyGameId="rugby"
         title="RUGBY"
         tickerSrc={tickerRugby}
         left={<BackDot onClick={goBack} />}

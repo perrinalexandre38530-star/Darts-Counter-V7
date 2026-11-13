@@ -147,6 +147,7 @@ import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
 
 // Pages
 import GameSelect from "./pages/GameSelect";
+import { dartsFamilyGameNavigation } from "./games/dartsGameFamilies";
 const Home = React.lazy(() => import("./pages/Home"));
 const Games = React.lazy(() => import("./pages/Games"));
 const ModeNotReady = React.lazy(() => import("./pages/ModeNotReady"));
@@ -400,6 +401,7 @@ const Top10Play = React.lazy(() => import("./pages/Top10Play"));
 const TicTacToeConfig = React.lazy(() => import("./pages/TicTacToeConfig"));
 const TicTacToePlay = React.lazy(() => import("./pages/TicTacToePlay"));
 const KnockoutConfig = React.lazy(() => import("./pages/KnockoutConfig"));
+const QuickKnockoutConfig = React.lazy(() => import("./pages/QuickKnockoutConfig"));
 const KnockoutPlay = React.lazy(() => import("./pages/KnockoutPlay"));
 const Bobs27Config = React.lazy(() => import("./pages/Bobs27Config"));
 const Bobs27Play = React.lazy(() => import("./pages/Bobs27Play"));
@@ -6740,6 +6742,8 @@ case "babyfoot_team_edit":
           page = (
             <GameModeEntryChoice
               title="X01"
+              gameId="x01"
+              onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }}
               subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE"
               onBack={() => go("games")}
               onQuick={() => go("x01_config_v3", { launchMode: "quick" })}
@@ -6788,13 +6792,14 @@ case "babyfoot_team_edit":
         } else if (cricketLaunchMode === "arcade" || cricketLaunchMode === "quick_play") {
           page = (
             <CricketPlay
+              go={go}
               profiles={cricketLaunchMode === "quick_play" ? (routeParams?.quickPlayers ?? []) : (store.profiles ?? [])}
               params={routeParams}
               onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "cricket", routeParams))}
             />
           );
         } else {
-          page = <GameModeEntryChoice title="CRICKET" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("cricket", { ...routeParams, launchMode: "quick" })} onArcade={() => go("cricket", { ...routeParams, launchMode: "arcade" })} />;
+          page = <GameModeEntryChoice title={String(routeParams?.variantId || "").toLowerCase() === "cut_throat" ? "CRICKET CUT-THROAT" : "CRICKET"} tickerId={String(routeParams?.variantId || "").toLowerCase() === "cut_throat" ? "cricket_cut_throat" : "cricket"} gameId={String(routeParams?.variantId || "").toLowerCase() === "cut_throat" ? "cricket_cut_throat" : "cricket"} onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("cricket", { ...routeParams, launchMode: "quick" })} onArcade={() => go("cricket", { ...routeParams, launchMode: "arcade" })} />;
         }
         break;
       }
@@ -6808,7 +6813,7 @@ case "babyfoot_team_edit":
         } else if (killerLaunchMode === "arcade") {
           page = <KillerConfig key={`killer-config-${String(routeParams?.variantId || routeParams?.gameId || "classic")}`} store={store} go={go} params={routeParams} onBack={() => go("killer_config", { ...routeParams, launchMode: undefined })} />;
         } else {
-          page = <GameModeEntryChoice title={killerTitle} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("killer_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("killer_config", { ...routeParams, launchMode: "arcade" })} />;
+          page = <GameModeEntryChoice title={killerTitle} gameId={killerTitle.includes("PROGRESSIF") ? "killer_progressive" : "killer"} onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("killer_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("killer_config", { ...routeParams, launchMode: "arcade" })} />;
         }
         break;
       }
@@ -6827,12 +6832,12 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec ? "arcade" : "")));
         // CHASE est un preset du moteur Five Lives, pas une deuxième implémentation.
         // Ouvre sa configuration dédiée directement, avec égalité acceptée.
-        if (isChase && !launchMode) page = <GameModeEntryChoice title="CHASE" tickerId="chase" onBack={() => go("games")} onQuick={() => go("five_lives_config", { ...routeParams, variantId: "chase", launchMode: "quick" })} onArcade={() => go("five_lives_config", { ...routeParams, variantId: "chase", launchMode: "arcade" })} />;
+        if (isChase && !launchMode) page = <GameModeEntryChoice title="CHASE" tickerId="chase" gameId="chase" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("five_lives_config", { ...routeParams, variantId: "chase", launchMode: "quick" })} onArcade={() => go("five_lives_config", { ...routeParams, variantId: "chase", launchMode: "arcade" })} />;
         else if (isChase && launchMode === "quick") page = <QuickPartyModeConfig modeId="five_lives" title="CHASE" params={routeParams} onBack={() => go("five_lives_config", { variantId: "chase" })} onStart={(result) => go(result.route, result.params)} />;
         else if (isChase) page = <FiveLivesConfig key="five-lives-chase" store={store} go={go} presetVariantId="chase" onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
         else if (launchMode === "quick") page = <QuickPartyModeConfig modeId="five_lives" title="5 VIES" params={routeParams} onBack={() => go("five_lives_config")} onStart={(result) => go(result.route, result.params)} />;
         else if (launchMode === "arcade") page = <FiveLivesConfig key="five-lives-main" store={store} go={go} onBack={() => go("five_lives_config")} />;
-        else page = <GameModeEntryChoice title="5 VIES" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" family="five_lives" onVariant={() => go("five_lives_config", { variantId: "chase", launchMode: "arcade" })} onBack={() => go("games")} onQuick={() => go("five_lives_config", { launchMode: "quick" })} onArcade={() => go("five_lives_config", { launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="5 VIES" gameId="five_lives" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" family="five_lives" onVariant={() => go("five_lives_config", { variantId: "chase", launchMode: "arcade" })} onBack={() => go("games")} onQuick={() => go("five_lives_config", { launchMode: "quick" })} onArcade={() => go("five_lives_config", { launchMode: "arcade" })} />;
         break;
       }
 
@@ -6875,7 +6880,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec ? "arcade" : "")));
         if (launchMode === "quick") page = <QuickPartyModeConfig modeId="shanghai" title="SHANGHAI" params={routeParams} onBack={() => go("shanghai")} onStart={(result) => go(result.route, result.params)} />;
         else if (launchMode === "arcade") page = <ShanghaiConfigPage store={store} go={go} onBack={() => go("shanghai")} />;
-        else page = <GameModeEntryChoice title="SHANGHAI" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("shanghai", { launchMode: "quick" })} onArcade={() => go("shanghai", { launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="SHANGHAI" tickerId="shanghai" gameId="shanghai" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("shanghai", { launchMode: "quick" })} onArcade={() => go("shanghai", { launchMode: "arcade" })} />;
         break;
       }
 
@@ -6927,7 +6932,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || "");
         if (launchMode === "quick") page = <QuickBattleRoyaleConfig go={go} onBack={() => go("battle_royale")} />;
         else if (launchMode === "arcade") page = <BattleRoyaleConfigPage store={store} go={go} />;
-        else page = <GameModeEntryChoice title="BATTLE ROYALE" tickerId="battle_royale" onBack={() => go("games")} onQuick={() => go("battle_royale", { launchMode: "quick" })} onArcade={() => go("battle_royale", { launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="BATTLE ROYALE" tickerId="battle_royale" gameId="battle_royale" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("battle_royale", { launchMode: "quick" })} onArcade={() => go("battle_royale", { launchMode: "arcade" })} />;
         break;
       }
 
@@ -7213,7 +7218,7 @@ case "babyfoot_team_edit":
         // SPLIT SCORE réutilise le moteur HALVE-IT avec un preset canonique.
         // Entrée directe : aucun passage dans une configuration Halve-It classique.
         if (isSplitScore) {
-          if (!routeParams?.launchMode) page = <GameModeEntryChoice title="SPLIT SCORE" tickerId="split_score" onBack={() => go("games")} onQuick={() => go("halve_it_config", { ...routeParams, variantId: "split_score", launchMode: "quick" })} onArcade={() => go("halve_it_config", { ...routeParams, variantId: "split_score", launchMode: "arcade" })} />;
+          if (!routeParams?.launchMode) page = <GameModeEntryChoice title="SPLIT SCORE" tickerId="split_score" gameId="split_score" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("halve_it_config", { ...routeParams, variantId: "split_score", launchMode: "quick" })} onArcade={() => go("halve_it_config", { ...routeParams, variantId: "split_score", launchMode: "arcade" })} />;
           else if (routeParams?.launchMode === "quick") page = <QuickPartyModeConfig modeId="halve_it" title="SPLIT SCORE" params={routeParams} onBack={() => go("halve_it_config", { variantId: "split_score" })} onStart={(result) => go(result.route, result.params)} />;
           else page = <HalveItConfig key="halve-it-split-score" store={store} go={go} setTab={go} params={{ ...routeParams, variantId: "split_score", launchMode: "arcade" }} onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
           break;
@@ -7221,7 +7226,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "halve_it" ? "arcade" : "")));
         if (launchMode === "quick") page = <QuickPartyModeConfig modeId="halve_it" title="HALVE-IT" params={routeParams} onBack={() => go("halve_it_config")} onStart={(result) => go(result.route, result.params)} />;
         else if (launchMode === "arcade") page = <HalveItConfig key="halve-it-main" store={store} go={go} setTab={go} params={routeParams} onBack={() => go("halve_it_config")} />;
-        else page = <GameModeEntryChoice title="HALVE-IT" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" family="halve_it" onVariant={() => go("halve_it_config", { variantId: "split_score", launchMode: "arcade" })} onBack={() => go("games")} onQuick={() => go("halve_it_config", { launchMode: "quick" })} onArcade={() => go("halve_it_config", { launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="HALVE-IT" gameId="halve_it" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" family="halve_it" onVariant={() => go("halve_it_config", { variantId: "split_score", launchMode: "arcade" })} onBack={() => go("games")} onQuick={() => go("halve_it_config", { launchMode: "quick" })} onArcade={() => go("halve_it_config", { launchMode: "arcade" })} />;
         break;
       }
       case "halve_it_play":
@@ -7243,7 +7248,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || "");
         if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="count_up" onBack={() => go("count_up_config")} onStart={(params) => go("count_up_play", params)} />;
         else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <DefiConfig setTab={go} params={{ ...routeParams, modeId: "count_up" }} />;
-        else page = <GameModeEntryChoice title="COUNT UP" tickerId="count_up" onBack={() => go("games")} onQuick={() => go("count_up_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("count_up_config", { ...routeParams, launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="COUNT UP" tickerId="count_up" gameId="count_up" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("count_up_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("count_up_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
       }
       case "count_up_play":
@@ -7280,7 +7285,7 @@ case "babyfoot_team_edit":
         } else if (launchMode === "arcade") {
           page = <SuperBullConfig store={store} go={go} setTab={go} params={{ ...routeParams, launchMode: "arcade" }} />;
         } else {
-          page = <GameModeEntryChoice title="SUPER BULL" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("super_bull_config", { launchMode: "quick" })} onArcade={() => go("super_bull_config", { launchMode: "arcade" })} />;
+          page = <GameModeEntryChoice title="SUPER BULL" gameId="super_bull" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("super_bull_config", { launchMode: "quick" })} onArcade={() => go("super_bull_config", { launchMode: "arcade" })} />;
         }
         break;
       }
@@ -7292,7 +7297,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "shooter" ? "arcade" : "")));
         if (launchMode === "quick") page = <QuickPartyModeConfig modeId="shooter" title="SHOOTER" params={routeParams} onBack={() => go("shooter_config")} onStart={(result) => go(result.route, result.params)} />;
         else if (launchMode === "arcade") page = <ShooterConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("shooter_config")} />;
-        else page = <GameModeEntryChoice title="SHOOTER" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("shooter_config", { launchMode: "quick" })} onArcade={() => go("shooter_config", { launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="SHOOTER" gameId="shooter" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("shooter_config", { launchMode: "quick" })} onArcade={() => go("shooter_config", { launchMode: "arcade" })} />;
         break;
       }
       case "shooter_play":
@@ -7339,9 +7344,13 @@ case "babyfoot_team_edit":
         page = <TicTacToePlay setTab={go} params={routeParams} />;
         break;
 
-      case "knockout_config":
-        page = <KnockoutConfig setTab={go} params={routeParams} />;
+      case "knockout_config": {
+        const launchMode = String(routeParams?.launchMode || "");
+        if (launchMode === "quick") page = <QuickKnockoutConfig onBack={() => go("knockout_config")} onStart={(params: any) => go("knockout_play", params)} />;
+        else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <KnockoutConfig setTab={go} params={routeParams} />;
+        else page = <GameModeEntryChoice title="KNOCKOUT" tickerId="knockout" gameId="knockout" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("knockout_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("knockout_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
+      }
       case "knockout_play":
         page = <KnockoutPlay setTab={go} params={routeParams} />;
         break;
@@ -7353,7 +7362,7 @@ case "babyfoot_team_edit":
         } else if (launchMode === "arcade") {
           page = <Bobs27Config store={store} go={go} setTab={go} params={routeParams} />;
         } else {
-          page = <GameModeEntryChoice title="BOB'S 27" tickerId="bobs_27" onBack={() => go("games")} onQuick={() => go("bobs_27_config", { launchMode: "quick" })} onArcade={() => go("bobs_27_config", { launchMode: "arcade" })} />;
+          page = <GameModeEntryChoice title="BOB'S 27" tickerId="bobs_27" gameId="bobs_27" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("bobs_27_config", { launchMode: "quick" })} onArcade={() => go("bobs_27_config", { launchMode: "arcade" })} />;
         }
         break;
       }
@@ -7375,7 +7384,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "bowling" ? "arcade" : "")));
         if (launchMode === "quick") page = <QuickPartyModeConfig modeId="bowling" title="BOWLING" params={routeParams} onBack={() => go("bowling_config")} onStart={(result) => go(result.route, result.params)} />;
         else if (launchMode === "arcade") page = <BowlingConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("bowling_config")} />;
-        else page = <GameModeEntryChoice title="BOWLING" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("bowling_config", { launchMode: "quick" })} onArcade={() => go("bowling_config", { launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="BOWLING" gameId="bowling" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("bowling_config", { launchMode: "quick" })} onArcade={() => go("bowling_config", { launchMode: "arcade" })} />;
         break;
       }
       case "bowling_play":
@@ -7421,7 +7430,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "baseball" ? "arcade" : "")));
         if (launchMode === "quick") page = <QuickPartyModeConfig modeId="baseball" title="BASEBALL" params={routeParams} onBack={() => go("baseball_config")} onStart={(result) => go(result.route, result.params)} />;
         else if (launchMode === "arcade") page = <BaseballConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("baseball_config")} />;
-        else page = <GameModeEntryChoice title="BASEBALL" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("baseball_config", { launchMode: "quick" })} onArcade={() => go("baseball_config", { launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="BASEBALL" gameId="baseball" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("baseball_config", { launchMode: "quick" })} onArcade={() => go("baseball_config", { launchMode: "arcade" })} />;
         break;
       }
       case "baseball_play":
@@ -7480,7 +7489,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || "");
         if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="game_170" onBack={() => go("game_170_config")} onStart={(params) => go("game_170_play", params)} />;
         else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <Game170Config setTab={go} params={routeParams} />;
-        else page = <GameModeEntryChoice title="GAME 170" tickerId="game_170" onBack={() => go("games")} onQuick={() => go("game_170_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("game_170_config", { ...routeParams, launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="GAME 170" tickerId="game_170" gameId="v170" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("game_170_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("game_170_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
       }
       case "game_170_play":
@@ -7538,7 +7547,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || "");
         if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="happy_mille" onBack={() => go("happy_mille_config")} onStart={(params) => go("happy_mille_play", params)} />;
         else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <HappyMilleConfig setTab={go} params={routeParams} />;
-        else page = <GameModeEntryChoice title="HAPPY MILLE" tickerId="happy_mille" onBack={() => go("games")} onQuick={() => go("happy_mille_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("happy_mille_config", { ...routeParams, launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="HAPPY MILLE" tickerId="happy_mille" gameId="happy_mille" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("happy_mille_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("happy_mille_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
       }
       case "happy_mille_play":
@@ -7858,7 +7867,7 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || "");
         if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="enculette" onBack={() => go("enculette_config")} onStart={(params) => go("enculette_play", params)} />;
         else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <EnculetteConfig setTab={go} params={routeParams} />;
-        else page = <GameModeEntryChoice title="ENCULETTE" tickerId="enculette" onBack={() => go("games")} onQuick={() => go("enculette_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("enculette_config", { ...routeParams, launchMode: "arcade" })} />;
+        else page = <GameModeEntryChoice title="ENCULETTE" tickerId="enculette" gameId="enculette" onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} onBack={() => go("games")} onQuick={() => go("enculette_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("enculette_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
       }
       case "enculette_play":
@@ -7903,6 +7912,8 @@ case "babyfoot_team_edit":
         page = <GameModeEntryChoice
           title={entryTitle}
           tickerId={gameId}
+          gameId={gameId}
+          onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }}
           onBack={() => go("games", { gamesView: "all", gamesCategory: routeParams?.gamesCategory || "classic" })}
           onQuick={() => openConfig("quick")}
           onArcade={() => openConfig("arcade")}

@@ -51,6 +51,14 @@ export default function KnockoutPlay(props: any) {
       objective: 0,
     };
 
+  const temporaryPlayers = React.useMemo(() => {
+    const candidates = props?.params?.players;
+    return Array.from({ length: cfg.players }, (_, i) => {
+      const source = Array.isArray(candidates) ? candidates[i] : null;
+      return { id: `p${i + 1}`, name: typeof source?.name === "string" && source.name.trim() ? source.name.trim() : `Joueur ${i + 1}` };
+    });
+  }, [props?.params?.players, cfg.players]);
+  const playerName = (index: number) => temporaryPlayers[index]?.name ?? `Joueur ${index + 1}`;
   const [roundIdx, setRoundIdx] = useState(0);
   const [active, setActive] = useState<boolean[]>(() => Array.from({ length: cfg.players }, () => true));
   const [playerIdx, setPlayerIdx] = useState(0);
@@ -198,7 +206,7 @@ export default function KnockoutPlay(props: any) {
   React.useEffect(() => {
     if (!isFinished || !winner || savedRef.current) return;
     savedRef.current = true;
-    const players = Array.from({ length: cfg.players }, (_, i) => ({ id: `p${i + 1}`, name: `Joueur ${i + 1}` }));
+    const players = temporaryPlayers;
     const rec: any = {
       id: matchIdRef.current,
       matchId: matchIdRef.current,
@@ -222,7 +230,7 @@ export default function KnockoutPlay(props: any) {
       rec.summary.telemetryCoverage = "full";
     }
     void History.upsert(rec).catch((e: any) => console.warn("[Knockout] history failed", e));
-  }, [isFinished, winner, cfg, totals, active, roundIdx]);
+  }, [isFinished, winner, cfg, totals, active, roundIdx, temporaryPlayers]);
 
   return (
     <div className="page">
@@ -237,7 +245,7 @@ export default function KnockoutPlay(props: any) {
         {isFinished && winner ? (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>
-              {t("game.winner", "Vainqueur")} : {t("player", "Joueur")} {winner.idx + 1}
+              {t("game.winner", "Vainqueur")} : {playerName(winner.idx)}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn" onClick={resetGame}>
@@ -252,7 +260,7 @@ export default function KnockoutPlay(props: any) {
 
         <div style={{ opacity: 0.9, marginBottom: 10 }}>
           {t("round", "Manche")} {Math.min(roundIdx + 1, cfg.rounds)} / {cfg.rounds} —{" "}
-          {t("turn", "Tour")} : {t("player", "Joueur")} {playerIdx + 1}
+          {t("turn", "Tour")} : {playerName(playerIdx)}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 16 }}>
@@ -267,7 +275,7 @@ export default function KnockoutPlay(props: any) {
               }}
             >
               <div style={{ fontWeight: 800, marginBottom: 4 }}>
-                {t("player", "Joueur")} {i + 1} {active[i] ? "" : `(${t("eliminated", "éliminé")})`}
+                {playerName(i)} {active[i] ? "" : `(${t("eliminated", "éliminé")})`}
               </div>
               <div style={{ fontSize: 13, opacity: 0.85 }}>
                 {t("total", "Total")} : <b>{s}</b>

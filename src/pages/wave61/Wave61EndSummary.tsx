@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React from "react";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import ShoveStatsDashboard from "../../components/ShoveStatsDashboard";
+import { rankShovePlayers } from "../../lib/gameEngines/shoveAPennyRanking";
 import { wave61PrimaryMetric, type Wave61State } from "../../lib/gameEngines/wave61Engine";
 
 const SOFT = "#aeb5c8";
@@ -102,7 +104,9 @@ export function buildWave61EndRows(state: Wave61State, profiles: any[]) {
     };
   });
 
+  const shoveRanks = state?.modeId === "shove_a_penny" ? rankShovePlayers(state) : [];
   return rows.sort((a: any, b: any) => {
+    if (shoveRanks.length) return shoveRanks.indexOf(String(a.id)) - shoveRanks.indexOf(String(b.id));
     if (a.winner !== b.winner) return a.winner ? -1 : 1;
     const metricDelta = n(b.metric?.value) - n(a.metric?.value);
     if (metricDelta) return metricDelta;
@@ -174,6 +178,9 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
     : rows.map((row:any)=>({ id:row.id, label:row.name, wins:n(seriesMeta.wins?.[row.id]), winner:row.winner }))) : [];
 
   return <div style={{ display:"grid",gap:9,textAlign:"left",width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden" }}>
+    {state?.modeId === "shove_a_penny" ? <section data-shove-final-table="1" style={{ ...card(accent), padding: 10, minWidth: 0 }}>
+      <ShoveStatsDashboard state={state} profiles={profiles} accent={accent} activePlayerId={state.winnerId || rows[0]?.id} isFinal />
+    </section> : null}
     {seriesMeta ? <div data-eight-modes-series-final="1" style={{...card(accent),padding:8,width:"100%",boxSizing:"border-box",overflow:"hidden"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:7,flexWrap:"wrap"}}><b style={{color:accent,fontSize:9,fontWeight:1100,letterSpacing:.8}}>RÉSULTAT DE LA SÉRIE · {seriesMeta.label}</b><span style={{color:SOFT,fontSize:8}}>VICTOIRE À {seriesMeta.winsTo} · MANCHE {seriesMeta.gameIndex}</span></div>
       <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,Math.min(4,seriesRows.length))},minmax(0,1fr))`,gap:5}}>{seriesRows.map((entry:any)=><div key={entry.id} style={{minWidth:0,borderRadius:10,padding:"7px 6px",border:`1px solid ${entry.winner?accent+"88":"rgba(255,255,255,.08)"}`,background:entry.winner?`${accent}12`:"rgba(255,255,255,.025)",textAlign:"center"}}><strong style={{display:"block",color:entry.winner?accent:"#fff",fontSize:17,lineHeight:1}}>{entry.wins}</strong><span style={{display:"block",marginTop:3,color:SOFT,fontSize:7,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.label}</span></div>)}</div>

@@ -1,6 +1,8 @@
 // @ts-nocheck
 import NativeStartOrderConfig from "../../components/NativeStartOrderConfig";
 import React from "react";
+import DartsRelatedModesPanel from "../../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../../games/dartsGameFamilies";
 import DartsQuickHeader, { DartsQuickIntro } from "../../components/DartsQuickHeader";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -1301,7 +1303,7 @@ export default function NewDartsModeConfig(props: Props) {
         .msc-new-darts-guided-nav { position: sticky !important; bottom: max(6px, env(safe-area-inset-bottom)) !important; z-index: 50 !important; background: rgba(3,5,10,.92) !important; backdrop-filter: blur(14px); padding: 6px !important; border-radius: 14px; box-shadow: 0 -8px 24px rgba(0,0,0,.45); }
       }
     `}</style>
-    <PageHeader
+    <PageHeader difficultyGameId={mode}
       tickerSrc={definition.ticker}
       tickerAlt={definition.title}
       tickerHeight={mode === "crados" || mode === "ptit_hun" ? 68 : 92}
@@ -1324,6 +1326,7 @@ export default function NewDartsModeConfig(props: Props) {
         </div>
       ) : null}
     />
+    <DartsRelatedModesPanel gameId={mode} accent={accent} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
     <div className="msc-new-darts-config-content" style={{ padding: "8px 8px 0", maxWidth: 980, margin: "0 auto", minWidth: 0, boxSizing: "border-box" }}>
       {mode === "crados" && !viewModeChosen ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)`, padding: "14px 12px" }}>
         <div style={{ color: accent, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>Choisis ton affichage</div>

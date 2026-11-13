@@ -839,6 +839,7 @@ export default function CapitalConfig(props: any) {
       <PageHeader
         title="CAPITAL"
         tickerSrc={tickerCapital}
+        difficultyGameId="capital"
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles CAPITAL" content={INFO_TEXT} />}
       />

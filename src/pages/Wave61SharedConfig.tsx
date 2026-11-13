@@ -2,6 +2,8 @@
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 import React from "react";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import OptionRow from "../components/OptionRow";
@@ -179,7 +181,7 @@ export default function Wave61SharedConfig(props: any) {
   const profileById = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
 
   const lockedRounds = spec.id === "nine_dart_century" ? 3 : spec.id === "double_down" ? 9 : spec.id === "green_vs_red" ? 11 : spec.id === "athletisme" ? 6 : null;
-  const lockedGoal = spec.id === "nine_dart_century" ? 100 : spec.id === "shove_a_penny" ? 7 * Math.max(2, Number(modeOptions?.marksPerBox || 3)) : spec.id === "green_vs_red" ? 11 : spec.id === "eperviers" ? Math.max(50, Number(modeOptions?.crossingGoal || 100)) : spec.id === "iceberg" ? Math.max(2, Number(modeOptions?.compartmentGoal || 5)) : spec.id === "apocalypse" ? Math.max(50, Number(modeOptions?.refugeGoal || 100)) : spec.id === "mont_blanc" ? 4809 : spec.id === "everest" ? 8849 : spec.id === "summit_14" ? 14 : null;
+  const lockedGoal = spec.id === "nine_dart_century" ? 100 : spec.id === "shove_a_penny" ? (modeOptions?.ruleSet === "electronic" ? 7 : 9) * Math.max(2, Number(modeOptions?.marksPerBox || 3)) : spec.id === "green_vs_red" ? 11 : spec.id === "eperviers" ? Math.max(50, Number(modeOptions?.crossingGoal || 100)) : spec.id === "iceberg" ? Math.max(2, Number(modeOptions?.compartmentGoal || 5)) : spec.id === "apocalypse" ? Math.max(50, Number(modeOptions?.refugeGoal || 100)) : spec.id === "mont_blanc" ? 4809 : spec.id === "everest" ? 8849 : spec.id === "summit_14" ? 14 : null;
   const roundsFieldLabel = spec.id === "une_ptite_raclette" ? "Nombre de services max" : "Nombre de rounds";
   const goalFieldLabel = spec.id === "une_ptite_raclette" ? "Raclettes à servir" : "Objectif moteur";
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, spec.maxPlayers) : []);
@@ -204,10 +206,12 @@ export default function Wave61SharedConfig(props: any) {
   const [goal, setGoal] = React.useState(Number(lockedGoal ?? saved.goal ?? preset.defaultGoal));
   const [lives, setLives] = React.useState(Number(saved.lives ?? preset.defaultLives));
   const [randomOrder, setRandomOrder] = React.useState(saved.randomOrder !== false);
-  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
+  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard" | "target">(saved.scoreInputMethod === "dartboard" ? "dartboard" : saved.scoreInputMethod === "target" && spec.id === "shove_a_penny" ? "target" : saved.scoreInputMethod === "keypad" ? "keypad" : spec.id === "shove_a_penny" ? "target" : "keypad");
   const [targetAdviceEnabled, setTargetAdviceEnabled] = React.useState(saved.targetAdviceEnabled !== false);
   const [awenaCommentaryEnabled, setAwenaCommentaryEnabled] = React.useState(saved.awenaCommentaryEnabled !== false);
   const [wave61SfxEnabled, setWave61SfxEnabled] = React.useState(saved.wave61SfxEnabled !== false);
+  const shoveEndMode = spec.id === "shove_a_penny" ? String(modeOptions?.endMode || "first_finish") : "fixed_rounds";
+  const shoveUsesRounds = spec.id !== "shove_a_penny" || shoveEndMode === "fixed_rounds";
   // X01 quick-party contract: participants are session-only names, never local profiles.
   const quickMin = Math.max(1, Math.min(spec.maxPlayers, preset.minPlayers));
   const quickMax = Math.max(quickMin, Math.min(spec.maxPlayers, 10));
@@ -413,7 +417,7 @@ export default function Wave61SharedConfig(props: any) {
       participantMode: isQuick ? "players" : effectiveParticipantMode,
       teamByPlayer: isQuick ? {} : teamByPlayer,
       difficulty,
-      botLevel,
+      botLevel: "normal", // Fallback des anciens bots non étoilés ; les bots notés utilisent leur niveau individuel.
       rounds: Number(lockedRounds ?? Math.max(1, Math.min(60, Number(rounds) || preset.defaultRounds))),
       goal: Number(lockedGoal ?? Math.max(0, Number(goal) || 0)),
       lives: Math.max(0, Math.min(9, Number(lives) || 0)),
@@ -477,7 +481,7 @@ export default function Wave61SharedConfig(props: any) {
         <section style={card}>
           <div style={{color:accent,fontWeight:1000,marginBottom:10}}>RÈGLES · {spec.label.toUpperCase()}</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:9}}>
-            {lockedRounds == null && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>NOMBRE DE TOURS
+            {lockedRounds == null && (spec.id !== "shove_a_penny" || shoveEndMode === "fixed_rounds") && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>NOMBRE DE TOURS
               <input type="number" min={1} max={60} value={rounds} onChange={(e)=>setRounds(Number(e.target.value))} style={quickInput}/></label>}
             {preset.defaultGoal > 0 && lockedGoal == null && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>OBJECTIF
               <input type="number" min={1} max={9999} value={goal} onChange={(e)=>setGoal(Number(e.target.value))} style={quickInput}/></label>}
@@ -499,7 +503,8 @@ export default function Wave61SharedConfig(props: any) {
   }
 
   return <div className="page wave61-config-screen" data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
-    <div className="wave61-config-header"><PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
+    <div className="wave61-config-header"><PageHeader difficultyGameId={spec.id} tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
+    <DartsRelatedModesPanel gameId={spec.id} accent={accent} compact onOpenGame={id => { const target = dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
     {isQuick ? <div style={{maxWidth:980,margin:"8px auto",padding:"9px 14px",fontWeight:950,color:accent}}>⚡ PARTIE RAPIDE · {spec.label} · JOUEURS ET RÈGLES ESSENTIELLES</div> : null}
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10, width: "100%", minWidth: 0, overflowX: "hidden" }}>
       <section className="wave61-config-participants" style={spec.id === "green_vs_red" && greenRedFormat === "teams" ? { padding:0, background:"transparent", border:"none", boxShadow:"none" } : card}>
@@ -563,7 +568,7 @@ export default function Wave61SharedConfig(props: any) {
           <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
           {spec.supportsTeams ? <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button style={pill(participantMode === "players")} onClick={() => setParticipantMode("players")}>JOUEURS</button><button style={pill(participantMode === "teams")} onClick={() => setParticipantMode("teams")}>2 ÉQUIPES AUTO</button></div> : null}
           <PlayerPagedSelector usageMode={spec.id} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={true} />
-          {spec.supportsBots ? <div style={{ marginTop: 10 }}><button type="button" onClick={() => setBotsOpen((v) => !v)} style={pill(botsOpen)}>{botsOpen ? "☑ BOTS OUVERTS" : "☐ AJOUTER DES BOTS"}</button>{botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS X01 · PRO / CPU / AWENA" showCheckbox={false} showSelectedSummary={false} /></div> : null}</div> : null}
+          {spec.supportsBots ? <div style={{ marginTop: 10 }}><button type="button" onClick={() => setBotsOpen((v) => !v)} style={pill(botsOpen)}>{botsOpen ? "☑ BOTS OUVERTS" : "☐ AJOUTER DES BOTS"}</button><div style={{ marginTop: botsOpen ? 10 : 0 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS X01 · PRO / CPU / AWENA" showCheckbox={false} showSelectedSummary={false} showChooser={botsOpen} /></div></div> : null}
           <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
           {effectiveParticipantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition Wave61 automatique A/B en alternance.</div> : null}
         </>}
@@ -574,7 +579,7 @@ export default function Wave61SharedConfig(props: any) {
           <div><div style={{color:accent,fontSize:11,fontWeight:1000,letterSpacing:1,textTransform:"uppercase"}}>Bots IA</div><div style={{color:"#7f8798",fontSize:9.5,marginTop:2}}>Même sélecteur BOT que X01.</div></div>
           <button type="button" aria-pressed={botsOpen} onClick={()=>setBotsOpen((v)=>!v)} style={{...pill(botsOpen),minHeight:32,padding:"5px 10px"}}>{botsOpen?"☑ ON":"☐ OFF"}</button>
         </div>
-        {botsOpen ? <BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS X01 · PRO / CPU / AWENA" showCheckbox={false} showSelectedSummary={false} /> : null}
+        <BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS X01 · PRO / CPU / AWENA" showCheckbox={false} showSelectedSummary={false} showChooser={botsOpen} />
       </section> : spec.id === "green_vs_red" && greenRedFormat === "teams" && teamsSourceMode !== "auto" ? <BotTeamsSection
         botTeams={botDartsTeams}
         selectedBotTeamIds={selectedBotTeamIds}
@@ -592,13 +597,38 @@ export default function Wave61SharedConfig(props: any) {
 
       <section className="wave61-config-engine" style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Moteur · {preset.label}</div>
+        {spec.id === "shove_a_penny" ? <section data-shove-variant-selector="1" style={{ marginBottom: 10, padding: 10, borderRadius: 13, border: `1px solid ${accent}80`, background: `${accent}0b` }}>
+          <div style={{ color: accent, fontSize: 11, fontWeight: 1100, letterSpacing: .8, marginBottom: 9 }}>VERSION DU JEU · SHOVE A PENNY</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+            {[
+              { value: "traditional", title: "TRADITIONNELLE", line: "1 À 9", subtitle: "ORDRE LIBRE" },
+              { value: "electronic", title: "ÉLECTRONIQUE", line: "15 À BULL", subtitle: "DANS L’ORDRE" },
+            ].map((variant) => {
+              const active = String(modeOptions?.ruleSet || "traditional") === variant.value;
+              return <button type="button" key={variant.value} aria-pressed={active} onClick={() => setModeOptions((prev) => ({ ...prev, ruleSet: variant.value }))}
+                style={{ display: "grid", justifyItems: "center", alignContent: "center", gap: 3, minHeight: 85, borderRadius: 11, cursor: "pointer", border: `1px solid ${active ? accent : "rgba(255,255,255,.14)"}`, background: active ? `${accent}24` : "rgba(5,9,17,.70)", color: active ? accent : "#d0d7e4", boxShadow: active ? `inset 0 0 16px ${accent}12` : "none" }}>
+                <span style={{ fontSize: 9.3, fontWeight: 1000 }}>{variant.title}</span>
+                <strong style={{ fontSize: 19, fontWeight: 1150, lineHeight: 1.1 }}>{variant.line}</strong>
+                <small style={{ fontSize: 9, fontWeight: 950 }}>{variant.subtitle}</small>
+              </button>;
+            })}
+          </div>
+          <div style={{ marginTop: 8, color: "#afb9c9", fontSize: 10.2, lineHeight: 1.45 }}>
+            {String(modeOptions?.ruleSet || "traditional") === "traditional"
+              ? "Numéros 1 à 9, trois marques par case, dans l’ordre de ton choix. Pas de BULL."
+              : "Numéros 15, 16, 17, 18, 19, 20 puis BULL. Fermeture obligatoire dans cet ordre."}
+          </div>
+        </section> : null}
         <OptionRow label="Difficulté"><OptionSelect value={difficulty} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setDifficulty} /></OptionRow>
-        {botCount ? <OptionRow label="Niveau BOT"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow> : null}
-        <OptionRow label={`${roundsFieldLabel}${lockedRounds ? " · verrouillé" : ""}`}><input type="number" min={1} max={60} value={lockedRounds ?? rounds} disabled={lockedRounds != null} onChange={(e) => setRounds(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedRounds != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedRounds != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow>
+        {botCount ? <div data-wave61-individual-bot-levels="1" style={{ fontSize: 10, color: "#b8c4d7", padding: "5px 2px 8px", lineHeight: 1.4 }}>
+          Les bots jouent selon leur propre niveau en étoiles, affiché sur leurs avatars.
+        </div> : null}
+        {spec.id === "shove_a_penny" ? <><OptionRow label="Fin de partie"><OptionSelect value={shoveEndMode} options={[{ value: "first_finish", label: "Victoire au 1er joueur qui ferme tout" }, { value: "full_ranking", label: "Continuer jusqu’au classement final" }, { value: "fixed_rounds", label: "Limiter par nombre de rounds" }]} onChange={(value: any) => setModeOptions((prev) => ({ ...prev, endMode: value }))} /></OptionRow><div style={{ color: "#7f8798", fontSize: 9.3, lineHeight: 1.4, padding: "0 4px 4px" }}>{shoveEndMode === "full_ranking" ? "Le premier joueur prend la 1re place, puis la partie continue jusqu’au dernier pour obtenir un classement complet." : shoveEndMode === "fixed_rounds" ? "La partie s’arrête à la limite choisie et le classement est figé à cet instant." : "La partie s’arrête dès qu’un joueur ferme toutes ses cases."}</div></> : null}
+        {shoveUsesRounds ? <OptionRow label={`${roundsFieldLabel}${lockedRounds ? " · verrouillé" : ""}`}><input type="number" min={1} max={60} value={lockedRounds ?? rounds} disabled={lockedRounds != null} onChange={(e) => setRounds(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedRounds != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedRounds != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
         {preset.defaultGoal > 0 ? <OptionRow label={`${goalFieldLabel}${lockedGoal ? " · verrouillé" : ""}`}><input type="number" min={1} max={9999} value={lockedGoal ?? goal} disabled={lockedGoal != null} onChange={(e) => setGoal(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedGoal != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedGoal != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
         {preset.defaultLives > 0 ? <OptionRow label="Vies"><OptionSelect value={lives} options={[3,4,5,6,7]} onChange={(v: any) => setLives(Number(v))} /></OptionRow> : null}
         <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
-        <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
+        <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[...(spec.id === "shove_a_penny" ? [{ value: "target", label: "Cibles successives · Keypad Cricket" }] : []), { value: "keypad", label: "Keypad classique" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
 
       {!isQuick ? <section className="wave61-config-assistance" style={{ ...card, borderColor: `${accent}45` }}>
@@ -632,7 +662,7 @@ export default function Wave61SharedConfig(props: any) {
               })}
             </div>)}
           </div>;
-        })() : dedicatedOptions.map((option) => {
+        })() : dedicatedOptions.filter((option) => !(spec.id === "shove_a_penny" && option.key === "ruleSet")).map((option) => {
           const value = modeOptions?.[option.key] ?? option.defaultValue;
           const setValue = (next: any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
           return <div key={option.key} style={{ marginBottom: 4 }}>

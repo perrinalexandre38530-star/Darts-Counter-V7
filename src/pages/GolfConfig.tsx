@@ -417,7 +417,7 @@ export default function GolfConfig(props: any) {
 
   return (
     <div style={{ minHeight: "100dvh" }}>
-      <PageHeader
+      <PageHeader difficultyGameId="golf"
         title="GOLF"
         left={<BackDot onClick={() => (props as any)?.go?.("games") || (props as any)?.setTab?.("games")} />}
         right={

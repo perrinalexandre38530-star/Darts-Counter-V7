@@ -4,12 +4,14 @@
  */
 import { CHALLENGE_MODE_OPTIONS } from './challengeUnifiedCatalog.ts';
 import { arcadeRuleDetails } from './challengeArcadeEngine.ts';
+import { getChallengeDartEvidence } from './challengeDartEvidence.ts';
 
 export type ChallengeArchiveItem = {
   id:string; modeId:string; title:string; configKey:string; configLabel:string;
   playedAt:number; score:number; darts:number; successful:number; accuracy:number; bestStreak:number;
   status:'finished'|'in_progress'; playerId:string; playerName:string;
   scoreKnown?:boolean;dartsKnown?:boolean; // false only for legacy records missing those measures
+  dartsRecoveredFromJournal?:boolean; // exact per-player journal only; never a match-wide guess
   record:any;
 };
 export type ChallengeArchiveSummary = {
@@ -170,16 +172,23 @@ export function challengeArchiveItems(records:readonly any[],options?:{modeId?:s
   if((playerId||playerName)&&!player)continue;
   const status=isFinishedChallengeRecord(rec)?'finished':'in_progress';
   const rawScore=player?.score??player?.points??player?.special?.score??rec?.summary?.finalScores?.[playerId];
-  const rawDarts=player?.darts??player?.dartsThrown??player?.stats?.darts??rec?.summary?.darts;
+  // A global match dart count must NEVER be credited to each DUO/MULTI participant.
+  const roster=playerRows(rec);
+  const declaredPlayers=Array.isArray(rec?.players)?rec.players:roster;
+  const isSolo=declaredPlayers.length===1&&roster.length<=1&&!(Array.isArray(rec?.players)&&rec.players.length>1);
+  const rawDarts=player?.darts??player?.dartsThrown??player?.stats?.darts??(isSolo?rec?.summary?.darts:undefined);
+  const reportedDartsKnown=rawDarts!==undefined&&rawDarts!==null&&rawDarts!==''&&Number.isFinite(Number(rawDarts))&&Number(rawDarts)>=0;
+  const journal=(!reportedDartsKnown||Number(rawDarts)===0)?getChallengeDartEvidence(rec,txt(player?.id||playerId)):null;
+  const dartsRecoveredFromJournal=Boolean(journal&&journal.darts>0&&(!reportedDartsKnown||Number(rawDarts)===0));
   const scoreKnown=rawScore!==undefined&&rawScore!==null&&rawScore!==''&&Number.isFinite(Number(rawScore));
-  const dartsKnown=rawDarts!==undefined&&rawDarts!==null&&rawDarts!==''&&Number.isFinite(Number(rawDarts));
-  const score=num(rawScore),darts=num(rawDarts);
+  const dartsKnown=reportedDartsKnown||dartsRecoveredFromJournal;
+  const score=num(rawScore),darts=dartsRecoveredFromJournal?journal!.darts:num(rawDarts);
   const successes=num(player?.hitCount??player?.successful??player?.stats?.hitCount);
   const accuracy=num(player?.accuracy??player?.successRate??player?.stats?.accuracy) || (darts?Math.round(successes/darts*1000)/10:0);
   const entry=CHALLENGE_MODE_OPTIONS.find(mode=>mode.id===modeId);
   out.push({id,modeId,title:entry?.title||modeId,configKey:challengeRecordConfigKey(rec),configLabel:challengeConfigDisplay(rec),
    playedAt:timestamp(rec?.finishedAt||rec?.updatedAt||rec?.createdAt),score,darts,successful:successes,accuracy,
-   bestStreak:num(player?.bestStreak??player?.stats?.bestStreak),status,scoreKnown,dartsKnown,
+   bestStreak:num(player?.bestStreak??player?.stats?.bestStreak),status,scoreKnown,dartsKnown,dartsRecoveredFromJournal,
    playerId:txt(player?.id||playerId),playerName:txt(player?.name||playerName),record:rec});
  }
  return out.sort((a,b)=>b.playedAt-a.playedAt);

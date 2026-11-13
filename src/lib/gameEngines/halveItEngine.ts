@@ -181,11 +181,22 @@ export function halveItDartPoints(dart: GameDart) {
   if (dart.bed === "IB") return 50;
   if (dart.bed === "OB") return 25;
   if (dart.bed === "MISS") return 0;
-  const n = clampInt(dart.number, 1, 20, 0);
-  if (!n) return 0;
+  // Ne jamais transformer un numéro hors cible en S1/S20 via clampInt.
+  // La validation est également appliquée à toute la volée avant sa validation.
+  if (dart.bed !== "S" && dart.bed !== "D" && dart.bed !== "T") return 0;
+  const n = dart.number;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 20) return 0;
   if (dart.bed === "D") return n * 2;
   if (dart.bed === "T") return n * 3;
   return n;
+}
+
+function isValidHalveItDart(dart: GameDart): boolean {
+  if (!dart || typeof dart !== "object") return false;
+  if (dart.bed === "OB" || dart.bed === "IB" || dart.bed === "MISS") return true;
+  if (dart.bed !== "S" && dart.bed !== "D" && dart.bed !== "T") return false;
+  return typeof dart.number === "number" && Number.isInteger(dart.number)
+    && dart.number >= 1 && dart.number <= 20;
 }
 
 export function targetFromId(idInput: HalveItTargetId | string): HalveItTarget {
@@ -313,11 +324,16 @@ function recalcStandings(state: HalveItState) {
   const rows = entityRows(state).sort((a, b) =>
     b.score - a.score || b.hits - a.hits || a.halves - b.halves || a.name.localeCompare(b.name, "fr")
   );
-  state.standings = rows.map((row, index) => ({
-    ...row,
-    rank: index + 1,
-    tied: index > 0 && row.score === rows[index - 1].score,
-  }));
+  // Rangs ex aequo : à score égal, même rang et indicateur d'égalité
+  // sur TOUS les joueurs/équipes concernés (y compris le premier).
+  // Les touches et pénalités ne sont que des critères d'ordre d'affichage.
+  const scoreCounts = new Map<number, number>();
+  rows.forEach((row) => scoreCounts.set(row.score, (scoreCounts.get(row.score) || 0) + 1));
+  let sharedRank = 1;
+  state.standings = rows.map((row, index) => {
+    if (index > 0 && row.score !== rows[index - 1].score) sharedRank = index + 1;
+    return { ...row, rank: sharedRank, tied: (scoreCounts.get(row.score) || 0) > 1 };
+  });
   const bestScore = rows[0]?.score;
   state.winnerIds = Number.isFinite(bestScore) ? rows.filter((row) => row.score === bestScore).map((row) => row.id) : [];
   state.tied = state.winnerIds.length > 1;
@@ -388,7 +404,7 @@ export function playHalveItVisit(previous: HalveItState, dartsInput: GameDart[])
   // trois fléchettes. Ne jamais compléter implicitement une saisie incomplète
   // par des MISS : cela fausserait les statistiques et la pénalité ÷ 2.
   if (previous.finished || !Array.isArray(dartsInput) || dartsInput.length !== 3
-    || dartsInput.some((dart) => !dart || typeof dart !== "object")) return previous;
+    || dartsInput.some((dart) => !isValidHalveItDart(dart))) return previous;
   const state = cloneHalveItState(previous);
   const playerId = state.turnOrder[state.activePlayerIndex];
   if (!playerId) return state;

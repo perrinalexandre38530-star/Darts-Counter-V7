@@ -314,7 +314,7 @@ export default function CargoConfig(props: any) {
   const contentByStep = [participantsBlock, missionBlock, seriesBlock, truckBlock, summaryBlock];
 
   return <div className="cargo-config-page" style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -10%,${ORANGE}28 0,${theme?.bg || "#07090d"} 43%,#020203 100%)`, paddingBottom: 18 }}>
-    <PageHeader title="CARGO" subtitle="LOGISTIQUE · CONTRATS · CHARGEMENT" tickerSrc={tickerCargo} tickerAlt="CARGO" left={<BackDot onClick={back} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules />} />} />
+    <PageHeader difficultyGameId="cargo" title="CARGO" subtitle="LOGISTIQUE · CONTRATS · CHARGEMENT" tickerSrc={tickerCargo} tickerAlt="CARGO" left={<BackDot onClick={back} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules />} />} />
     <main className="cargo-config-main">
       <div className="cargo-config-mode-switch">
         <button onClick={() => chooseView("guided")} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${viewMode === "guided" ? ORANGE : "rgba(255,255,255,.10)"}`, background: viewMode === "guided" ? `${ORANGE}18` : "rgba(255,255,255,.03)", color: viewMode === "guided" ? ORANGE : SOFT, fontWeight: 1000 }}>CONFIGURATION GUIDÉE</button>

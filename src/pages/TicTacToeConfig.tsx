@@ -57,7 +57,7 @@ export default function TicTacToeConfig(props: any) {
 
   return (
     <div className="page">
-      <PageHeader
+      <PageHeader difficultyGameId="tic_tac_toe"
         title={lang === "fr" ? "MORPION" : "TIC-TAC-TOE"}
         tickerSrc={tickerTicTacToe}
         left={<BackDot onClick={goBack} />}

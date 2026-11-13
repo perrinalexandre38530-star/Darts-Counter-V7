@@ -6,6 +6,8 @@ import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // =============================================================
 
 import React from "react";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
@@ -667,7 +669,7 @@ export default function ScramConfig(props: any) {
 
   return (
     <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 112 }}>
-      <PageHeader
+      <PageHeader difficultyGameId="scram"
         tickerSrc={tickerScram}
         tickerAlt="SCRAM"
         tickerEdgeFade="strong"
@@ -683,6 +685,7 @@ export default function ScramConfig(props: any) {
         }
       />
 
+      <DartsRelatedModesPanel gameId="scram" accent={GOLD} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
       <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "12px 12px 0", overflowX: "hidden" }}>
         <section style={selectorCard}>
           <div

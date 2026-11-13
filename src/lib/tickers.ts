@@ -31,6 +31,11 @@ const TICKERS: Record<string, string> = import.meta.glob(
   // Optional aliases: key -> filename (without path) or another key
   
   const ALIASES: Record<string, string> = {
+    // Alias de tickers pour les variantes et leurs exercices Training.
+  "ptit_hun": "ptit_1",
+  "training_super_bull": "super_bull",
+  "top_10_training": "top_10",
+  "training_x01": "x01",
   
     // FOOT section aliases
   

@@ -759,6 +759,7 @@ export default function LoterieConfig(props: any) {
     <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
       <PageHeader
         tickerSrc={tickerLoterie}
+        difficultyGameId="loterie"
         tickerAlt="LOTERIE"
         tickerHeight={92}
         tickerFit="cover"

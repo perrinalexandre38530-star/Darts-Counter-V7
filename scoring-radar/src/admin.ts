@@ -32,7 +32,7 @@ export function adminHtml(): string {
 </style>
 </head>
 <body><main class="wrap">
-  <div class="top"><div><h1>SCORING RADAR <span class="heroAccent">• MULTISPORTS SCORING</span></h1><p class="sub">Un assistant pour trouver des joueurs intéressés, leur répondre et mesurer les visites vers ton application.</p></div><div class="badge">🔒 Réponses à valider • Aucune publication automatique</div></div>
+  <div class="top"><div><h1>SCORING RADAR <span class="heroAccent">• MULTISPORTS SCORING</span></h1><p class="sub">Un assistant pour trouver des joueurs intéressés, leur répondre et mesurer les visites vers ton application.</p></div><div class="badge">🔒 Diffusion contrôlée • Aucun envoi sans confirmation</div></div>
   <nav class="quickNav" aria-label="Aller à une étape"><a href="#researchPanel">1 · Chercher</a><a href="#salesPanel">2 · Campagnes IA</a><a href="#opportunitiesPanel">3 · Répondre</a><a href="#publicationPanel">4 · Programmer</a><a href="#acquisitionPanel">5 · Mesurer</a><a href="#socialPanel">Campagnes sociales</a></nav>
   <section class="intro" aria-label="Comment utiliser le robot">
     <div class="introHeading"><strong>Comment ça marche ?</strong><span>Le robot prépare des opportunités. C'est toi qui décides où répondre et quoi publier.</span></div>
@@ -90,14 +90,15 @@ export function adminHtml(): string {
   </section>
 
   <section class="panel" id="publicationPanel">
-    <div class="headrow"><div><div class="sectionEyebrow">DIFFUSION COMMERCIALE</div><h2>Programmer mes réponses et publications</h2><p class="sub">Choisis un brouillon IA qualifié, une date et un canal. Le Radar prépare une file d'actions. <b>Il n'envoie rien automatiquement :</b> la publication doit être effectuée sur le canal autorisé, puis confirmée ici.</p></div><div class="badge">ZÉRO PUBLICATION NON AUTORISÉE</div></div>
+    <div class="headrow"><div><div class="sectionEyebrow">DIFFUSION COMMERCIALE</div><h2>Programmer mes réponses et publications</h2><p class="sub">Programme une action et vérifie son texte. Facebook Page pourra être publié via Meta après connexion officielle et confirmation. Forums et Instagram restent manuels.</p></div><div class="badge">VALIDATION OBLIGATOIRE</div></div>
     <form id="publicationForm" class="salesForm">
       <label class="full">Brouillon vérifié<select id="publicationDraft" required><option value="">Prépare d'abord une réponse IA qualifiée</option></select></label>
       <label>Variante<select id="publicationVariant"><option value="helpful">Réponse utile</option><option value="concise">Réponse courte</option><option value="promotional">Approche commerciale</option></select></label>
-      <label>Canal<select id="publicationChannel"><option value="community">Forum / communauté (envoi manuel)</option><option value="facebook">Facebook (publication manuelle)</option><option value="instagram">Instagram (publication manuelle)</option></select></label>
+      <label>Canal<select id="publicationChannel"><option value="community">Forum / communauté (envoi manuel)</option><option value="facebook">Facebook (Page officielle si connectée)</option><option value="instagram">Instagram (publication manuelle)</option></select></label>
       <label>Date et heure<select id="publicationDelay"><option value="now">Dès maintenant</option><option value="tomorrow">Demain, même heure</option><option value="week">Dans 7 jours</option></select></label>
       <div class="actions" style="align-items:end"><button class="salesButton" type="submit">Ajouter à mon planning</button></div>
     </form>
+    <div class="safeBox" id="facebookConnector"><b>📘 Facebook Page officielle</b> · <span id="fbConnectorStatus">Connexion non vérifiée.</span> <button type="button" id="fbConnectorTest">Tester la connexion Meta</button><p class="sub">Envoi possible uniquement sur ta propre Page. Jeton et identifiant Page à configurer dans les secrets Cloudflare ; aucun droit sur des groupes, commentaires ou messages privés.</p></div>
     <div id="publicationSummary" class="safeBox">Aucune publication programmée.</div>
     <div id="publicationJobs" class="salesList"><div class="empty">Connecte-toi pour afficher le planning.</div></div>
   </section>
@@ -139,7 +140,7 @@ export function adminHtml(): string {
     <div id="campaigns" class="grid"><div class="empty">Aucune campagne chargée.</div></div>
   </section>
 
-  <div class="foot">Le mode actuel prépare et contrôle les campagnes. Les connecteurs de publication restent désactivés jusqu'à configuration OAuth/API des comptes sociaux.</div>
+  <div class="foot">Le mode actuel prépare et contrôle les campagnes. La Page Facebook peut être raccordée par API officielle Meta. Instagram et communautés restent manuels tant que leurs intégrations autorisées ne sont pas configurées.</div>
 </main>
 <script>
 (() => {
@@ -186,6 +187,16 @@ export function adminHtml(): string {
     root.innerHTML=rows.map((d,i)=>'<div class="salesDraft"><b>'+esc(d.source_title||'Discussion')+'</b><p class="sub">Brouillon conservé : relire la source. Une ancienne proposition peut être hors sujet.</p><p>Objectif '+esc(d.goal)+' · Pertinence '+esc(d.match)+' · '+esc(d.reason||'')+'</p><div class="actions"><a href="'+esc(d.source_url||'#')+'" target="_blank" rel="noopener" style="color:#8cd9ff">Ouvrir la discussion</a></div>'+(d.match==='low'||d.verified_fit!==true?'<p>Brouillon historique ou hors cible : copie désactivée. Relance l’analyse depuis une discussion vérifiée pour obtenir une proposition exploitable.</p>':Object.entries({helpful:'Approche utile',concise:'Approche courte',promotional:'Approche commerciale'}).map(([key,label])=>'<details class="advanced"><summary>'+esc(label)+'</summary><div class="variant">'+esc(previewSalesCopy((d.variants||{})[key]||''))+'</div><button class="salesButton" data-saved-copy="'+i+'" data-variant="'+key+'">Copier cette version</button></details>').join(''))+'</div>').join('');
     root.querySelectorAll('[data-saved-copy]').forEach(b=>b.addEventListener('click',()=>{const d=rows[Number(b.dataset.savedCopy)];copy((d&&d.variants&&d.variants[b.dataset.variant])||'');}));
   }
+  let facebookConfigured = false;
+  async function refreshFacebookConnector(){
+    try {const state=await request('/api/connectors/facebook'); facebookConfigured=Boolean(state.configured); $('fbConnectorStatus').textContent=state.note;}
+    catch(e){facebookConfigured=false;$('fbConnectorStatus').textContent='Connexion Meta indisponible : '+e.message;}
+  }
+  $('fbConnectorTest').addEventListener('click',async()=>{
+    const b=$('fbConnectorTest');b.disabled=true;
+    try{const data=await request('/api/connectors/facebook/test',{method:'POST'});setStatus('Page Meta vérifiée : '+data.pageName+'.','ok');$('fbConnectorStatus').textContent='Connectée : '+data.pageName;}
+    catch(e){setStatus('Facebook : '+e.message,'err');}finally{b.disabled=false;}
+  });
   let publicationDrafts=[];
   function updatePublicationChoices(rows){
     publicationDrafts=rows.filter(d=>d.verified_fit===true&&d.match!=='low');
@@ -193,13 +204,23 @@ export function adminHtml(): string {
   }
   function renderPublicationJobs(rows){
     const counts={ready:0,scheduled:0,published:0,cancelled:0};rows.forEach(j=>{if(j.status in counts)counts[j.status]++;});
-    $('publicationSummary').textContent=counts.ready+' prêt(s) à publier · '+counts.scheduled+' programmé(s) · '+counts.published+' confirmé(s) publié(s). Aucune publication automatique.';
-    $('publicationJobs').innerHTML=rows.length?rows.map(j=>'<article class="salesCampaign"><div class="meta"><span class="pill">'+esc(j.channel)+'</span><span class="pill">'+esc(j.status)+'</span></div><h3>'+esc(j.variant)+' · '+esc(new Date(j.scheduled_at).toLocaleString())+'</h3><div class="variant">'+esc(previewSalesCopy(j.text))+'</div><div class="actions"><a href="'+esc(j.source_url)+'" target="_blank" rel="noopener">Voir la source</a><button data-pub-copy="'+esc(j.id)+'">Copier la réponse</button>'+(j.status==='ready'?'<button data-pub-done="'+esc(j.id)+'">J’ai publié</button>':'')+(['ready','scheduled'].includes(j.status)?'<button data-pub-cancel="'+esc(j.id)+'">Annuler</button>':'')+'</div></article>').join(''):'<div class="empty">Planning vide : prépare une réponse qualifiée et programme-la ici.</div>';
+    $('publicationSummary').textContent=counts.ready+' prêt(s) à publier · '+counts.scheduled+' programmé(s) · '+counts.published+' confirmé(s) publié(s). Envoi Meta uniquement après confirmation explicite.';
+    $('publicationJobs').innerHTML=rows.length?rows.map(j=>'<article class="salesCampaign"><div class="meta"><span class="pill">'+esc(j.channel)+'</span><span class="pill">'+esc(j.status)+'</span></div><h3>'+esc(j.variant)+' · '+esc(new Date(j.scheduled_at).toLocaleString())+'</h3><div class="variant">'+esc(previewSalesCopy(j.text))+'</div><div class="actions"><a href="'+esc(j.source_url)+'" target="_blank" rel="noopener">Voir la source</a><button data-pub-copy="'+esc(j.id)+'">Copier la réponse</button>'+(j.status==='ready'&&j.channel==='facebook'&&facebookConfigured?'<button data-pub-facebook="'+esc(j.id)+'">Publier sur MA Page Facebook</button>':'')+(j.status==='ready'?'<button data-pub-done="'+esc(j.id)+'">J’ai publié</button>':'')+(['ready','scheduled'].includes(j.status)?'<button data-pub-cancel="'+esc(j.id)+'">Annuler</button>':'')+'</div></article>').join(''):'<div class="empty">Planning vide : prépare une réponse qualifiée et programme-la ici.</div>';
+    $('publicationJobs').querySelectorAll('[data-pub-facebook]').forEach(b=>b.addEventListener('click',async()=>{
+      const j=rows.find(x=>x.id===b.dataset.pubFacebook);if(!j)return;
+      const approved=confirm('PUBLIER SUR TA PAGE FACEBOOK OFFICIELLE ?\n\nRelis le texte ci-dessous. Il sera réellement publié sur la Page et visible publiquement.\n\n'+j.text);
+      if(!approved)return;
+      b.disabled=true;
+      try{const out=await request('/api/publications/'+encodeURIComponent(j.id)+'/send-facebook',{method:'POST'});
+        setStatus('Publication Facebook envoyée. Vérifie-la sur ta Page : '+(out.result?.url||''),'ok');await refreshPublicationJobs();}
+      catch(e){setStatus('Envoi Facebook non confirmé : '+e.message+'. Vérifie la Page avant tout nouvel essai.','err');}
+      finally{b.disabled=false;}
+    }));
     $('publicationJobs').querySelectorAll('[data-pub-copy]').forEach(b=>b.addEventListener('click',()=>{const j=rows.find(x=>x.id===b.dataset.pubCopy);if(j)copy(j.text);}));
     $('publicationJobs').querySelectorAll('[data-pub-cancel]').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Annuler cette action programmée ?'))return;try{await request('/api/publications/'+b.dataset.pubCancel+'/cancel',{method:'POST'});await refreshPublicationJobs();}catch(e){setStatus(e.message,'err');}}));
     $('publicationJobs').querySelectorAll('[data-pub-done]').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Confirmer que tu as réellement publié sur le canal indiqué ?'))return;const link=prompt('Lien public de la publication (facultatif, HTTPS) :','');if(link===null)return;try{await request('/api/publications/'+b.dataset.pubDone+'/published',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:link})});setStatus('Publication marquée comme effectuée manuellement.','ok');await refreshPublicationJobs();}catch(e){setStatus(e.message,'err');}}));
   }
-  async function refreshPublicationJobs(){const data=await request('/api/publications');renderPublicationJobs(data.jobs||[]);}
+  async function refreshPublicationJobs(){await refreshFacebookConnector();const data=await request('/api/publications');renderPublicationJobs(data.jobs||[]);}
   $('publicationForm').addEventListener('submit',async e=>{
     e.preventDefault();const index=Number($('publicationDraft').value);const d=publicationDrafts[index];
     if(!d||$('publicationDraft').value==='')return setStatus('Sélectionne un brouillon qualifié.','warn');

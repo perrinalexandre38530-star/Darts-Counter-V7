@@ -19,6 +19,8 @@ const exports={};
 vm.runInNewContext(out.outputText,{
  exports,console,require(specifier){
   if(specifier.includes('challengeFullReport')) return {enrichChallengeReport: report=>report};
+  if(specifier.includes('historyDartsModeReport')) return {enrichHistoricalDartsModeReport: report=>report};
+  if(specifier.includes('historySportReport')) return {applyHistoricalSportResult: report=>report};
   if(specifier==='fflate')return {zipSync:()=>new Uint8Array()};
   if(specifier.endsWith('.png')||specifier.endsWith('.webp'))return specifier;
   throw Error('Unexpected import: '+specifier);

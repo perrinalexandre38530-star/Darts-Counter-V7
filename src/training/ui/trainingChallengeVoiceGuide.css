@@ -1,0 +1,8 @@
+/* Guidage léger : aucun élément ne recouvre la zone de saisie. */
+.mssChallengeVoiceGuide{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;margin:6px 0;padding:6px 8px;border:1px solid rgba(39,220,255,.23);background:rgba(10,31,47,.77);border-radius:12px;color:#e7f7ff;box-sizing:border-box}
+.mssChallengeVoiceGuideLabel{display:flex;flex:1 1 110px;flex-direction:column;min-width:0;gap:2px;color:#7aeaff;font-size:9px;font-weight:950;letter-spacing:.35px;line-height:1.2}
+.mssChallengeVoiceGuideLabel small{color:#c1ccdc;font-size:9px;font-weight:600;letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mssChallengeVoiceGuide button{flex:0 0 auto;min-height:31px;border:1px solid rgba(39,220,255,.34);border-radius:9px;background:#102b40;color:#e6faff;padding:5px 8px;font-size:10px;font-weight:950;touch-action:manipulation;cursor:pointer}
+.mssChallengeVoiceGuide button.is-active{color:#001d27;background:#6beaff;border-color:#6beaff}
+.mssChallengeVoiceGuideNotice{width:100%;margin:2px 0;font-size:9px;line-height:1.3;color:#ffd38e}
+@media (max-width:420px), (orientation:landscape) and (max-height:520px){.mssChallengeVoiceGuide{padding:4px 6px;margin:4px 0;gap:5px}.mssChallengeVoiceGuideLabel small{max-width:180px}.mssChallengeVoiceGuide button{min-height:29px;padding:4px 6px}}

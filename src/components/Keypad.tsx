@@ -8,6 +8,7 @@
 // ✅ PRESETS/VOICE: action compacte intégrée dans la rangée du haut, à côté d'ANNULER
 // ============================================
 import React from "react";
+import { mssHitColor } from "../lib/mssVisualCharter";
 import type { Dart as UIDart } from "../lib/types";
 
 type KeypadAuxAction = {
@@ -293,6 +294,7 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
               type="button"
               style={{
                 ...cell,
+                ...(n === 0 ? { color: "#fff", fontSize: 12, fontWeight: 1000, borderColor: "#ff6b77", background: "linear-gradient(180deg,#e14656,#951a2c)", boxShadow: "0 0 14px rgba(255,76,89,.18)" } : null),
                 ...(highlighted.has(Number(n)) && n !== 0 ? {
                   borderColor: `${highlightColor}cc`,
                   color: "#fff",
@@ -306,8 +308,9 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
               disabled={blocked}
               aria-disabled={blocked}
               title={blocked ? "Choisis d'abord DOUBLE, TRIPLE, GROS ou PETIT" : (n === 0 ? "MISS" : String(n))}
+              aria-label={n === 0 ? "MISS" : String(n)}
             >
-              {n}
+              {n === 0 ? "MISS" : n}
             </button>
             );
           })}
@@ -493,7 +496,7 @@ export default function Keypad({
           {[0,1,2].map((index) => (
             <React.Fragment key={index}>
               {previewRenderer ? previewRenderer(currentThrow[index], index) : (
-                <span style={{ ...chip, color: index === 0 ? "#eec7ff" : index === 1 ? "#cfe6ff" : "#ffe7c0" }}>{fmt(currentThrow[index])}</span>
+                <span style={{ ...chip, color: mssHitColor(currentThrow[index]), borderColor: currentThrow[index] ? mssHitColor(currentThrow[index]) + "99" : "rgba(255,255,255,.10)", boxShadow: currentThrow[index] ? `inset 0 -2px 0 ${mssHitColor(currentThrow[index])}66` : "none" }}>{fmt(currentThrow[index])}</span>
               )}
             </React.Fragment>
           ))}

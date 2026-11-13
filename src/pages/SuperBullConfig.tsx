@@ -5,6 +5,7 @@ import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import TeamPagedSelector from "../components/TeamPagedSelector";
 import { SIMPLE_ROUND_VARIANTS } from "../lib/simpleRounds/variants";
@@ -357,13 +358,14 @@ export default function SuperBullConfig(props: any) {
         background: "radial-gradient(circle at top, rgba(22,46,78,.32), rgba(4,8,14,.98) 44%)",
       }}
     >
-      <PageHeader
+      <PageHeader difficultyGameId="superbull"
         title="SUPER BULL"
         tickerSrc={spec.tickerSrc}
         left={<BackDot onClick={back} />}
         right={<InfoDot title="Règles SUPER BULL" content="3 fléchettes par volée. BULL25 = 25 points, BULL50 = 50 points, toute autre zone = MISS. Le premier à atteindre l'objectif gagne. Sans objectif, le meilleur total à la fin des rounds gagne. En cas d'égalité : score, BULL50, centres, meilleure série puis volées parfaites." />}
       />
 
+      <div style={{ padding: "3px 9px 0" }}><DartsRelatedModesPanel gameId="super_bull" accent="#29deff" compact onOpenGame={(id) => { if (id === "training_super_bull") props?.setTab?.("training_mode", { modeId: "training_super_bull" }); }} /></div>
       <div style={{ padding: "8px 8px 14px", display: "grid", gap: 10 }}>
         {!forcedLaunchMode ? <section style={{ ...cardStyle(), border: "1px solid rgba(41,222,255,.44)" }}>
           <div style={{ color: "#29deff", fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>Entrée du mode</div>

@@ -2,6 +2,7 @@ import * as React from "react";
 import { uniqueHistoryParticipants, historyCanonicalKey } from "../lib/historyIdentityDedupe";
 import { dartsFamilyHistoryKey } from "../lib/historyDartsVariants";
 import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
+import ShoveStatsDashboard from "../components/ShoveStatsDashboard";
 import DartsPokerBadge from "../components/darts-poker/DartsPokerBadge";
 import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
 import type { DartsPokerBadgeId } from "../components/darts-poker/DartsPokerBadge";
@@ -1206,6 +1207,27 @@ function Wave61SummaryTables({ rec, rows, accent, familyLabel }: { rec: any; row
   const comeback = maxBy("bestScoreDrop");
   const cleanKing = maxBy("bestCleanStreak");
   const shieldKing = maxBy("shieldSaved");
+
+  if (modeId === "shove_a_penny") {
+    const snapshot = pick(rec?.payload?.stateSnapshot, rec?.resume?.state, {}) || {};
+    const saved = rec?.summary?.shoveAPenny || {};
+    const players = rows.map((row:any)=>({id:String(row.id),name:String(row.name||"Joueur")}));
+    const profileList = rows.map((row:any)=>({id:String(row.id),name:String(row.name||"Joueur"),avatarDataUrl:row.avatar||row?.raw?.avatarDataUrl||null}));
+    const config = snapshot?.config || rec?.summary?.config || rec?.payload?.config || {modeOptions:{ruleSet:saved.ruleSet||"traditional",marksPerBox:saved.marksPerBox||3,endMode:saved.endMode||"first_finish"}};
+    const fromHistory = snapshot?.special?.shoveMarksByPlayer || saved.marksByPlayer || Object.fromEntries(rows.map((row:any)=>[String(row.id),row?.raw?.shoveAPenny?.marksBySector||{}]));
+    const playerStats = snapshot?.statsByPlayer || Object.fromEntries(rows.map((row:any)=>[String(row.id),{
+      darts:num(row?.raw?.darts),visits:num(row?.raw?.visits),hits:num(row?.raw?.hits),misses:num(row?.raw?.misses),doubles:num(row?.raw?.doubles),triples:num(row?.raw?.triples)
+    }]));
+    const data = { ...snapshot, config, players: snapshot?.players||players,
+      statsByPlayer:playerStats, visits: snapshot?.visits||visitHistory,
+      progress:snapshot?.progress||rec?.summary?.finalProgress||Object.fromEntries(rows.map((row:any)=>[String(row.id),num(row?.raw?.progress)])),
+      winnerId:snapshot?.winnerId||rec?.winnerId||rec?.summary?.winnerId||null,
+      special:{...(snapshot?.special||{}),shoveMarksByPlayer:fromHistory,shoveFinishOrder:snapshot?.special?.shoveFinishOrder||saved.finishOrder||[]},
+    };
+    return <section data-shove-history-stats="1" style={card(accent)}>
+      <ShoveStatsDashboard state={data} profiles={profileList} accent={accent} activePlayerId={data.winnerId||players[0]?.id} isFinal={String(rec?.status||"") === "finished"}/>
+    </section>;
+  }
 
   if (modeId === "green_vs_red") {
     const snapshot = pick(rec?.payload?.stateSnapshot, rec?.resume?.state, {}) || {};

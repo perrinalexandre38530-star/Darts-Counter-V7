@@ -2,6 +2,7 @@
 import React from "react";
 import { buildCapitalPlayerStats, CAPITAL_CONTRACT_META, capitalDartScore } from "../../lib/capitalGame";
 import { capitalCompletedMatches } from "../../lib/capitalStatsHistory";
+import { buildCapitalPersonalRecords } from "../../lib/capitalPersonalRecords";
 
 const ACCENT = "#ffd166";
 
@@ -88,6 +89,7 @@ export default function CapitalStatsTabFull({ records = [], playerId: wantedPlay
   const effectiveFilter = variantFilter === "all" || variants.some((v) => v.id === variantFilter) ? variantFilter : "all";
   const matches = React.useMemo(() => effectiveFilter === "all" ? allMatches : allMatches.filter((item) => item.variantId === effectiveFilter), [allMatches, effectiveFilter]);
   const rows = matches.map((item) => item.row);
+  const personalRecords = React.useMemo(() => buildCapitalPersonalRecords(matches, String(wantedPlayerId || "")), [matches, wantedPlayerId]);
   const games = matches.length;
   const wins = matches.filter((item) => winnerIds(item.record).includes(String(wantedPlayerId))).length;
   const losses = Math.max(0, games - wins);
@@ -174,6 +176,43 @@ export default function CapitalStatsTabFull({ records = [], playerId: wantedPlay
       </div>
       <div style={{ marginTop: 7, fontSize: 10, color: "#aeb3c5" }}>Choisis une variante pour filtrer toutes les statistiques ci-dessous. Seules les parties terminées sont comptées.</div>
     </>) : null}
+
+    {games && section("Records personnels · contrats & variantes", <>
+      <div style={{ color: "#aeb3c5", fontSize: 10.5, marginBottom: 10 }}>
+        Records calculés depuis les volées validées des parties terminées, pour {effectiveFilter === "all" ? "toutes les variantes" : variants.find(v => v.id === effectiveFilter)?.label || "cette variante"}. Les impacts et les scores non enregistrés ne sont jamais estimés.
+      </div>
+      {personalRecords.gamesWithVisits === 0 ? <div style={{ padding: 10, borderRadius: 10, background: "rgba(0,0,0,.23)", fontSize: 11, color: "#aeb3c5" }}>Aucune volée détaillée disponible pour établir des records fiables.</div> : <>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginBottom: 12 }}>
+          {kpi("Meilleur gain validé", personalRecords.bestGain ? `+${personalRecords.bestGain.value}` : "—",
+            personalRecords.bestGain ? `${CAPITAL_CONTRACT_META[personalRecords.bestGain.contractId]?.short || personalRecords.bestGain.contractId} · ${personalRecords.bestGain.variantLabel}` : "Donnée indisponible", "#a8ff68")}
+          {kpi("Plus longue série", personalRecords.bestStreak ? personalRecords.bestStreak.value : "—",
+            personalRecords.bestStreak ? `${personalRecords.bestStreak.variantLabel} · contrats consécutifs` : "Donnée indisponible")}
+          {kpi("Capital maximum", personalRecords.bestPeak ? personalRecords.bestPeak.value : "—",
+            personalRecords.bestPeak?.variantLabel || "Donnée indisponible")}
+          {kpi("Contrats validés", `${personalRecords.contractsSucceeded}/${personalRecords.contractsAttempted}`,
+            `${percent(ratio(personalRecords.contractsSucceeded, personalRecords.contractsAttempted))} · ${personalRecords.gamesWithVisits} parties documentées`)}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <strong style={{ color: ACCENT, fontSize: 11 }}>RECORDS PAR CONTRAT</strong>
+          <span style={{ color: "#aeb3c5", fontSize: 10 }}>Glisser horizontalement →</span>
+        </div>
+        <div role="region" aria-label="Records CAPITAL par contrat" tabIndex={0} style={{ overflowX: "auto", maxWidth: "100%", borderRadius: 12, border: "1px solid rgba(255,209,102,.22)", overscrollBehaviorX: "contain" }}>
+          <table style={{ width: "100%", minWidth: 540, borderCollapse: "collapse", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
+            <thead><tr style={{ background: "rgba(255,209,102,.12)", color: ACCENT }}>
+              {[["Contrat", "left"], ["Réussites", "center"], ["Taux", "center"], ["Record validé", "right"], ["Points cumulés", "right"]].map(([label, align]) => <th key={label} scope="col" style={{ textAlign: align, padding: "10px 7px", whiteSpace: "nowrap" }}>{label}</th>)}
+            </tr></thead>
+            <tbody>{personalRecords.contracts.map((item, i) => <tr key={item.id} style={{ borderTop: "1px solid rgba(255,255,255,.08)", background: i % 2 ? "rgba(255,255,255,.018)" : "rgba(0,0,0,.1)" }}>
+              <th scope="row" style={{ textAlign: "left", padding: "9px 7px", fontWeight: 900 }}>{CAPITAL_CONTRACT_META[item.id]?.label || item.id.replaceAll("_", " ")}</th>
+              <td style={{ textAlign: "center", whiteSpace: "nowrap", color: "#a8ff68", fontWeight: 900 }}>{item.successes}/{item.attempts}</td>
+              <td style={{ textAlign: "center", color: item.successRate >= 50 ? "#a8ff68" : "#ffad6a" }}>{percent(item.successRate)}</td>
+              <td style={{ textAlign: "right", color: ACCENT, fontWeight: 1000 }} title={item.bestCreditedVariant || ""}>{item.bestCredited === null ? "—" : `+${item.bestCredited}`}</td>
+              <td style={{ textAlign: "right", padding: "9px 7px" }}>+{item.totalCredited}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <div style={{ color: "#99a0b0", fontSize: 10, marginTop: 7 }}>« Record validé » = meilleurs points réellement crédités sur une seule manche réussie, bonus inclus ; jamais le score brut hors contrat. Sélectionne une variante ci-dessus pour voir ses propres records.</div>
+      </>}
+    </>)}
 
     {!games ? <div style={{ marginTop: 14, padding: 16, borderRadius: 16, border: "1px solid rgba(255,255,255,.09)", color: "#aeb3c5" }}>Aucune partie CAPITAL terminée pour ce profil.</div> : <>
       <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>

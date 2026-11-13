@@ -18,6 +18,8 @@
 // ============================================
 
 import React from "react";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import DartsConfigGuideBoundary from "../components/DartsConfigGuideBoundary";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers, parseBotLevelValue } from "../lib/bots";
@@ -122,6 +124,7 @@ type Props = {
   profiles?: Profile[];
   params?: any;
   onFinish?: (m: SavedMatch) => void;
+  go?: (tab: any, params?: any) => void;
 };
 
 type BotLite = {
@@ -424,7 +427,7 @@ function pickCricketBotThrow(state: any, player: any, withPoints: boolean, quali
 
 type CricketVariantId = "classic" | "enculette" | "cut_throat";
 
-export default function CricketPlay({ profiles, params, onFinish }: Props) {
+export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
   const isQuickParty = params?.quickParty === true || String(params?.partyMode || "").toLowerCase() === "quick";
   const quickSafePlaySound = React.useCallback((name: any) => { if (!isQuickParty) playSound(name); }, [isQuickParty]);
   const [castStatusTick, setCastStatusTick] = React.useState(0);
@@ -1958,16 +1961,14 @@ return {
       <div style={{ pointerEvents: "auto" }}>
         <BackDot
           onClick={() => {
-            try {
-              const go = (window as any)?.__appGo || (window as any)?.__appStore?.go;
-              if (typeof go === "function") {
-                go("cricket", { launchMode: isQuickParty ? "quick" : "arcade" });
-                return;
-              }
-            } catch {}
-            try {
-              window.location.hash = "#/";
-            } catch {}
+            // Use the router callback provided by App: the old global lookup
+            // was missing on several screens and made BackDot inert.
+            if (typeof go === "function") {
+              if (phase === "setup") go("cricket", { variantId: params?.variantId || undefined });
+              else go("cricket", { ...params, launchMode: "arcade" });
+              return;
+            }
+            window.history.back();
           }}
           color={T.gold}
           glow={"rgba(246,194,86,0.55)"}
@@ -1986,6 +1987,9 @@ return {
     </div>
   </div>
 </div>
+
+        <DartsRelatedModesPanel gameId={variantId === "cut_throat" ? "cricket_cut_throat" : "cricket"}
+          accent={T.gold} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
 
         {/* JOUEURS (HUMAINS) */}
         <div

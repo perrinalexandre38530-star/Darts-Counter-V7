@@ -27,7 +27,7 @@ type CompetitionMeta = {
   logoUrl?: string | null;
   logoPageUrl?: string | null;
 };
-type NormalPlayer = { id?: string | null; name: string; score?: number | null; countryCode?: string | null; photoUrl?: string | null };
+type NormalPlayer = { id?: string | null; name: string; score?: number | null; countryCode?: string | null; photoUrl?: string | null; logoUrl?: string | null };
 type NormalMatch = {
   id: string;
   competition?: string | null;
@@ -3639,8 +3639,8 @@ function dateOffsetIso(offsetDays: number) {
 
 function sportsDbPlayers(row: any): NormalPlayer[] {
   return [
-    { id: str(row?.idHomeTeam) || null, name: str(row?.strHomeTeam) || "—", score: num(row?.intHomeScore) },
-    { id: str(row?.idAwayTeam) || null, name: str(row?.strAwayTeam) || "—", score: num(row?.intAwayScore) },
+    { id: str(row?.idHomeTeam) || null, name: str(row?.strHomeTeam) || "—", score: num(row?.intHomeScore), logoUrl: /^https:\/\//i.test(str(row?.strHomeTeamBadge || row?.strHomeBadge)) ? str(row?.strHomeTeamBadge || row?.strHomeBadge) : null },
+    { id: str(row?.idAwayTeam) || null, name: str(row?.strAwayTeam) || "—", score: num(row?.intAwayScore), logoUrl: /^https:\/\//i.test(str(row?.strAwayTeamBadge || row?.strAwayBadge)) ? str(row?.strAwayTeamBadge || row?.strAwayBadge) : null },
   ];
 }
 
@@ -3783,8 +3783,8 @@ async function sportsDbFootballOverview(depth: "fast" | "deep" = "fast") {
 function footballDataPlayers(row: any): NormalPlayer[] {
   const score = row?.score?.fullTime || row?.score?.regularTime || row?.score?.halfTime || {};
   return [
-    { id: str(row?.homeTeam?.id) || null, name: str(row?.homeTeam?.name || row?.homeTeam?.shortName) || "—", score: num(score?.home) },
-    { id: str(row?.awayTeam?.id) || null, name: str(row?.awayTeam?.name || row?.awayTeam?.shortName) || "—", score: num(score?.away) },
+    { id: str(row?.homeTeam?.id) || null, name: str(row?.homeTeam?.name || row?.homeTeam?.shortName) || "—", score: num(score?.home), logoUrl: /^https:\/\//i.test(str(row?.homeTeam?.crest)) ? str(row?.homeTeam?.crest) : null },
+    { id: str(row?.awayTeam?.id) || null, name: str(row?.awayTeam?.name || row?.awayTeam?.shortName) || "—", score: num(score?.away), logoUrl: /^https:\/\//i.test(str(row?.awayTeam?.crest)) ? str(row?.awayTeam?.crest) : null },
   ];
 }
 

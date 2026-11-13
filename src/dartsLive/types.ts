@@ -76,6 +76,8 @@ export type DartsLivePlayer = {
   score?: number | null;
   countryCode?: string | null;
   photoUrl?: string | null;
+  /** Verified club/team crest, not a news image or generic federation favicon. */
+  logoUrl?: string | null;
 };
 
 export type DartsLiveFixture = {

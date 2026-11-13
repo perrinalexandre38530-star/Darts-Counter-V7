@@ -883,7 +883,7 @@ export default function DartsFirefighterConfig(props: any) {
   const blocks: Record<StepKey, React.ReactNode> = { mission: missionBlock, brigade: brigadeBlock, territory: territoryBlock, ignition: ignitionBlock, propagation: propagationBlock, resources: resourcesBlock, input: inputBlock, summary: summaryBlock };
 
   return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -12%,${FIRE}28 0,${bg} 42%,#020306 100%)`, paddingBottom: 18 }}>
-    <PageHeader tickerSrc={tickerFirefighter} tickerAlt="DARTS FIREFIGHTER" left={<div style={{ marginLeft: 6 }}><BackDot onClick={back} color={FIRE} glow={`${FIRE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>} />
+    <PageHeader difficultyGameId="darts_firefighter" tickerSrc={tickerFirefighter} tickerAlt="DARTS FIREFIGHTER" left={<div style={{ marginLeft: 6 }}><BackDot onClick={back} color={FIRE} glow={`${FIRE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>} />
     <main style={{ width: "min(920px,100%)", margin: "0 auto", padding: "8px 8px 18px", boxSizing: "border-box" }}>
       <section style={{ ...card, padding: 8, marginBottom: 9, background: "rgba(5,8,15,.92)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>

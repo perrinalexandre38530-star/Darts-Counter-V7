@@ -1,4 +1,6 @@
 export type RadarSecrets = {
+  META_FACEBOOK_PAGE_ID?: string;
+  META_FACEBOOK_PAGE_TOKEN?: string;
   BRAVE_SEARCH_API_KEY?: string;
   RADAR_ADMIN_TOKEN?: string;
   SOCIAL_AUTOPILOT_MODE?: string;

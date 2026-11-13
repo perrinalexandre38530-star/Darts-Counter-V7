@@ -37,7 +37,7 @@ export default function FunGagesConfig(props: any) {
 
   return (
     <div className="page">
-      <PageHeader
+      <PageHeader difficultyGameId="fun_gages"
         title="GAGES"
         tickerSrc={tickerFunGages}
         left={<BackDot onClick={goBack} />}

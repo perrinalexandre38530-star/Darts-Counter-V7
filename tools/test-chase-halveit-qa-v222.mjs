@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const suites = [
   'test-chase-halveit-core-v222.mjs',
+  'test-chase-halveit-ranking-v223.mjs',
   'test-chase-halveit-split-v138.mjs',
   'test-chase-halveit-resume-v141.mjs',
   'test-chase-halveit-play-ui-v146.mjs',

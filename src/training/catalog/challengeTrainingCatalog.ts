@@ -3,6 +3,7 @@
  * Aucun moteur/scoring n'est réimplémenté ici : chaque fiche utilise ChallengePlay.
  */
 import type { ChallengeConfigData } from '../../pages/ChallengeConfig';
+import { mssChallengeDifficulty } from '../../lib/mssVisualCharter';
 import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, DOUBLES_8_TARGETS, challengeExerciseType, exerciseTitle } from '../../lib/challengeExercises';
 import { CHALLENGE_ARCADE_CATALOG, isArcadeChallengePlayable, type ArcadeFamily } from '../../lib/challengeArcadeCatalog';
 import { arcadeRuleDetails } from '../../lib/challengeArcadeEngine';
@@ -59,6 +60,7 @@ export const CHALLENGE_TRAINING_ARCADE_CATALOG: ChallengeTrainingPreset[] = CHAL
   description: item.description,
   instructions: item.description,
   family: arcadeTrainingFamily[item.family],
+  difficulty: mssChallengeDifficulty(item),
   // 100% = parcours terminé (jamais une précision de tir inventée).
   successValidationPct: 100,
   config: {

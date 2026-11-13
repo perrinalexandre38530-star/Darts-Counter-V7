@@ -49,7 +49,7 @@ export default function KnockoutConfig(props: any) {
 
   return (
     <div className="page">
-      <PageHeader
+      <PageHeader difficultyGameId="knockout"
         title="KNOCKOUT"
         tickerSrc={tickerKnockout}
         left={<BackDot onClick={goBack} />}

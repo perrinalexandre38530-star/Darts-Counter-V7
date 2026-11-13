@@ -2,6 +2,7 @@ import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import PageHeader from "../components/PageHeader";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import { useLang } from "../contexts/LangContext";
@@ -45,7 +46,8 @@ export default function Top10Config(props: any) {
       <button type="button" onClick={launch} className="btn-primary" style={{minHeight:55,fontSize:18,fontWeight:1000}}>JOUER</button>
     </main>
   </div>;
-  return <div className="page"><PageHeader title="TOP 10" tickerSrc={lang === "fr" ? tickerTop10Fr : tickerTop10En} left={<BackDot onClick={back} />} right={<InfoDot title={tr("Règles TOP 10")} content={tr(RULES)} />} />
+  return <div className="page"><PageHeader difficultyGameId="top10" title="TOP 10" tickerSrc={lang === "fr" ? tickerTop10Fr : tickerTop10En} left={<BackDot onClick={back} />} right={<InfoDot title={tr("Règles TOP 10")} content={tr(RULES)} />} />
+    <div style={{ maxWidth: 650, margin: "0 auto", padding: "8px 14px 0" }}><DartsRelatedModesPanel gameId={training ? "top_10_training" : "top_10"} accent="#ffc35b" compact onOpenGame={(id) => { if (id === "top_10_training") props?.setTab?.("top_10_config", { training: true }); else if (id === "top_10") props?.setTab?.("top_10_config", { training: false }); }} /></div>
     <div style={{ maxWidth: 650, margin: "0 auto", padding: "16px 14px 110px" }}>
       <section style={{ background: "#10172bd9", border: "1px solid #ffffff25", borderRadius: 18, padding: 17 }}>
         <h2 style={{ fontSize: 18, fontWeight: 1000, marginTop: 0 }}>{tr("10 VOLÉES · 30 FLÉCHETTES")}</h2>

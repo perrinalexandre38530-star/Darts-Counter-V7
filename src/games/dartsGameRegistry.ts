@@ -327,7 +327,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   {
     id: "scram",
     label: "Scram",
-    category: "classic",
+    category: "variant",
     entry: "games",
     tab: "scram_config",
     popularityRank: 9,
@@ -389,7 +389,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     label: "Enculette / Vache",
     category: "variant",
     entry: "games",
-    tab: "cricket",
+    tab: "enculette_config",
     baseGame: "cricket",
     variantId: "enculette",
     presetVariantId: "enculette",
@@ -686,7 +686,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   {
     id: "capital",
     label: "Capital",
-    category: "challenge",
+    category: "classic",
     entry: "games",
     tab: "capital_config",
     popularityRank: 38,
@@ -1617,6 +1617,8 @@ const READY_IDS = new Set<string>([
   "training_super_bull",
   "training_time_attack",
   "cricket",
+  "cricket_cut_throat", // preset actif du moteur Cricket
+  "enculette", // jeu associé avec sa propre configuration
   "darts_poker",
   "cargo",
   "ocean_control",

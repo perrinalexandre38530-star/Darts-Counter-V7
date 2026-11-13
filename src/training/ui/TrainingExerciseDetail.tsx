@@ -1,4 +1,5 @@
 import React from "react";
+import GameDifficultyStars from "../../components/GameDifficultyStars";
 import type { TrainingExerciseDefinition } from "../catalog/trainingExerciseCatalog";
 import { TRAINING_FAMILY_META } from "../catalog/trainingExerciseCatalog";
 import { buildTrainingExerciseDetail } from "../catalog/trainingExerciseDetails";
@@ -27,7 +28,7 @@ export default function TrainingExerciseDetail({ exercise, summary, progression,
     </div>
 
     <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>{TRAINING_FAMILY_META[exercise.family].label.toUpperCase()} • DIFFICULTÉ {exercise.difficulty}/5</div><div style={{ marginTop: 4, fontSize: "clamp(18px,2.5vw,28px)", lineHeight: 1.04, fontWeight: 1000 }}>{exercise.title}</div><div style={{ marginTop: 5, maxWidth: 760, fontSize: 10.5, lineHeight: 1.45, opacity: .58 }}>{exercise.subtitle}</div></div>
+      <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>{TRAINING_FAMILY_META[exercise.family].label.toUpperCase()} <GameDifficultyStars level={exercise.difficulty} compact /></div><div style={{ marginTop: 4, fontSize: "clamp(18px,2.5vw,28px)", lineHeight: 1.04, fontWeight: 1000 }}>{exercise.title}</div><div style={{ marginTop: 5, maxWidth: 760, fontSize: 10.5, lineHeight: 1.45, opacity: .58 }}>{exercise.subtitle}</div></div>
       <div style={{ padding: "7px 10px", borderRadius: 999, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", fontSize: 8.3, fontWeight: 950, whiteSpace: "nowrap" }}>{detail.format.toUpperCase()}</div>
     </div>
 

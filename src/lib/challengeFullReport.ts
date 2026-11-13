@@ -50,6 +50,34 @@ export function enrichChallengeReport(
   ['JOUEURS',String(report.players.length)],
  ];
  details.push(section('CONFIGURATION DE LA PARTIE',['PARAMÈTRE','VALEUR'],meta));
+ // A Challenge exercise may have its own explicit scoring variant. Expose only
+ // settings truly saved in the archive — no assumed defaults or invented hits.
+ const saved=config&&typeof config==='object'&&!Array.isArray(config)?config as Record<string,any>:{};
+ const extra:Array<[string,string]>=[];
+ const savedOption=(label:string,key:string)=>{
+  if(!Object.prototype.hasOwnProperty.call(saved,key))return;
+  const value=saved[key];
+  if(value===undefined||value===null||value==='')return;
+  if(typeof value==='boolean')extra.push([label,value?'OUI':'NON']);
+  else if(typeof value==='number'||typeof value==='string')extra.push([label,String(value)]);
+ };
+ savedOption('HORLOGE · BULL INCLUS','clockIncludeBull');
+ savedOption('HORLOGE · BARÈME','clockScoreMode');
+ savedOption('HALVE-IT · SCORE INITIAL','halfItStartScore');
+ savedOption('SÉQUENCE · BARÈME','sequenceScoreMode');
+ savedOption('GROUPEMENT · MINIMUM','groupingMin');
+ savedOption('GROUPEMENT · MAXIMUM','groupingMax');
+ savedOption('GROUPEMENT · TOUCHES','groupingHits');
+ savedOption('DOUBLES · CIBLE BONUS','doublesBonusTarget');
+ if(Array.isArray(saved.doublesTargets)&&saved.doublesTargets.length)
+  extra.push(['DOUBLES · CIBLES',saved.doublesTargets.map(String).join(', ')]);
+ if(Array.isArray(saved.sequenceObjectives)&&saved.sequenceObjectives.length){
+  details.push(section('OBJECTIFS ENREGISTRÉS · SÉQUENCE',['TOUR','CIBLE'],
+   saved.sequenceObjectives.map((value:unknown,index:number)=>[String(index+1),String(value)])));
+  extra.push(['SÉQUENCE · OBJECTIFS',String(saved.sequenceObjectives.length)]);
+ }
+ if(extra.length)details.push(section('OPTIONS DE LA VARIANTE',['PARAMÈTRE','VALEUR'],extra,
+  'Paramètres réellement sauvegardés avec l’exercice.'));
  for(const player of report.players){
   const pid=String(player.participantId||'').trim();
   const nickname=String(player.name||'').trim().toLowerCase();

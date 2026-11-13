@@ -268,7 +268,7 @@ export default function OceanControlConfig(props: any) {
   const guidedBlocks = [fleetBlock, participantsBlock, weaponsBlock, battleBlock, summaryBlock];
 
   return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 40%,#020507 100%)", paddingBottom: 18 }}>
-    <PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" left={<BackDot onClick={back} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Règles OCEAN CONTROL" color={CYAN} glow={`${CYAN}88`} content={<Rules />} />} />
+    <PageHeader difficultyGameId="ocean_control" tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" left={<BackDot onClick={back} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Règles OCEAN CONTROL" color={CYAN} glow={`${CYAN}88`} content={<Rules />} />} />
     <main style={{ width: "min(940px,100%)", margin: "0 auto", padding: "7px 9px 18px", boxSizing: "border-box" }}>
       <div style={{ borderRadius: 18, padding: 12, marginBottom: 10, background: "linear-gradient(135deg,rgba(48,185,255,.16),rgba(0,0,0,.26))", border: `1px solid ${BLUE}35`, boxShadow: "0 16px 40px rgba(0,0,0,.25)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>

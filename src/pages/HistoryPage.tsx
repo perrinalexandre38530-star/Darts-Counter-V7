@@ -53,6 +53,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import CargoHistoryScoreBlock from "../components/history/CargoHistoryScoreBlock";
 import OceanControlHistoryScoreBlock from "../components/history/OceanControlHistoryScoreBlock";
 import FootballHistoryScoreBlock from "../components/history/FootballHistoryScoreBlock";
+import CapitalHistoryMatchDetail from "../components/history/CapitalHistoryMatchDetail";
 import tickerHistoriqueFr from "../assets/tickers/ticker_historique.png";
 import tickerHistoryEn from "../assets/tickers/ticker_history.png";
 
@@ -2053,6 +2054,7 @@ function CapitalHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
   const matchStats = summary?.matchStats || summary?.stats || anyE?.payload?.stats?.match || {};
   const winnerTeamId = String(summary?.winnerTeamId || anyE?.payload?.winnerTeamId || "");
   const variantName = String(summary?.capitalVariant?.label || anyE?.payload?.summary?.capitalVariant?.label || "").trim();
+  const matchHighlights = summary?.capitalHighlights || anyE?.payload?.summary?.capitalHighlights || null;
   const fmtDuration = (msRaw: any) => {
     const ms = Number(msRaw || 0);
     if (!Number.isFinite(ms) || ms <= 0) return "";
@@ -2085,6 +2087,14 @@ function CapitalHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
           </React.Fragment>)}
         </div>
       )}
+      {matchHighlights && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 3 }}>
+        {[
+          ["Meilleur gain", matchHighlights.bestGain ? `+${matchHighlights.bestGain.amount} · ${matchHighlights.bestGain.playerName}` : null],
+          ["Plus forte perte", matchHighlights.biggestLoss ? `${matchHighlights.biggestLoss.amount} · ${matchHighlights.biggestLoss.playerName}` : null],
+          ["Pic de capital", matchHighlights.maxCapital ? `${matchHighlights.maxCapital.value} · ${matchHighlights.maxCapital.playerName}` : null],
+          ["Série réussie", matchHighlights.longestStreak?.count ? `${matchHighlights.longestStreak.count} · ${matchHighlights.longestStreak.playerName}` : null],
+        ].filter((row) => row[1]).map(([label, value]) => <span key={String(label)} style={{ borderRadius: 8, padding: "4px 7px", background: "rgba(255,190,73,.08)", border: "1px solid rgba(255,190,73,.18)", color: "#f5d391", fontSize: 9.5 }}><b>{label}</b> {value}</span>)}
+      </div>}
       {rows.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
         {rows.slice(0, 3).map((row: any) => `${row.name}: ${row.startingCapital}→${row.finalCapital} • +${row.pointsWon}/-${row.capitalLost} • contrats ${row.successRate.toFixed(1)}% • moy. ${row.averageVisit.toFixed(1)} • best ${row.bestVisit}`).join("  |  ")}
       </div> : null}
@@ -3902,6 +3912,7 @@ export default function HistoryPage({
   const [quickLinkEntry, setQuickLinkEntry] = useState<SavedEntry | null>(null);
   const [quickLinks, setQuickLinks] = useState<Record<string, string>>({});
   const [quickLinkBusy, setQuickLinkBusy] = useState(false);
+  const [capitalHistoryDetail, setCapitalHistoryDetail] = useState<SavedEntry | null>(null);
 
   // ============================================================
   // 🔎 DEBUG HISTORYPAGE — voir RAW vs filtré (pour "Aucune partie ici")
@@ -5796,6 +5807,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
     const m = baseMode(e);
     const inferredMode = inferGameFilterKey(e, "darts");
+    // CAPITAL V161 : « VOIR STATS » ouvre la fiche DU MATCH sauvegardé,
+    // et non les statistiques globales d'un profil ni le PLAY.
+    if (statusOf(e) !== "in_progress" && (normalizeToken(m) === "capital" || normalizeToken(inferredMode) === "capital")) {
+      setCapitalHistoryDetail(e);
+      return;
+    }
     const sportKey = inferSportKey(e);
 
     // Sports hors Darts : le bouton Voir stats doit ouvrir leur historique/statistiques
@@ -6749,6 +6766,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         onClose={()=>setHistoryShareOpen(false)} onShare={format=>void handleChallengeHistoryReport(format,true)}/>
       <ChallengeReportPreview result={historyExportPreview} onClose={()=>setHistoryExportPreview(null)}
         onDownload={()=>{try{if(historyReport)downloadChallengeFile(historyReport,historyFormatRef.current);}catch(error){setHistoryReportError(String((error as Error)?.message||error));}setHistoryExportPreview(null);}}/>
+      <CapitalHistoryMatchDetail record={capitalHistoryDetail} onClose={() => setCapitalHistoryDetail(null)} />
       {friendShareEntry ? (
         <div
           role="dialog"

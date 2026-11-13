@@ -28,6 +28,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
+import GameDifficultyStars from "../components/GameDifficultyStars";
 import BackDot from "../components/BackDot";
 import { PageAdBanner } from "../monetization/AdSlot";
 import tickerTrainingFr from "../assets/tickers/ticker_menu_training_fr.png";
@@ -400,6 +401,8 @@ export default function TrainingMenu({ go }: Props) {
         badge: ready ? null : comingSoon,
         tickerSrc: g.id === "top_10_training"
           ? (lang === "fr" ? findTickerSmart("top_10") : (findTickerSmart("top_10_en") ?? findTickerSmart("top_10")))
+          : g.id === "training_super_bull" ? findTickerSmart("super_bull")
+          : g.id === "training_x01" ? findTickerSmart("x01")
           : findTickerSmart(g.id),
       };
     });
@@ -421,7 +424,7 @@ export default function TrainingMenu({ go }: Props) {
           position: "relative",
           width: "100%",
           padding: 14,
-          paddingRight: 46,
+          paddingRight: 118,
           textAlign: "left",
           borderRadius: 16,
           border: `1px solid ${accent.border}`,
@@ -475,6 +478,7 @@ export default function TrainingMenu({ go }: Props) {
           </div>
         </div>
 
+        {m.id !== "evolution" ? <div style={{position:'absolute',right:50,top:'50%',transform:'translateY(-50%)',zIndex:2,pointerEvents:'none'}}><GameDifficultyStars game={m.id} compact /></div> : null}
         <div
           style={{
             position: "absolute",

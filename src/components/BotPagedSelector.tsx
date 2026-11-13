@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import ProfileStarRing from "./ProfileStarRing";
+import { resolveBotStars as resolveLevel } from "../lib/botSkillLevel";
 import { getCountryFlagSrc } from "../lib/geoAssets";
 import { resolveProBotCountryCode } from "../lib/botCountries";
 import { getProBotDartsBrandLabel, getProBotDartsBrandLogo } from "../lib/botDartsBrands";
@@ -17,57 +18,6 @@ export type BotPagedSelectorItem = {
   countryCode?: string | null;
   country?: string | null;
 };
-
-function resolveLevelValue(raw: any): number {
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    // Les anciens objets peuvent stocker soit un niveau /5, soit une note /100.
-    const normalized = raw > 5 ? raw / 20 : raw;
-    return Math.max(0, Math.min(5, Math.round(normalized * 2) / 2));
-  }
-  const s = String(raw ?? "").trim().toLowerCase().replace(",", ".");
-  if (!s) return 0;
-  const fraction = s.match(/(\d+(?:\.\d+)?)\s*\/\s*5/);
-  if (fraction) {
-    const n = Number(fraction[1]);
-    if (Number.isFinite(n) && n > 0) return Math.max(0, Math.min(5, Math.round(n * 2) / 2));
-  }
-  const n = Number((s.match(/\d+(?:\.5)?/) || [""])[0]);
-  if (Number.isFinite(n) && n > 0) {
-    const normalized = n > 5 ? n / 20 : n;
-    return Math.max(0, Math.min(5, Math.round(normalized * 2) / 2));
-  }
-  if (s.includes("elite") || s.includes("legend") || s.includes("légende") || s.includes("legende")) return 5;
-  if (s.includes("pro")) return 4.5;
-  if (s.includes("challenger")) return 4;
-  if (s.includes("mixte") || s.includes("mix")) return 3.5;
-  if (s.includes("rising")) return 3;
-  if (s.includes("strong") || s.includes("fort") || s.includes("hard") || s.includes("difficile")) return 3;
-  if (s.includes("medium") || s.includes("standard") || s.includes("normal") || s.includes("moyen")) return 2;
-  if (s.includes("easy") || s.includes("facile") || s.includes("beginner") || s.includes("debutant") || s.includes("débutant") || s.includes("rookie")) return 1;
-  return 0;
-}
-
-function resolveLevel(bot: any): number {
-  const candidates = [
-    bot?.profileStarring,
-    bot?.starring,
-    bot?.stars,
-    bot?.botLevel,
-    bot?.level,
-    bot?.difficulty,
-    bot?.skill,
-    bot?.rating,
-    bot?.avg3D,
-    bot?.avg3d,
-    bot?.stats?.avg3D,
-    bot?.stats?.avg3d,
-  ];
-  for (const raw of candidates) {
-    const level = resolveLevelValue(raw);
-    if (level > 0) return level;
-  }
-  return 0;
-}
 
 function groupLabel(level: number): string {
   if (level >= 5) return "Elite";
@@ -175,6 +125,7 @@ export default function BotPagedSelector({
   label = "BOTS IA",
   modalTitle = "Choisir des BOTS IA",
   showSelectedSummary = true,
+  showChooser = true,
 }: {
   bots: BotPagedSelectorItem[];
   selectedIds: string[];
@@ -185,6 +136,8 @@ export default function BotPagedSelector({
   label?: string;
   modalTitle?: string;
   showSelectedSummary?: boolean;
+  /** Hide only the chooser, never an already-selected bot avatar. */
+  showChooser?: boolean;
 }) {
   const [enabled, setEnabled] = React.useState(() => !showCheckbox);
   const [open, setOpen] = React.useState(false);
@@ -209,10 +162,12 @@ export default function BotPagedSelector({
   const safePage = Math.min(Math.max(page, 0), pages - 1);
   const pageBots = sorted.slice(safePage * pageSize, safePage * pageSize + pageSize);
   const pageTitle = pageBots.length ? itemGroup(pageBots[0]) : "BOTS IA";
-  const selectedBots = React.useMemo(
-    () => sorted.filter((b) => selectedIds?.includes(b.id)),
-    [sorted, selectedIds]
-  );
+  const selectedBots = React.useMemo(() => {
+    const byId = new Map(sorted.map((bot) => [String(bot.id), bot]));
+    return Array.from(new Set((selectedIds || []).map(String)))
+      .map((id) => byId.get(id))
+      .filter(Boolean);
+  }, [sorted, selectedIds]);
   const selectedCount = selectedBots.length;
 
   React.useEffect(() => {
@@ -238,7 +193,7 @@ export default function BotPagedSelector({
             {enabled ? "☑ ON" : "☐ OFF"}
           </button>
         ) : null}
-        {enabled ? (
+        {enabled && showChooser ? (
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -249,7 +204,7 @@ export default function BotPagedSelector({
         ) : null}
       </div>
 
-      {enabled && showSelectedSummary && selectedCount ? (
+      {selectedCount > 0 && showSelectedSummary ? (
         <div style={{ marginTop: 10, borderRadius: 16, border: `1px solid ${accent}33`, background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>BOTS sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(104px, 1fr))", gap: 10 }}>
@@ -273,6 +228,49 @@ export default function BotPagedSelector({
             })}
           </div>
         </div>
+      ) : null}
+
+      {selectedCount > 0 && !showSelectedSummary ? (
+        <section data-mss-selected-bots="compact" aria-label={`${selectedCount} bot(s) sélectionné(s)`} style={{
+          marginTop: 10, borderRadius: 15, padding: "10px 8px 9px",
+          background: "rgba(255,255,255,.035)", border: `1px solid ${accent}44`,
+          minWidth: 0,
+        }}>
+          <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: .6, marginBottom: 7 }}>
+            BOTS SÉLECTIONNÉS ({selectedCount})
+          </div>
+          <div role="list" style={{ display: "flex", overflowX: "auto", maxWidth: "100%", gap: 13,
+            padding: "7px 3px 6px", scrollSnapType: "x proximity", overscrollBehaviorX: "contain" }}>
+            {selectedBots.map((bot) => {
+              const level = resolveLevel(bot);
+              const src = avatarOf(bot);
+              return <div role="listitem" key={bot.id} data-selected-bot-id={String(bot.id)} style={{
+                width: 76, flex: "0 0 76px", display: "grid", justifyItems: "center", gap: 2,
+                textAlign: "center", scrollSnapAlign: "start",
+              }}>
+                <div style={{ position: "relative", width: 70, height: 70, display: "grid", placeItems: "center" }}>
+                  {Number((bot as any)?.avg3d ?? (bot as any)?.avg3D) > 0
+                    ? <ProfileStarRing avg3d={Number((bot as any)?.avg3d ?? (bot as any)?.avg3D)} anchorSize={66} starSize={9} gapPx={-5} />
+                    : level > 0 ? <ProfileStarRing botLevel={level} anchorSize={66} starSize={9} gapPx={-5} /> : null}
+                  <div style={{ width: 56, height: 56, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center",
+                    background: "rgba(0,0,0,.6)", border: `2px solid ${accent}bb`, boxShadow: `0 0 14px ${accent}33` }}>
+                    {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <strong style={{ color: accent, fontSize: 14 }}>{String(bot.name || "BOT").slice(0, 2).toUpperCase()}</strong>}
+                  </div>
+                  <CountryFlagBadge bot={bot} accent={accent} size={19} />
+                  <button type="button" onClick={() => onToggle(String(bot.id))} title={`Retirer ${bot.name}`}
+                    aria-label={`Retirer ${bot.name} des participants`}
+                    style={{ position: "absolute", top: -5, right: -4, zIndex: 12, width: 20, height: 20,
+                      display: "grid", placeItems: "center", borderRadius: "50%", border: `1px solid ${accent}`,
+                      background: "#070b13", color: accent, fontWeight: 1000, cursor: "pointer", lineHeight: 1 }}>×</button>
+                </div>
+                <strong title={bot.name} style={{ width: "100%", color: "#f5f7fd", fontSize: 10.3, fontWeight: 950,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</strong>
+                {level > 0 ? <small style={{ color: accent, fontSize: 9, fontWeight: 950 }}>{level}/5 ★</small> : null}
+              </div>;
+            })}
+          </div>
+        </section>
       ) : null}
 
       {enabled && open ? (

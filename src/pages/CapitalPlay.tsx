@@ -5,6 +5,8 @@ import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import ScoreInputHub from "../components/ScoreInputHub";
 import CapitalContractMatrix from "../components/stats/CapitalContractMatrix";
+import CapitalMatchRecap from "../components/stats/CapitalMatchRecap";
+import { buildCapitalMatchInsights, capitalMatchHighlights } from "../lib/capitalMatchInsights";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
@@ -1372,6 +1374,7 @@ export default function CapitalPlay(props: any) {
       ? { id: "custom", savedVariantId: cfg?.savedVariantId || null, label: cfg?.savedVariantName || "MON CAPITAL", category: "mon-capital" }
       : { id: cfg?.gridVariant || "clubs15", label: (CAPITAL_GRID_PRESETS[cfg?.gridVariant || "clubs15"]?.label || "OFFICIEL").replace(/\s*·\s*\d+\s*tours?$/i, ""), category: CAPITAL_GRID_PRESETS[cfg?.gridVariant || "clubs15"]?.category || "club" };
     const winnerIds = winningPlayerIds.filter(Boolean);
+    const highlights = capitalMatchHighlights(buildCapitalMatchInsights(capitalPlayers, contracts, visits));
     const record = {
       id: matchIdRef.current,
       matchId: matchIdRef.current,
@@ -1391,6 +1394,7 @@ export default function CapitalPlay(props: any) {
         mode: "capital",
         title: "CAPITAL",
         capitalIntegrity: capitalAuditSummary,
+        capitalHighlights: highlights,
         capitalVariant,
         participantMode: cfg?.participantMode || "players",
         winnerId: winnerIds[0] || null,
@@ -1415,6 +1419,7 @@ export default function CapitalPlay(props: any) {
         sport: "darts",
         visitHistory: visits,
         capitalIntegrity: capitalAuditSummary,
+        capitalHighlights: highlights,
         visits,
         events: visits,
         dartLog: visits,
@@ -1428,6 +1433,7 @@ export default function CapitalPlay(props: any) {
         summary: {
           mode: "capital",
           capitalVariant,
+          capitalHighlights: highlights,
           winnerId: winnerIds[0] || null,
           winnerIds,
           winnerTeamId: winnerTeam?.id || null,
@@ -1458,7 +1464,7 @@ export default function CapitalPlay(props: any) {
     setFinishedRecord(record);
     void enqueueCapitalHistoryWrite(record as any);
     try { props?.onFinish?.(record); } catch {}
-  }, [isFinished, visits, playerStats, teamStats, matchStats, winningPlayerIds, winnerTeam, cfg, contracts, capitalIntegrity, props?.onFinish]);
+  }, [isFinished, visits, playerStats, teamStats, matchStats, winningPlayerIds, winnerTeam, cfg, contracts, capitalPlayers, capitalIntegrity, props?.onFinish]);
 
   const EndModal = () => {
     if (!isFinished || !endModalOpen) return null;
@@ -1620,6 +1626,8 @@ export default function CapitalPlay(props: any) {
           {!capitalIntegrity.ok && <div role="status" style={{ margin: "10px 14px 0", padding: 10, borderRadius: 10, border: "1px solid #ffad45", color: "#ffd28f", fontSize: 12 }}>
             ⚠ Vérification des scores : {capitalIntegrity.issues.length} écart(s) détecté(s). Le résultat est conservé tel quel ; aucune correction automatique n'est appliquée.
           </div>}
+          {/* Évolution et moments décisifs fondés sur les volées validées. */}
+          <CapitalMatchRecap players={capitalPlayers} scores={scores} contracts={contracts} visits={visits} contractLabel={contractLabel} />
           {/* Tableau commun à la partie et au résumé final. */}
           <div style={{ padding: "12px 14px 0" }}><CapitalContractMatrix contracts={contracts} participants={participants} visits={visits} scores={scores} /></div>
           {/* Table */}

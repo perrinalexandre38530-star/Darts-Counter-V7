@@ -2,6 +2,7 @@ import React from "react";
 import { useLang } from "../contexts/LangContext";
 import BackDot from "./BackDot";
 import DartsModeFamilyBridge from "./DartsModeFamilyBridge";
+import DartsRelatedModesPanel from "./DartsRelatedModesPanel";
 import tickerArcade from "../assets/tickers/ticker_arcade.png";
 import tickerPartieRapide from "../assets/tickers/ticker_partie_rapide.png";
 import tickerQuickGame from "../assets/tickers/ticker_quick_game.png";
@@ -25,6 +26,9 @@ const tickerAliases: Record<string, string> = {
   "killer progressif": "killer",
   "killer progressive": "killer",
   "game_170": "v170", "170": "v170", "ptit_hun": "ptit_1",
+  "ptit_hun": "ptit_1",
+  "training_super_bull": "super_bull",
+  "top_10_training": "top_10",
   "p_tit_1": "ptit_1",
   "p tit 1": "ptit_1",
   "departements": "territories_fr",
@@ -55,11 +59,13 @@ type Props = {
   onQuick: () => void;
   onArcade: () => void;
   onBack: () => void;
+  gameId?: string;
+  onOpenRelatedGame?: (gameId: string) => void;
   family?: "five_lives" | "halve_it";
   onVariant?: () => void;
 };
 
-export default function GameModeEntryChoice({ title, tickerId, onQuick, onArcade, onBack, family, onVariant }: Props) {
+export default function GameModeEntryChoice({ title, tickerId, onQuick, onArcade, onBack, gameId, onOpenRelatedGame, family, onVariant }: Props) {
   const { lang } = useLang();
   const isFr = String(lang || "fr").toLowerCase() === "fr";
   // Un mode récent peut avoir un libellé différent de son identifiant
@@ -166,7 +172,8 @@ export default function GameModeEntryChoice({ title, tickerId, onQuick, onArcade
       >
         {tickerButton(isFr ? tickerPartieRapide : tickerQuickGame, labels.quickAlt, onQuick)}
         {tickerButton(tickerArcade, labels.arcadeAlt, onArcade)}
-        {family && onVariant ? <DartsModeFamilyBridge family={family} current="main" onOpenRelated={onVariant} /> : null}
+        {gameId && onOpenRelatedGame ? <DartsRelatedModesPanel gameId={gameId} onOpenGame={onOpenRelatedGame} bare />
+          : family && onVariant ? <DartsModeFamilyBridge family={family} current="main" onOpenRelated={onVariant} /> : null}
       </div>
     </div>
   );

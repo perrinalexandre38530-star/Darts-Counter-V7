@@ -1,4 +1,5 @@
 import { assessCommercialFit } from './commercial-fit';
+import { facebookConnectionState, testFacebookConnection, publishFacebookPageJob } from './meta-publisher';
 import { listPublicationJobs, schedulePublication, updatePublicationJob } from './publication-queue';
 import { assessCampaignMatch } from './campaign-match';
 import { adminHtml } from './admin';
@@ -307,8 +308,21 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     return json({ok:true,id});
   }
 
-  // Publication planner: approval, scheduling and manual confirmation only.
-  // No request in this group invokes any external publishing endpoint.
+  // Official Facebook Page connector: no posting without a separate explicit admin click.
+  if (request.method === 'GET' && url.pathname === '/api/connectors/facebook') {
+    return json({ ok:true, ...facebookConnectionState(env) });
+  }
+  if (request.method === 'POST' && url.pathname === '/api/connectors/facebook/test') {
+    try { return json(await testFacebookConnection(env)); }
+    catch (error) { return json({ok:false,error:error instanceof Error?error.message:'connection_failed'},400); }
+  }
+  const facebookSend = url.pathname.match(/^\/api\/publications\/([a-f0-9-]+)\/send-facebook$/);
+  if (request.method === 'POST' && facebookSend) {
+    try { return json({ok:true, result:await publishFacebookPageJob(env, facebookSend[1]!)}); }
+    catch (error) { return json({ok:false,error:error instanceof Error?error.message:'publication_failed'},409); }
+  }
+
+  // Publication planner; other channels require manual confirmation.
   if (request.method === 'GET' && url.pathname === '/api/publications') {
     return json({ok:true,jobs:await listPublicationJobs(env),automaticPublishing:false});
   }

@@ -24,7 +24,8 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
-import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
 import DartsPendingFinalCard from "../components/DartsPendingFinalCard";
 import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
@@ -567,9 +568,7 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
   </div>
 </div>
 
-      <DartsModeFamilyBridge family="five_lives" current={chaseActive ? "variant" : "main"} accent={primary}
-        onOpenRelated={() => go?.("five_lives_config", chaseActive ? { launchMode: "arcade" } : { variantId: "chase", launchMode: "arcade" })}
-        onBrowseVariants={() => go?.("games", { gamesView: "all", gamesCategory: "variant" })} />
+      <DartsRelatedModesPanel gameId={chaseActive ? "chase" : "five_lives"} accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
 
       {/* CONTENT */}
       <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>

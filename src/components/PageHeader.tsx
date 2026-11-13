@@ -1,4 +1,5 @@
 import React from "react";
+import GameDifficultyStars from "./GameDifficultyStars";
 
 type Slot = React.ReactNode;
 
@@ -19,6 +20,8 @@ export default function PageHeader(props: {
   tickerBottomGap?: number;
   /** Légère mise à l'échelle de l'image de ticker pour compenser les marges internes de certains assets. */
   tickerImageScale?: number;
+  /** Only pass in config screens: small rating centered below the ticker. */
+  difficultyGameId?: string;
   /** Décalage top du header sticky. Utile avec le full-bleed qui compense le padding haut du container. */
   stickyTop?: number;
 }) {
@@ -34,6 +37,7 @@ export default function PageHeader(props: {
     tickerFit = "cover",
     tickerBottomGap = 10,
     tickerImageScale = 1,
+    difficultyGameId,
     stickyTop = 0,
   } = props;
 
@@ -175,6 +179,7 @@ export default function PageHeader(props: {
         </div>
       ) : null}
 
+      {hasTicker && difficultyGameId ? <div data-mss-config-difficulty="1" style={{height:18,display:"flex",alignItems:"center",justifyContent:"center",paddingTop:3}}><GameDifficultyStars game={difficultyGameId} compact/></div> : null}
       <div
         style={{
           display: hasTicker ? "none" : "grid",

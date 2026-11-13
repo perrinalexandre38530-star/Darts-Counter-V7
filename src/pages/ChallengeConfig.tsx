@@ -1,5 +1,8 @@
 import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from 'react';
+import GameDifficultyStars from '../components/GameDifficultyStars';
+import GameDifficultyFilter from '../components/GameDifficultyFilter';
+import { mssChallengeDifficulty } from '../lib/mssVisualCharter';
 import { BottomNavIcon } from '../components/BottomNav';
 import BackDot from '../components/BackDot';
 import PlayerPagedSelector from '../components/PlayerPagedSelector';
@@ -151,6 +154,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  const [catalogLives,setCatalogLives]=React.useState(3);
  const [catalogFamily,setCatalogFamily]=React.useState('TOUS');
  const [catalogSearch,setCatalogSearch]=React.useState('');
+ const [challengeDifficultyFilter,setChallengeDifficultyFilter]=React.useState(0);
  const [clockIncludeBull,setClockIncludeBull]=React.useState(true);
  const [clockScoreMode,setClockScoreMode]=React.useState<ChallengeScoreMode>('challenge');
  const [halfItStartScore,setHalfItStartScore]=React.useState(40);
@@ -378,6 +382,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  const searchTerm=catalogSearch.trim().toLocaleLowerCase();
  const filteredChoices=CHALLENGE_MODE_OPTIONS.filter(choice=>
   (catalogFamily==='TOUS'||choice.family===catalogFamily) &&
+  (challengeDifficultyFilter===0||mssChallengeDifficulty(choice)===challengeDifficultyFilter) &&
   (!searchTerm||[choice.title,choice.description,choice.family].join(' ').toLocaleLowerCase().includes(searchTerm))
  );
 
@@ -456,7 +461,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
     <p className="challenge-focused-hint">Les autres cartes sont masquées. Poursuis avec les réglages de ce défi ou reviens à la liste.</p>
    </div> : <>
   <div className="challenge-unified-tools">
-   <label className="challenge-unified-search"><span>RECHERCHER UN DÉFI</span><input type="search" placeholder="Nom, règle ou catégorie…" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} aria-label="Rechercher un challenge"/></label>
+   <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(130px,170px)',gap:8,alignItems:'end'}}><label className="challenge-unified-search"><span>RECHERCHER UN DÉFI</span><input type="search" placeholder="Nom, règle ou catégorie…" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} aria-label="Rechercher un challenge"/></label><GameDifficultyFilter compact value={challengeDifficultyFilter} onChange={setChallengeDifficultyFilter} label="Difficulté des défis" /></div>
    <div className="challenge-unified-filters" role="group" aria-label="Filtrer par catégorie">
     {(['TOUS',...CHALLENGE_MODE_FAMILIES] as string[]).map(family=><button type="button" key={family} className={catalogFamily===family?'on':''} aria-pressed={catalogFamily===family} onClick={()=>setCatalogFamily(family)}>{family==='TOUS'?'TOUS LES DÉFIS':family}</button>)}
    </div>
@@ -473,7 +478,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
        const selected=exerciseType===choice.exerciseType&&(choice.exerciseType!=='arcade'||catalogChallengeId===choice.arcadeId);
        const stateLabel=choice.state==='available'?'DISPONIBLE':choice.state==='preview'?'APERÇU JOUABLE':'À VENIR';
        return <button type="button" key={choice.id} className={'challenge-unified-tile '+(selected?'on ':'')+choice.state} aria-pressed={selected} onClick={()=>setPreviewChoiceId(choice.id)} title={'Voir la fiche et les records de '+choice.title}>
-        <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{choice.title}</b><small>{choice.description}</small><em>{stateLabel}</em></span>
+        <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{choice.title}</b><span style={{alignSelf:'flex-start'}}><GameDifficultyStars level={mssChallengeDifficulty(choice)} compact /></span><small>{choice.description}</small><em>{stateLabel}</em></span>
        </button>;
       })}
      </div>
@@ -576,39 +581,30 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  React.useEffect(()=>{setStep(prev=>Math.min(prev,Math.max(0,stages.length-1)))},[exerciseType,stages.length]);
  const shown=mode==='complete'?stages:[stages[step]];
  const pickerMembers=teamPicker?(Array.isArray(teamPicker.playerIds)?teamPicker.playerIds.map(String):[]):[];
+ const closeChallengePreview=()=>{setInsightView(null);setPreviewChoiceId(null);};
+ React.useEffect(()=>{
+  if(!previewChoiceId||insightView)return;
+  const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();setPreviewChoiceId(null);}};
+  window.addEventListener('keydown',onEscape);
+  return ()=>window.removeEventListener('keydown',onEscape);
+ },[previewChoiceId,insightView]);
 
- return <div className="challenge-config" style={{background:theme.bg,color:theme.text}}>
+ return <div className={previewChoice?"challenge-config challenge-preview-screen":"challenge-config"} style={{background:theme.bg,color:theme.text}}>
   <header className="challenge-head">
    <img src="/challenge/ticker_challenge.png" alt="Challenge"/>
-   <div className="challenge-back"><BackDot onClick={()=>fromTrainingLab?go('training_mode',{modeId:'training_lab',challengeCatalog:true}):go('games')} size={44} color="#36e9ff" glow="#36e9ff77"/></div>
+   <div className="challenge-back"><BackDot onClick={()=>previewChoice?closeChallengePreview():fromTrainingLab?go('training_mode',{modeId:'training_lab',challengeCatalog:true}):go('games')} size={44} color="#36e9ff" glow="#36e9ff77"/></div>
    <button className="challenge-awena" type="button" aria-label="Ouvrir Awena" title="Awena" onClick={()=>awena?.openPanel?.()}><span><img src="/awena/awena-avatar.webp" alt="Awena"/></span><i aria-hidden>🎙</i></button>
   </header>
-  <main className="config-wrap">
-   <section className="config-overview">
-    <div className="overview-copy"><small>CONFIGURATION CHALLENGE</small><div className="mode-row"><button type="button" className={mode==='guided'?'on':''} onClick={()=>{setMode('guided');setStep(0)}}>GUIDÉE</button><button type="button" className={mode==='complete'?'on':''} onClick={()=>setMode('complete')}>COMPLÈTE</button></div><p>{mode==='guided'?'Configuration compacte, étape par étape, dans le même esprit que X01.':'Tous les réglages sont accessibles sur une seule page.'}</p>{!fromTrainingLab && <button type="button" className="challenge-leaderboard-access" onClick={()=>go('challenge_leaderboard',{from:'challenge_config'})}><span>🏆</span><b>CLASSEMENTS ONLINE</b><small>Meilleurs scores · filtres · équipes officielles</small></button>}</div>
-    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{exerciseType==='arcade'?arcadeRule.roundUnit+' · '+catalogRounds:resolvedVisits+' TOURS'}</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
-   </section>
-   {(lastPlayedPreset||favoritePreset)&&<section className="quick-presets" aria-label="Raccourcis Challenge">
-    {lastPlayedPreset&&<button type="button" className="quick-preset last" onClick={()=>replayPreset(lastPlayedPreset)}><i>↻</i><span><small>DERNIER CHALLENGE</small><b>{presetDescriptor(lastPlayedPreset)}</b><em>Réglages chargés · choisissez joueurs ou équipes</em></span><strong>REJOUER</strong></button>}
-    {favoritePreset&&<button type="button" className="quick-preset favorite" onClick={()=>replayPreset(favoritePreset)}><i>★</i><span><small>CHALLENGE PRÉFÉRÉ</small><b>{presetDescriptor(favoritePreset)}</b><em>Configuration favorite · choisissez les participants</em></span><strong>PRÉPARER</strong></button>}
-   </section>}
-   {mode==='guided'&&<section className="progress-card"><div><strong>CONFIGURATION GUIDÉE</strong><span>Étape {step+1}/{stages.length} • {stepLabels[step]}</span></div><div className="steps">{stepLabels.map((label,i)=><button type="button" onClick={()=>{if(i<=step||currentStepValid)setStep(i)}} className={i===step?'on':i<step?'done':''} key={label}><b>{i+1}</b><span>{label}</span></button>)}</div></section>}
-   <div className={mode==='complete'?'complete-grid':'guided-stage'}>{shown}</div>
-   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>{exerciseValid?'PRÊT À JOUER':'EN DÉVELOPPEMENT'}</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{exerciseType==='arcade'?catalogRounds:resolvedVisits}<small>{exerciseType==='arcade'?arcadeRule.roundUnit:'TOURS'}</small></strong></section>
-   <div className="preset-actions"><button type="button" className={favoritePreset?'favorite-set on':'favorite-set'} onClick={saveFavorite}><span>{favoritePreset?'★':'☆'}</span><b>{favoritePreset?'METTRE À JOUR LE FAVORI':'ENREGISTRER COMME FAVORI'}</b></button><small>Les derniers réglages sont mémorisés automatiquement.</small></div>
-   <div className="config-actions">
-    {mode==='guided'&&step>0&&<button type="button" onClick={()=>setStep(s=>s-1)}>← PRÉCÉDENT</button>}
-    {mode==='guided'&&step<stages.length-1?<button type="button" className="launch" disabled={!currentStepValid} onClick={()=>currentStepValid&&setStep(s=>s+1)}>SUIVANT →</button>:<button type="button" className="launch" disabled={!selectionValid||!exerciseValid} onClick={start}>▶ LANCER LE CHALLENGE</button>}
-   </div>
-  </main>
-
-  {previewChoice&&<div className="mss-ca-overlay" role="presentation" onMouseDown={e=>{if(e.currentTarget===e.target)setPreviewChoiceId(null)}}>
-   <div className="mss-ca-sheet" role="dialog" aria-modal="true" aria-labelledby="mss-challenge-preview-title">
-    <header className="mss-ca-sheet-head"><div><small>{previewChoice.family} · FICHE CHALLENGE</small><h2 id="mss-challenge-preview-title">{previewChoice.title}</h2></div><button type="button" aria-label="Fermer la fiche Challenge" onClick={()=>setPreviewChoiceId(null)}>×</button></header>
+  {previewChoice ? <main className="challenge-preview-main" key={previewChoice.id}>
+   <section className="challenge-preview-card" aria-labelledby="mss-challenge-preview-title">
+    <header className="challenge-preview-heading">
+     <div><small>{previewChoice.family} · FICHE CHALLENGE</small><h1 id="mss-challenge-preview-title">{previewChoice.title}</h1><GameDifficultyStars level={mssChallengeDifficulty(previewChoice)} /></div>
+     <button type="button" className="challenge-preview-return" onClick={closeChallengePreview}>← RETOUR AUX DÉFIS</button>
+    </header>
     <p className="mss-challenge-preview-intro">{previewChoice.description}</p>
     {previewGuide&&<div className="mss-cg-guide" aria-label="Détail du challenge">
       <ChallengeGuideInfo badges={previewGuide.badges} title={previewChoice.title} intro={previewGuide.intro}
-       onAskAwena={()=>{const configured=previewGuide.badges.join(' ; ');setPreviewChoiceId(null);awena?.openPanel?.();void awena?.ask?.(`Explique les règles du challenge « ${previewChoice.title} » avec ces réglages : ${configured}.`,{canonicalFrench:true,modeTopic:'rules',speak:true});}}/>
+       onAskAwena={()=>{const configured=previewGuide.badges.join(' ; ');awena?.openPanel?.();void awena?.ask?.(`Explique les règles du challenge « ${previewChoice.title} » avec ces réglages : ${configured}.`,{canonicalFrench:true,modeTopic:'rules',speak:true});}}/>
       <div className="mss-cg-timeline">
        {previewGuide.steps.map((item,index)=><article className="mss-cg-step" key={item.eyebrow+item.title}>
         <span className="mss-cg-index" aria-hidden="true">{index+1}</span>
@@ -629,10 +625,28 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
      <button type="button" onClick={()=>setInsightView('stats')}><BottomNavIcon name="stats" size={24}/><span><b>STATISTIQUES</b><small>Courbes, précision, évolution et dernières parties</small></span></button>
      <button type="button" onClick={()=>setInsightView('records')}><BottomNavIcon name="tournaments" size={24}/><span><b>RECORDS</b><small>Records par configuration et progression personnelle</small></span></button>
     </div>
-    <div className="mss-ca-actions"><button type="button" onClick={()=>setPreviewChoiceId(null)}>← RETOUR AUX DÉFIS</button><button type="button" className="primary" disabled={previewChoice.state==='planned'} onClick={()=>{const choice=previewChoice;chooseUnifiedMode(choice);setFocusedChoiceId(choice.id);setPreviewChoiceId(null);if(mode==='guided')setStep(2);}}>▶ RELEVER LE DÉFI</button></div>
+    <div className="mss-ca-actions"><button type="button" onClick={closeChallengePreview}>← RETOUR AUX DÉFIS</button><button type="button" className="primary" disabled={previewChoice.state==='planned'} onClick={()=>{const choice=previewChoice;chooseUnifiedMode(choice);setFocusedChoiceId(choice.id);setPreviewChoiceId(null);if(mode==='guided')setStep(2);}}>▶ RELEVER LE DÉFI</button></div>
     {previewChoice.state==='planned'&&<p className="mss-ca-muted">Défi en développement : impossible à lancer tant que son moteur n'est pas validé.</p>}
+   </section>
+  </main> : <main className="config-wrap">
+   <section className="config-overview">
+    <div className="overview-copy"><small>CONFIGURATION CHALLENGE</small><div className="mode-row"><button type="button" className={mode==='guided'?'on':''} onClick={()=>{setMode('guided');setStep(0)}}>GUIDÉE</button><button type="button" className={mode==='complete'?'on':''} onClick={()=>setMode('complete')}>COMPLÈTE</button></div><p>{mode==='guided'?'Configuration compacte, étape par étape, dans le même esprit que X01.':'Tous les réglages sont accessibles sur une seule page.'}</p>{!fromTrainingLab && <button type="button" className="challenge-leaderboard-access" onClick={()=>go('challenge_leaderboard',{from:'challenge_config'})}><span>🏆</span><b>CLASSEMENTS ONLINE</b><small>Meilleurs scores · filtres · équipes officielles</small></button>}</div>
+    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{exerciseType==='arcade'?arcadeRule.roundUnit+' · '+catalogRounds:resolvedVisits+' TOURS'}</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
+   </section>
+   {(lastPlayedPreset||favoritePreset)&&<section className="quick-presets" aria-label="Raccourcis Challenge">
+    {lastPlayedPreset&&<button type="button" className="quick-preset last" onClick={()=>replayPreset(lastPlayedPreset)}><i>↻</i><span><small>DERNIER CHALLENGE</small><b>{presetDescriptor(lastPlayedPreset)}</b><em>Réglages chargés · choisissez joueurs ou équipes</em></span><strong>REJOUER</strong></button>}
+    {favoritePreset&&<button type="button" className="quick-preset favorite" onClick={()=>replayPreset(favoritePreset)}><i>★</i><span><small>CHALLENGE PRÉFÉRÉ</small><b>{presetDescriptor(favoritePreset)}</b><em>Configuration favorite · choisissez les participants</em></span><strong>PRÉPARER</strong></button>}
+   </section>}
+   {mode==='guided'&&<section className="progress-card"><div><strong>CONFIGURATION GUIDÉE</strong><span>Étape {step+1}/{stages.length} • {stepLabels[step]}</span></div><div className="steps">{stepLabels.map((label,i)=><button type="button" onClick={()=>{if(i<=step||currentStepValid)setStep(i)}} className={i===step?'on':i<step?'done':''} key={label}><b>{i+1}</b><span>{label}</span></button>)}</div></section>}
+   <div className={mode==='complete'?'complete-grid':'guided-stage'}>{shown}</div>
+   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>{exerciseValid?'PRÊT À JOUER':'EN DÉVELOPPEMENT'}</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{exerciseType==='arcade'?catalogRounds:resolvedVisits}<small>{exerciseType==='arcade'?arcadeRule.roundUnit:'TOURS'}</small></strong></section>
+   <div className="preset-actions"><button type="button" className={favoritePreset?'favorite-set on':'favorite-set'} onClick={saveFavorite}><span>{favoritePreset?'★':'☆'}</span><b>{favoritePreset?'METTRE À JOUR LE FAVORI':'ENREGISTRER COMME FAVORI'}</b></button><small>Les derniers réglages sont mémorisés automatiquement.</small></div>
+   <div className="config-actions">
+    {mode==='guided'&&step>0&&<button type="button" onClick={()=>setStep(s=>s-1)}>← PRÉCÉDENT</button>}
+    {mode==='guided'&&step<stages.length-1?<button type="button" className="launch" disabled={!currentStepValid} onClick={()=>currentStepValid&&setStep(s=>s+1)}>SUIVANT →</button>:<button type="button" className="launch" disabled={!selectionValid||!exerciseValid} onClick={start}>▶ LANCER LE CHALLENGE</button>}
    </div>
-  </div>}
+  </main>}
+
   {insightView&&previewChoice&&<ChallengeInsightsPage modeId={previewChoice.id} modeTitle={previewChoice.title}
    playerId={archiveProfileId} playerName={archiveProfileName} initialView={insightView} onClose={()=>setInsightView(null)}/>}
   {teamPicker&&<div className="team-picker-overlay" onClick={()=>setTeamPicker(null)}>
@@ -649,7 +663,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
   </div>}
   <style>{css(primary)}</style>
  
-      <NativeStartOrderConfig />
+      {!previewChoice && <NativeStartOrderConfig />}
       </div>;
 }
 
@@ -662,7 +676,7 @@ const css=(p:string)=>`
 .challenge-focused-records{justify-self:start;background:#361923;color:#ffdde1;border:1px solid #dc6976;border-radius:10px;padding:11px;font-size:11px;font-weight:900;cursor:pointer}
 .challenge-focused-hint{font-size:10px;color:#a3b8cb;margin:0}.mss-challenge-preview-intro{font-size:12px;color:#b9c7d8;line-height:1.55;margin:0 0 12px}.mss-ca-actions button:disabled{opacity:.45;cursor:not-allowed}
 .mss-cg-guide{display:grid;gap:12px;margin:0 0 14px}.mss-cg-insight-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:6px 0 14px}.mss-cg-insight-actions button{display:flex;gap:11px;align-items:center;min-width:0;text-align:left;border:1px solid #476078;border-radius:14px;padding:13px;color:#eaf6ff;background:linear-gradient(135deg,#152a3c,#0a1422);cursor:pointer}.mss-cg-insight-actions button:first-child{color:#7be5ff}.mss-cg-insight-actions button:nth-child(2){color:#ffcb72}.mss-cg-insight-actions button span{display:grid;gap:3px;min-width:0}.mss-cg-insight-actions button b{font-size:12px;color:#fff}.mss-cg-insight-actions button small{font-size:9px;color:#b3c1d0;line-height:1.45}@media(max-width:450px){.mss-cg-insight-actions{grid-template-columns:1fr}}
-.mss-cg-timeline{position:relative;display:flex;flex-direction:column;gap:16px;padding-left:0}.mss-cg-step{position:relative;display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;align-items:flex-start}.mss-cg-step::before{content:'';position:absolute;left:27px;top:51px;bottom:-26px;width:2px;background:#ef3c4b}.mss-cg-index{position:relative;z-index:1;width:44px;height:44px;margin:2px auto 0;border:2px solid rgba(255,65,72,.75);border-radius:50%;background:linear-gradient(180deg,#171f2d,#0b1018);display:grid;place-items:center;font-weight:1000;font-size:20px;color:${p};box-shadow:0 0 0 4px #09111b}.mss-cg-step-body{min-width:0;padding-bottom:10px}.mss-cg-step-body small{display:block;font-size:9px;color:${p};font-weight:1000;letter-spacing:1px}.mss-cg-step-body h3{margin:5px 0 0;color:#fff;font-size:clamp(13px,2.3vw,18px);line-height:1.2}.mss-cg-step-body p{margin:8px 0 0;color:#b5c4d7;font-size:11px;line-height:1.6};font-size:8.5px;font-weight:900;color:#fff}.mss-cg-timeline>.mss-cg-step:last-child::before{display:none}.mss-cg-footer{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:center;padding:12px 13px;border-radius:15px;border:1px solid #314358;background:linear-gradient(112deg,#0d1622,#070d15)}.mss-cg-footer>span{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:#1b2636;border:1px solid #516277;font-size:20px}.mss-cg-footer small{display:block;font-size:9px;color:#9cb4c8;font-weight:1000;letter-spacing:1px}.mss-cg-footer b{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:#fff}@media(max-width:560px){.mss-cg-step{grid-template-columns:46px minmax(0,1fr);gap:10px}.mss-cg-step::before{left:22px;top:46px}.mss-cg-index{width:38px;height:38px;font-size:17px}}
+.mss-cg-timeline{position:relative;display:flex;flex-direction:column;gap:16px;padding-left:0}.mss-cg-step{position:relative;display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;align-items:flex-start}.mss-cg-step::before{content:'';position:absolute;left:27px;top:51px;bottom:-26px;width:2px;background:#ef3c4b}.mss-cg-index{position:relative;z-index:1;width:44px;height:44px;margin:2px auto 0;border:2px solid rgba(255,65,72,.75);border-radius:50%;background:linear-gradient(180deg,#171f2d,#0b1018);display:grid;place-items:center;font-weight:1000;font-size:20px;color:${p};box-shadow:0 0 0 4px #09111b}.mss-cg-step-body{min-width:0;padding-bottom:10px}.mss-cg-step-body small{display:block;font-size:9px;color:${p};font-weight:1000;letter-spacing:1px}.mss-cg-step-body h3{margin:5px 0 0;color:#fff;font-size:clamp(13px,2.3vw,18px);line-height:1.2}.mss-cg-step-body p{margin:8px 0 0;color:#b5c4d7;font-size:11px;line-height:1.6}.mss-cg-timeline>.mss-cg-step:last-child::before{display:none}.mss-cg-footer{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:center;padding:12px 13px;border-radius:15px;border:1px solid #314358;background:linear-gradient(112deg,#0d1622,#070d15)}.mss-cg-footer>span{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:#1b2636;border:1px solid #516277;font-size:20px}.mss-cg-footer small{display:block;font-size:9px;color:#9cb4c8;font-weight:1000;letter-spacing:1px}.mss-cg-footer b{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:#fff}@media(max-width:560px){.mss-cg-step{grid-template-columns:46px minmax(0,1fr);gap:10px}.mss-cg-step::before{left:22px;top:46px}.mss-cg-index{width:38px;height:38px;font-size:17px}}
 .challenge-unified-tools{display:flex;flex-direction:column;gap:10px;margin-bottom:15px}
 .challenge-unified-search{display:flex;flex-direction:column;gap:6px;font-size:10px;color:#a9bed0;font-weight:900;letter-spacing:.65px}
 .challenge-unified-search input{width:100%;min-width:0;border:1px solid #4e6077;border-radius:11px;background:#0a1220;color:#fff;padding:12px 14px;font-size:13px;outline:none;box-sizing:border-box}
@@ -841,4 +855,20 @@ const css=(p:string)=>`
 @media(orientation:landscape){.challenge-config{height:100dvh;min-height:0;padding:6px 8px 6px;overflow:hidden;display:flex;flex-direction:column}.challenge-head{flex:0 0 64px;width:min(1180px,100%);height:64px;min-height:64px;margin:0 auto 6px;border-radius:14px}.challenge-head>img{object-fit:contain;background:#05080d}.challenge-back{left:8px}.challenge-awena{right:8px;width:44px;height:44px}.config-wrap{width:min(1180px,100%);max-width:1180px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 8px 8px}.config-overview{padding:9px 11px;margin-bottom:7px}.config-overview p{margin-top:4px}.mode-row{margin-top:5px}.mode-row button{padding:7px 11px}.summary b{font-size:20px}.summary span{font-size:8px}.quick-presets{margin-bottom:7px}.quick-preset{min-height:62px}.progress-card{padding:7px 10px;margin-bottom:7px}.steps button{height:30px}.config-card{padding:10px;margin-bottom:7px}.section-title{margin-bottom:7px;padding-bottom:6px}.match-mode button{min-height:58px}.match-mode button b{font-size:15px}.team-carousel{padding-bottom:8px}.team-choice{flex-basis:176px;min-height:118px;padding:8px}.team-choice>img,.team-fallback,.team-logo-slot{width:54px;height:54px}.target-grid{grid-template-columns:repeat(11,minmax(0,1fr))}.target-btn{height:42px;min-height:42px}.exercise-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.rule-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.complete-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.complete-grid .config-card:nth-child(1),.complete-grid .config-card:nth-child(2){grid-column:1/-1}.config-actions{bottom:0;margin-top:4px;padding:5px}.config-actions button{min-height:36px;padding:7px 11px}.team-player-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.team-player-card{min-height:126px}.team-player-avatar{width:66px;height:66px}}
 @media(max-width:760px){.challenge-head{height:72px;margin-bottom:5px;border-radius:0 0 14px 14px}.challenge-head>img{object-fit:cover}.challenge-back{left:7px;transform:translateY(-50%) scale(.92)}.challenge-awena{right:7px;width:44px;height:44px}.config-wrap{padding:6px 8px 12px}.config-overview{grid-template-columns:1fr auto;padding:10px}.config-overview p{font-size:9px}.summary{min-width:118px;padding-left:9px}.summary b{font-size:17px}.summary span{font-size:7.5px}.quick-presets{grid-template-columns:1fr}.quick-preset{min-height:68px}.progress-card{grid-template-columns:1fr;padding:9px;gap:7px}.progress-card>div:first-child{min-width:0}.steps button{height:30px}.steps button span{display:none}.config-card{padding:10px}.section-title{align-items:flex-start;flex-direction:column;gap:3px}.section-title p{max-width:100%;text-align:left;font-size:8.5px}.match-mode{gap:5px}.match-mode button{min-height:60px}.match-mode button b{font-size:14px}.match-mode button span{font-size:7.5px}.target-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.target-btn{height:62px;min-height:62px}.target-btn b{font-size:12px}.target-btn.family b{font-size:9px}.target-thumb{inset:-20px}.exercise-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.exercise-card{min-height:78px}.advanced-grid,.grouping-config{grid-template-columns:1fr}.sequence-add{grid-template-columns:1fr 1fr}.sequence-add select{grid-column:1/-1}.grouping-example{grid-template-columns:1fr}.visit-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.rule-grid{grid-template-columns:1fr 1fr}.audio-toggle-row{grid-template-columns:1fr 1fr}.config-actions{bottom:calc(74px + env(safe-area-inset-bottom,0px));padding:5px}.config-actions button{flex:1;min-width:0!important;padding:9px 8px;font-size:10px!important}.team-player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.team-choice{flex-basis:min(62vw,210px)}.preset-actions{align-items:flex-start;flex-direction:column}}
 @media(max-width:430px){.double-target-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.custom-visits{grid-template-columns:1fr 86px}.custom-visits small{display:none}.launch-preview>strong{font-size:18px}.exercise-grid{grid-template-columns:1fr}.binary-row{grid-template-columns:1fr 1fr}.sequence-add{grid-template-columns:1fr}.sequence-add select{grid-column:auto}.summary{display:none}.config-overview{grid-template-columns:1fr}.source-row{grid-template-columns:1fr 1fr}.rule-grid{grid-template-columns:1fr}.audio-toggle-row{grid-template-columns:1fr}.match-mode button span{max-width:90px;text-align:center}.target-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.team-picker-card{width:100%}.team-player-card{min-height:124px}.team-player-avatar{width:64px;height:64px}.quick-preset{grid-template-columns:34px minmax(0,1fr)}.quick-preset>strong{grid-column:2;justify-self:start}.quick-preset>i{width:34px;height:34px}}
+
+/* Correctif V118 : la fiche Challenge est un écran autonome, pas un overlay ajouté sous le formulaire. */
+.challenge-config.challenge-preview-screen{display:flex;flex-direction:column;height:100dvh;min-height:0;max-height:100dvh;padding:0;overflow:hidden;box-sizing:border-box}
+.challenge-preview-screen .challenge-head{flex:0 0 clamp(72px,10vw,96px);width:min(1180px,100%);min-height:0;height:clamp(72px,10vw,96px);margin:0 auto 6px;box-sizing:border-box}
+.challenge-preview-main{flex:1 1 auto;min-height:0;width:min(1040px,100%);margin:0 auto;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;box-sizing:border-box;padding:10px 14px calc(100px + env(safe-area-inset-bottom,0px))}
+.challenge-preview-card{min-width:0;padding:clamp(14px,3vw,24px);border:1px solid #3b5168;border-radius:18px;background:linear-gradient(145deg,#101e30,#080d15 66%);box-shadow:0 14px 34px #0009}
+.challenge-preview-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin:0 0 17px;padding-bottom:16px;border-bottom:1px solid #344962}
+.challenge-preview-heading>div{min-width:0}.challenge-preview-heading small{display:block;color:#ff8893;font-size:10px;font-weight:950;letter-spacing:1.1px}
+.challenge-preview-heading h1{color:#fff;font-size:clamp(24px,5vw,36px);line-height:1.15;font-weight:1000;margin:7px 0 0;overflow-wrap:anywhere}
+.challenge-preview-return,.challenge-preview-card .mss-ca-actions button{border:1px solid #4d667f;background:linear-gradient(145deg,#182b42,#0b1522);color:white;border-radius:11px;padding:11px 14px;font-size:11px;font-weight:900;cursor:pointer}
+.challenge-preview-return{flex:0 0 auto}.challenge-preview-card .mss-challenge-preview-intro{font-size:clamp(12px,1.7vw,15px);line-height:1.6}
+.challenge-preview-card .mss-ca-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid #31485b}
+.challenge-preview-card .mss-ca-actions button{min-height:48px}.challenge-preview-card .mss-ca-actions .primary{background:linear-gradient(180deg,#24da6f,#0b8a44);border-color:#44d182;box-shadow:0 0 16px #09da6622}
+.challenge-preview-card .mss-ca-actions button:disabled{opacity:.48;cursor:not-allowed}.challenge-preview-card .mss-ca-muted{color:#ffc0c5;font-size:11px;line-height:1.6}
+@media(max-width:600px){.challenge-preview-main{padding:7px 8px calc(100px + env(safe-area-inset-bottom,0px))}.challenge-preview-card{padding:13px;border-radius:14px}.challenge-preview-heading{flex-direction:column;gap:10px}.challenge-preview-return{align-self:flex-start}.challenge-preview-card .mss-ca-actions{grid-template-columns:1fr}}
+@media(orientation:landscape){.challenge-config.challenge-preview-screen{padding:6px 8px}.challenge-preview-screen .challenge-head{height:64px;min-height:64px;flex-basis:64px}.challenge-preview-main{padding:6px 10px 30px}}
 `;

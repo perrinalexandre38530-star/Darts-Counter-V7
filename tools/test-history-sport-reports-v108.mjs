@@ -70,6 +70,7 @@ assert.equal(generatorCompiled.diagnostics?.length, 0, 'Main export generator mu
 const generator = { exports: {} };
 const stubRequire = (id) => {
   if (id === './historySportReport') return module.exports;
+  if (id === './historyDartsModeReport') return { enrichHistoricalDartsModeReport: report => report };
   if (id === './challengeFullReport') return { enrichChallengeReport: v => v };
   if (id === 'fflate') return { zipSync: () => new Uint8Array([]) };
   if (id.endsWith('.png') || id.endsWith('.webp')) return {default:`/stub/${id.split('/').at(-1)}`};

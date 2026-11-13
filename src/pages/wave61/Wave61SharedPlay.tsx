@@ -1,6 +1,7 @@
 // @ts-nocheck
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
+import { resolveBotGameDifficulty, resolveBotStars } from "../../lib/botSkillLevel";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -709,7 +710,7 @@ export default function Wave61SharedPlay(props: any) {
     if (!activeIsBot || state.phase === "finished" || botBusy.current) return;
     botBusy.current = true;
     const timer = window.setTimeout(() => {
-      try { commit(playWave61Visit(state, pickWave61BotDarts(state, config.botLevel))); }
+      try { commit(playWave61Visit(state, pickWave61BotDarts(state, resolveBotGameDifficulty(activeProfile, "normal"), resolveBotStars(activeProfile)))); }
       finally { botBusy.current = false; }
     }, 620);
     return () => window.clearTimeout(timer);

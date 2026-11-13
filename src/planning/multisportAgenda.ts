@@ -10,6 +10,20 @@ export type MultisportEventType = "workout" | "training" | "match" | "game" | "o
 export type MultisportEventSource = "manual" | "fit_program" | "multisport_program" | "running_program" | "running_race" | "friend" | "club" | "team" | "system" | "live";
 export type MultisportEventStatus = "planned" | "pending" | "confirmed" | "declined" | "completed" | "cancelled";
 
+/** Optional, display-only metadata from authorized LIVE sports feeds. */
+export type AgendaLiveParticipant = { name: string; countryCode?: string; logoUrl?: string };
+export type AgendaLiveVisual = {
+  competition: string;
+  round?: string;
+  countryCode?: string;
+  countryName?: string;
+  competitionLogoUrl?: string;
+  participants: AgendaLiveParticipant[];
+  broadcast?: { name: string; logoUrl?: string; watchUrl?: string };
+  /** False means the source only gave a calendar date; never render a fabricated kickoff hour. */
+  timeConfirmed?: boolean;
+};
+
 export type MultisportAgendaEvent = {
   id: string;
   title: string;
@@ -25,6 +39,7 @@ export type MultisportAgendaEvent = {
   organizer?: string;
   club?: string;
   participants?: string[];
+  liveVisual?: AgendaLiveVisual;
   status: MultisportEventStatus;
   route?: string;
   routeParams?: Record<string, unknown>;

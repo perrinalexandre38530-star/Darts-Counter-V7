@@ -361,7 +361,7 @@ export default function ClosestCenterConfig(props: any) {
   </aside>;
 
   return <div style={{height:"100%",minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg,#07111b,#04070d)",color:"#fff"}}>
-    <PageHeader tickerSrc={ticker} tickerAlt="DARTS PÉTANQUE" tickerHeight={landscape?56:72} left={<BackDot onClick={()=>go?.("games")} color={ACCENT}/>}/>
+    <PageHeader difficultyGameId="closest_center" tickerSrc={ticker} tickerAlt="DARTS PÉTANQUE" tickerHeight={landscape?56:72} left={<BackDot onClick={()=>go?.("games")} color={ACCENT}/>}/>
     <div style={{flex:1,minHeight:0,overflow:"hidden",padding:landscape?9:12,maxWidth:landscape?1320:980,width:"100%",margin:"0 auto",display:"grid",gridTemplateColumns:landscape?"minmax(0,1.22fr) minmax(330px,.78fr)":"1fr",gap:10}}>
       <div style={{minHeight:0,overflow:"auto",paddingRight:landscape?2:0}}>{configMain}</div>
       {landscape ? landscapeAside : null}

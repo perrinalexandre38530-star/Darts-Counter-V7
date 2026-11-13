@@ -449,6 +449,16 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   const reachPreview = previewReachTurn(reachStuck, reachCm, state.dartsPerPlayer, state.reach[targetActive.id] ?? { bestCm: 0, stuck: 0 });
   const rainbowPreview = previewRainbowTurn(rainbowPattern, rainbowColors, rainbowStack, rainbowCompleted, state.dartsPerPlayer);
   const bottlePreview = previewBottleRound(state.players, bottleStuck, bottleOn, bottleClosest, state.dartsPerPlayer);
+  // These are display-only previews: applyTossitAction remains the sole scoring authority.
+  const riverStop = riverLandings.findIndex(hit => hit.kind === "river");
+  const riverEntered = riverLandings.slice(0, riverStop >= 0 ? riverStop + 1 : riverLandings.length);
+  const riverAttackPoints = riverEntered.filter(hit => hit.kind === "opponent").reduce((n, hit) => n + hit.points, 0) + riverKiss * 2 + (riverJump ? 9 : 0);
+  const riverOwnPoints = riverEntered.filter(hit => hit.kind === "own").reduce((n, hit) => n + hit.points, 0);
+  const riverOpponent = state.players.find(player => player.id !== targetActive.id);
+  const pitchAttacker = state.players.find(player => player.id === state.pitch.attackerId);
+  const pitchDefender = state.players.find(player => player.id !== state.pitch.attackerId);
+  const isPitchAttackerTurn = state.pitch.attackerId === targetActive.id;
+  const displayedPitchOutcome = pitchOptions.some(option => option.value === pitchOutcome) ? pitchOutcome : "miss";
 
   const submitBorder = () => {
     if (!borderPreview.ready) {
@@ -564,18 +574,24 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         </TossitEntrySummary>
         <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} disabled={!borderPreview.ready} onClick={submitBorder}>{tr("CALCULER & VALIDER LA MANCHE", "SCORE ROUND")}</button>
       </section>}
-      {mode === "tictac" && <section className="tossit-mode-panel" style={panel}>
-        <h3 style={{ marginTop: 0 }}>{tr("Au tour de", "Now playing")}: {targetActive?.name}</h3>
-        <p style={{ opacity: .75 }}>{tr("Sélectionnez la case atteinte (même occupée) ou un raté, puis confirmez : un premier toucher ne valide plus le tour.", "Select the hit cell (even if occupied) or a miss, then confirm. The first tap does not submit the turn.")}</p>
-        <div role="group" aria-label="Tic Tac TOSSIT" style={{ display: "grid", gridTemplateColumns: `repeat(${state.gridSize}, minmax(0, 1fr))`, gap: 6, margin: "14px auto", maxWidth: 430 }}>
-          {state.board.map((cell, index) => <button type="button" key={index} className="tossit-tictac-cell" aria-pressed={tictacSelection === index} aria-label={`${tr("Case", "Cell")} ${index + 1}${cell ? ` ${state.players.find((p) => p.id === cell)?.name}` : ""}`} style={{ ...secondary, minWidth: 0, aspectRatio: "1", padding: 0, fontSize: "clamp(16px,5vw,30px)", fontWeight: 900, borderColor: cell ? (cell === state.players[0].id ? "#43E5EE" : "#FF67C9") : "#45606B", background: cell ? (cell === state.players[0].id ? "#0F505B" : "#5A204C") : "#0B252D" }} onClick={() => setTictacSelection(tictacSelection === index ? null : index)}>{cell ? (cell === state.players[0].id ? "●" : "✦") : "·"}</button>)}
+      {mode === "tictac" && <section className="tossit-mode-panel tossit-mode-panel--tictac" style={panel}>
+        <div className="tossit-special-mode-heading"><span>✦ {tr("MORPION TOSSIT", "TIC-TAC-TOSSIT")}</span><b>{state.gridSize}×{state.gridSize} · {tr("ALIGNER", "CONNECT")} {state.gridSize - 1}</b></div>
+        <div className="tossit-special-turn"><TossitPlayerAvatar player={targetActive}/><div><small>{tr("À TOI DE JOUER", "YOUR TURN")}</small><strong>{targetActive.name}</strong></div></div>
+        <p className="tossit-assist-text">{tr("Choisissez la case réellement atteinte, même occupée, ou un raté. Aucun tour n'est enregistré avant confirmation.", "Choose the actual hit cell, including an occupied one, or a miss. No turn is recorded until confirmation.")}</p>
+        <div className="tossit-tictac-board" role="group" aria-label={tr("Grille Morpion TOSSIT", "TOSSIT tic-tac grid")}
+          style={{ "--tossit-grid-size": state.gridSize } as React.CSSProperties}>
+          {state.board.map((cell, index) => <button type="button" key={index} className="tossit-tictac-cell" data-occupied={cell ? "true" : "false"} data-owner={cell === state.players[0].id ? "first" : cell ? "second" : "none"}
+            aria-pressed={tictacSelection === index} aria-label={`${tr("Case", "Cell")} ${index + 1}${cell ? ` · ${tr("Occupée par", "Occupied by")} ${state.players.find(p => p.id === cell)?.name}` : ` · ${tr("Libre", "Free")}`}`}
+            onClick={() => setTictacSelection(tictacSelection === index ? null : index)}>
+            <small aria-hidden="true">{String(index + 1).padStart(2, "0")}</small><span aria-hidden="true">{cell ? (cell === state.players[0].id ? "●" : "✦") : "·"}</span>
+          </button>)}
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}><span style={{ color: "#43E5EE" }}>● {state.players[0]?.name}</span><span style={{ color: "#FF67C9" }}>✦ {state.players[1]?.name}</span><span style={{ opacity: .65 }}>{tr("Aligner", "Connect")} {state.gridSize - 1}</span></div>
+        <div className="tossit-tictac-legend"><span><i aria-hidden="true">●</i> {state.players[0]?.name}</span><span><i aria-hidden="true">✦</i> {state.players[1]?.name}</span><b>{tr("Aligner", "Connect")} {state.gridSize - 1}</b></div>
         <div className="tossit-tictac-actions">
           <button type="button" aria-pressed={tictacSelection === "miss"} className="tossit-tictac-miss" style={secondary} onClick={() => setTictacSelection(tictacSelection === "miss" ? null : "miss")}>{tr("VENTOUSE MANQUÉE", "MISSED DART")}</button>
           <button type="button" className="tossit-confirm-button" style={button} disabled={tictacSelection === null} onClick={() => { if (tictacSelection !== null && commit({ kind: "tictac", cell: tictacSelection === "miss" ? null : tictacSelection })) setTictacSelection(null); }}>{tr("CONFIRMER LE TOUR", "CONFIRM TURN")}</button>
         </div>
-        <p className="tossit-selection-feedback" role="status" aria-live="polite">{tictacSelection === null ? tr("Choisissez d’abord une case ou un raté.", "First choose a cell or a miss.") : tictacSelection === "miss" ? tr("Raté sélectionné — à confirmer", "Miss selected — confirm to record") : `${tr("Case", "Cell")} ${tictacSelection + 1} ${tr("sélectionnée — à confirmer", "selected — confirm to record")}`}</p>
+        <p className="tossit-selection-feedback" role="status" aria-live="polite">{tictacSelection === null ? tr("Choisissez d’abord une case ou un raté.", "First choose a cell or a miss.") : tictacSelection === "miss" ? tr("Raté sélectionné — à confirmer", "Miss selected — confirm to record") : state.board[tictacSelection] !== null ? `${tr("Case", "Cell")} ${tictacSelection + 1} · ${tr("déjà occupée : aucun nouveau point, tour consommé", "already occupied: no new point, turn used")}` : `${tr("Case", "Cell")} ${tictacSelection + 1} · ${tr("libre, à confirmer", "free, confirm to record")}`}</p>
       </section>}
       {mode === "battle" && <section className="tossit-mode-panel" style={panel}>
         <h3>⚔️ BATTLE MODE</h3>
@@ -632,9 +648,18 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           disabled={players.every(p => (conquestStuck[p.id] ?? 0) >= Math.min(conquestRequired, state.dartsPerPlayer)) && !conquestFirst}
           onClick={() => { if (commit({ kind: "conquest", color: conquestColor, required: Math.min(conquestRequired, state.dartsPerPlayer), stuck: conquestStuck, firstId: state.players.every(p => (conquestStuck[p.id] ?? 0) >= Math.min(conquestRequired, state.dartsPerPlayer)) ? conquestFirst || undefined : undefined })) { setConquestStuck({}); setConquestFirst(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
-      {mode === "river" && <section className="tossit-mode-panel" style={panel}>
-        <h3 style={{ marginTop: 0 }}>🌊 RIVER — {targetActive.name}</h3>
-        <p style={{ opacity: .78, fontSize: 13 }}>{tr("Relevez chaque ventouse. La valeur d'une zone dépend de votre tapis. Votre camp attribue les points à l'adversaire ; toucher la rivière arrête immédiatement le tour.", "Record each dart. Zone values come from your mat. Landing in your own camp awards the opponent; touching the river immediately ends your turn.")}</p>
+      {mode === "river" && <section className="tossit-mode-panel tossit-mode-panel--river" style={panel}>
+        <div className="tossit-special-mode-heading"><span>🌊 RIVER</span><b>{tr("CIBLE", "TARGET")} 50 {tr("PTS", "PTS")}</b></div>
+        <div className="tossit-river-lanes" aria-label={tr("Repère des zones du tapis", "Mat zone guide")}>
+          <div><strong>{tr("CAMP ADVERSE", "OPPONENT SIDE")}</strong><small>{tr("Mes points", "My points")}</small></div>
+          <div className="tossit-river-lanes__water"><strong>{tr("RIVIÈRE", "RIVER")}</strong><small>{tr("Fin du tour", "Ends turn")}</small></div>
+          <div><strong>{tr("MON CAMP", "MY SIDE")}</strong><small>{tr("Points adverses", "Opponent points")}</small></div>
+        </div>
+        <div className="tossit-dart-rail" aria-label={tr("Suivi des ventouses", "Dart progress")}>{riverLandings.map((hit, i) =>
+          <span key={i} data-stop={riverStop >= 0 && i > riverStop ? "true" : "false"} data-water={hit.kind === "river" ? "true" : "false"}>
+            {tr("V", "D")}{i + 1} · {riverStop >= 0 && i > riverStop ? "—" : hit.kind === "river" ? "🌊" : hit.kind === "miss" ? "×" : hit.points}
+          </span>)}</div>
+        <p className="tossit-assist-text">{tr("Renseignez la zone de chaque ventouse. Les points sont ceux inscrits sur votre tapis ; jouer dans son camp rapporte à l'adversaire. La rivière termine immédiatement le tour.", "Record each dart's zone. Use the points printed on your mat; landing on your own side scores for the opponent. The river ends the turn immediately.")}</p>
         {riverLandings.map((hit, i) => { const cutAt = riverLandings.findIndex(x => x.kind === "river"); return cutAt >= 0 && i > cutAt ? null : <div key={i} className="tossit-throw-row">
           <strong>{tr("Ventouse", "Dart")} {i + 1}</strong>
           <TossitQuickChoices<RiverLanding["kind"]> value={hit.kind} label={`${tr("Résultat", "Result")} ${i + 1}`} columns={4}
@@ -644,10 +669,14 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
             <input aria-label={`${tr("Valeur", "Value")} ${i + 1}`} type="number" inputMode="numeric" min={0} max={100} step={1} style={input} value={hit.points}
               onChange={e => setRiverLandings(v => v.map((x, idx) => idx === i ? { ...x, points: Math.min(100, Math.max(0, Number(e.target.value) || 0)) } : x))}/></label>}
         </div>; })}
-        <div className="tossit-selection-feedback" role="status">
-          {tr("Aperçu", "Preview")}: {targetActive.name} +{riverLandings.slice(0, riverLandings.findIndex(x => x.kind === "river") + 1 || riverLandings.length).filter(x => x.kind === "opponent").reduce((n,x)=>n+x.points,0)+riverKiss*2+(riverJump?9:0)} · {players.find(p => p.id !== targetActive.id)?.name} +{riverLandings.slice(0, riverLandings.findIndex(x => x.kind === "river") + 1 || riverLandings.length).filter(x=>x.kind === "own").reduce((n,x)=>n+x.points,0)}
+        <div className="tossit-river-preview" role="status" aria-live="polite">
+          <div><small>{tr("CAMP QUI LANCE", "THROWING SIDE")}</small><strong>{targetActive.name}</strong><b>+{riverAttackPoints}</b></div>
+          <div><small>{tr("CAMP ADVERSE", "OTHER SIDE")}</small><strong>{riverOpponent?.name || "—"}</strong><b>+{riverOwnPoints}</b></div>
         </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}><label>Kiss (+2) <select style={{ ...input, width: 75 }} value={riverKiss} onChange={e => setRiverKiss(Number(e.target.value))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, i) => <option key={i}>{i}</option>)}</select></label><label><input type="checkbox" checked={riverJump} onChange={e => setRiverJump(e.target.checked)} /> Jumpover (+9)</label></div>
+        <div className="tossit-entry-field"><strong>{tr("Bonus Kiss (+2)", "Kiss bonus (+2)")}</strong>
+          <TossitCountChoices value={riverKiss} max={state.dartsPerPlayer} label={tr("Nombre de Kiss", "Number of Kisses")} onChange={setRiverKiss} columns={4}/></div>
+        <label className="tossit-check-option"><input type="checkbox" checked={riverJump} onChange={e => setRiverJump(e.target.checked)}/>{tr("Jumpover (+9) · score adverse remis à zéro", "Jumpover (+9) · resets opponent's score")}</label>
+        {riverStop >= 0 && <div className="tossit-river-stop-note" role="status">🌊 {tr(`Rivière à la ventouse ${riverStop + 1} : tirs suivants annulés.`, `River on dart ${riverStop + 1}: later throws are ignored.`)}</div>}
         <button className="tossit-confirm-button" style={{ ...button, width: "100%", marginTop: 14 }} onClick={() => { const cutAt = riverLandings.findIndex(x => x.kind === "river"); const landings = cutAt >= 0 ? riverLandings.slice(0, cutAt + 1) : riverLandings; if (commit({ kind: "river", landings, kiss: riverKiss, jumpover: riverJump })) { setRiverLandings(Array.from({ length: state.dartsPerPlayer }, (): RiverLanding => ({ kind: "miss", points: 0 }))); setRiverKiss(0); setRiverJump(false); } }}>{tr("VALIDER LE TOUR", "CONFIRM TURN")}</button>
       </section>}
       {mode === "cornhole" && <section className="tossit-mode-panel" style={panel}>
@@ -683,16 +712,26 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         <strong style={{ color: ACCENT, display: "block", marginBottom: 10 }}>{tr("Total", "Total")} {goalZones.reduce((n,v)=>n+v,0)} pts</strong>
         <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "goalkeeper", zones: goalZones })) setGoalZones([0,0,0]); }}>{tr("VALIDER LES 3 TIRS", "CONFIRM 3 THROWS")}</button>
       </section>}
-      {mode === "football_pitch" && <section className="tossit-mode-panel" style={panel}>
-        <h3 style={{ marginTop: 0 }}>⚽ FOOTBALL PITCH</h3>
-        <p style={{ color: ACCENT, fontWeight: 800 }}>{tr("Attaquant", "Attacker")}: {players.find(p => p.id === state.pitch.attackerId)?.name} · {tr("Tentative", "Drive")} {state.pitch.drive}</p>
-        <p style={{ opacity: .76, fontSize: 13 }}>{tr("Chemin confirmé", "Confirmed path")}: {state.pitch.chainLength} · {tr("Balles défendues", "Blocked darts")}: {state.pitch.blocks} · {tr("Attaquant", "Attacker")}: {state.pitch.attackerThrows}/6 · {tr("Défenseur", "Defender")}: {state.pitch.defenderThrows}/6</p>
-        <strong style={{ display: "block", marginBottom: 10 }}>{tr("Au tour de", "Now playing")}: {targetActive.name} — {targetActive.id === state.pitch.attackerId ? tr("ATTAQUE", "ATTACK") : tr("DÉFENSE", "DEFENCE")}</strong>
-        <p style={{ opacity: .75, fontSize: 12 }}>{tr("Validez vous-même la continuité des contacts entre ventouses. L'application ne mesure pas automatiquement la trajectoire.", "Manually confirm connected darts. The app does not automatically detect the path.")}</p>
-        <TossitQuickChoices<typeof pitchOutcome> value={pitchOptions.some(option => option.value === pitchOutcome) ? pitchOutcome : "miss"}
+      {mode === "football_pitch" && <section className="tossit-mode-panel tossit-mode-panel--football" style={panel}>
+        <div className="tossit-special-mode-heading"><span>⚽ FOOTBALL PITCH</span><b>{tr("ATTAQUE", "DRIVE")} {state.pitch.drive}</b></div>
+        <div className="tossit-football-duel">
+          <div data-current={isPitchAttackerTurn ? "true" : "false"}><small>{tr("ATTAQUANT", "ATTACKER")}</small><strong>{pitchAttacker?.name || "—"}</strong><b>{state.pitch.attackerThrows}/6 {tr("TIRS", "SHOTS")}</b></div>
+          <div className="tossit-football-duel__versus">VS</div>
+          <div data-current={!isPitchAttackerTurn ? "true" : "false"}><small>{tr("DÉFENSEUR", "DEFENDER")}</small><strong>{pitchDefender?.name || "—"}</strong><b>{state.pitch.defenderThrows}/6 {tr("TIRS", "SHOTS")}</b></div>
+        </div>
+        <div className="tossit-football-progress">
+          <div><small>{tr("CHEMIN VALIDÉ", "CONFIRMED PATH")}</small><strong>{state.pitch.chainLength}</strong></div>
+          <div><small>{tr("BLOCAGES", "BLOCKS")}</small><strong>{state.pitch.blocks}</strong></div>
+          <div><small>{tr("PASSE LONGUE", "LONG PASS")}</small><strong>{state.pitch.longPassUsed ? tr("UTILISÉE", "USED") : tr("DISPONIBLE", "READY")}</strong></div>
+        </div>
+        <div className="tossit-football-throw-track" aria-label={tr("Progression des lancers", "Throw progress")}>{Array.from({length:6}, (_,i) => <span key={i} data-attacker={i < state.pitch.attackerThrows ? "true" : "false"} data-defender={i < state.pitch.defenderThrows ? "true" : "false"}>{i + 1}</span>)}</div>
+        <div className="tossit-special-turn"><TossitPlayerAvatar player={targetActive}/><div><small>{isPitchAttackerTurn ? tr("À L’ATTAQUE", "ATTACKING") : tr("EN DÉFENSE", "DEFENDING")}</small><strong>{targetActive.name}</strong></div></div>
+        <p className="tossit-assist-text">{tr("Validez vous-même les contacts entre ventouses et l'action observée. Aucun suivi caméra automatique.", "Manually confirm dart contacts and the observed action. There is no automatic camera tracking.")}</p>
+        <TossitQuickChoices<typeof pitchOutcome> value={displayedPitchOutcome}
           label={tr("Action du lancer", "Throw action")} columns={2} options={pitchOptions} onChange={setPitchOutcome}/>
+        <div className="tossit-football-selected" role="status" aria-live="polite">{tr("Sélection provisoire", "Provisional selection")}: <strong>{pitchOptions.find(option => option.value === displayedPitchOutcome)?.label || "—"}</strong></div>
         <button className="tossit-confirm-button" style={{ ...button, width: "100%", marginTop: 12 }}
-          onClick={() => { if (commit({ kind: "football_pitch", outcome: pitchOptions.some(option => option.value === pitchOutcome) ? pitchOutcome : "miss" })) setPitchOutcome("miss"); }}>
+          onClick={() => { if (commit({ kind: "football_pitch", outcome: displayedPitchOutcome })) setPitchOutcome("miss"); }}>
           {tr("VALIDER LE LANCER", "CONFIRM THROW")}</button>
       </section>}
       {mode === "thief_cop" && <section className="tossit-mode-panel" style={panel}>

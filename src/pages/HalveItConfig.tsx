@@ -13,7 +13,8 @@ import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
 import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
-import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
 import DartsPendingFinalCard from "../components/DartsPendingFinalCard";
 import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
@@ -323,15 +324,13 @@ export default function HalveItConfig(props: any) {
   </section>;
 
   return <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
-    <PageHeader tickerSrc={headerTicker} tickerAlt={modeLabel} left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title={`Règles ${modeLabel}`} color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} isSplitScore={isSplitScore} />} />} />
+    <PageHeader difficultyGameId={isSplitScore ? "split_score" : "halve_it"} tickerSrc={headerTicker} tickerAlt={modeLabel} left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title={`Règles ${modeLabel}`} color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} isSplitScore={isSplitScore} />} />} />
     <DartsPendingFinalCard mode={isSplitScore ? "split_score" : "halve_it"} accent={primary}
       onRecovered={() => go?.("statsHub", { tab: "history" })} />
     <DartsResumeDraftCard mode={isSplitScore ? "split_score" : "halve_it"} accent={primary}
       onResume={(savedConfig) => go?.("halve_it_play", { ...savedConfig, resumeDraft: true })} />
     <div style={{ padding: "0 8px", width: "100%", boxSizing: "border-box" }}>
-      <DartsModeFamilyBridge family="halve_it" current={isSplitScore ? "variant" : "main"} accent={primary}
-        onOpenRelated={() => go?.("halve_it_config", isSplitScore ? { launchMode: "arcade" } : { variantId: "split_score", launchMode: "arcade" })}
-        onBrowseVariants={() => go?.("games", { gamesView: "all", gamesCategory: "variant" })} />
+      <DartsRelatedModesPanel gameId={isSplitScore ? "split_score" : "halve_it"} accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
     </div>
     <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 8px 0", overflowX: "hidden" }}>
       <section style={{ ...selectorCard, border: `1px solid ${primary}66`, boxShadow: `0 0 24px ${primary}18, 0 14px 34px rgba(0,0,0,.48)` }}>

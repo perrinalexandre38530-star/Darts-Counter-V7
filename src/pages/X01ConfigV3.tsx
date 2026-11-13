@@ -10,6 +10,8 @@
 
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import {
   applyResolvedProBotDartsBrands,
@@ -33,6 +35,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
+import GameDifficultyStars from "../components/GameDifficultyStars";
 import x01AwenaRulesPoster from "../assets/videos/x01_awena_rules_poster.webp";
 import {
   getAllDartSets,
@@ -3858,6 +3861,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           );
         })()}
       </header>
+      <DartsRelatedModesPanel gameId="x01" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
+      <div data-mss-config-difficulty="1" style={{display:"flex",justifyContent:"center",marginTop:-4,marginBottom:7}}><GameDifficultyStars game="x01" compact /></div>
 
       {/* CONTENU SCROLLABLE */}
       <div ref={contentRef} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>

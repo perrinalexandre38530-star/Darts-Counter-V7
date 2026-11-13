@@ -1,0 +1,61 @@
+/** V111: real-world legacy/arcade save shapes. No private History records. */
+import assert from 'node:assert/strict';
+import {getChallengeDartEvidence} from '../src/lib/challengeDartEvidence.ts';
+import {challengeArchiveItems,summarizeChallengeArchive} from '../src/lib/challengeArchiveCore.ts';
+import {buildChallengeArchiveAudit} from '../src/lib/challengeArchiveAudit.ts';
+import {buildChallengeRecordDetails} from '../src/lib/challengeInsightMetrics.ts';
+
+const perfect={exerciseType:'arcade',catalogChallengeId:'perfect-line',catalogVariant:'classic',catalogLine:20,catalogRounds:1};
+const classic={exerciseType:'classic',target:'20',rule:'all',visits:5};
+const p=(id,score,extra={})=>({id,name:`Player ${id}`,score,...extra});
+function match(id,{config=perfect,players=[p('A',100)],rows=[],status='finished',summaryDarts=undefined}={}){
+ const isArcade=config.exerciseType==='arcade';
+ const summary={kind:'challenge',mode:'challenge',finished:status==='finished',perPlayer:players,...(summaryDarts===undefined?{}:{darts:summaryDarts})};
+ return {id,matchId:id,kind:'challenge',status,summary,game:{exerciseType:config.exerciseType,catalogChallengeId:config.catalogChallengeId},
+  players:players.map(row=>({id:row.id,name:row.name})),payload:{config,summary,...(isArcade?{state:{hits:rows}}:{entries:rows})}};
+}
+const dart=(pid,zone='G',segment=20)=>({pid,zone,segment});
+const mono=match('solo-arcade',{rows:[dart('A','D'),dart('A','G'),dart('A','MISS',null)]});
+let row=challengeArchiveItems([mono],{playerId:'A'})[0];
+assert.equal(row.darts,3);
+assert.equal(row.dartsKnown,true);
+assert.equal(row.dartsRecoveredFromJournal,true);
+assert.equal(summarizeChallengeArchive([row]).byConfig[0].best.darts,3);
+assert.equal(buildChallengeRecordDetails([row],row.configKey,'min').value,3);
+let audit=buildChallengeArchiveAudit([row],[mono]);
+assert.equal(audit.recoveredDarts,1);
+assert.equal(audit.recordEligible,1);
+assert.equal(audit.problems.some(problem=>problem.code==='NO_DARTS'),false);
+assert.ok(audit.problems.find(problem=>problem.code==='DARTS_RECOVERED'));
+const soloUntagged=match('solo-untagged',{rows:[{zone:'D',segment:20},{zone:'MISS',segment:null}]});
+assert.deepEqual(getChallengeDartEvidence(soloUntagged,'A'),{darts:2,source:'solo-journal'});
+const multi=match('multi',{players:[p('A',12),p('B',999)],summaryDarts:40,rows:[dart('A'),dart('B'),dart('A','MISS',null),dart('B','T'),dart('A','D')]});
+const rowsA=challengeArchiveItems([multi],{playerId:'A'});
+const rowsB=challengeArchiveItems([multi],{playerId:'B'});
+assert.equal(rowsA[0].darts,3,'Player A gets only own throws');
+assert.equal(rowsB[0].darts,2,'Player B gets only own throws');
+assert.equal(rowsA[0].dartsRecoveredFromJournal,true);
+assert.equal(rowsB[0].dartsRecoveredFromJournal,true);
+const multiNoJournal=match('multi-global-only',{players:[p('A',12),p('B',999)],summaryDarts:40});
+assert.equal(challengeArchiveItems([multiNoJournal],{playerId:'A'})[0].dartsKnown,false,'global summary cannot become an individual record');
+assert.equal(buildChallengeArchiveAudit(challengeArchiveItems([multiNoJournal],{playerId:'A'})).recordEligible,0);
+const mixedOwner=match('multi-ambiguous',{players:[p('A',12),p('B',999)],rows:[dart('A'),{zone:'D',segment:2}]});
+assert.equal(getChallengeDartEvidence(mixedOwner,'A'),null,'untagged DUO/MULTI is never guessed');
+assert.equal(challengeArchiveItems([mixedOwner],{playerId:'A'})[0].dartsKnown,false);
+const legacy=match('classic-legacy',{config:classic,players:[p('A',25)],rows:[{pid:'A',hit:'S',segment:20},{pid:'A',hit:'MISS'},{pid:'A',hit:'D',segment:1}]});
+assert.equal(challengeArchiveItems([legacy],{playerId:'A'})[0].darts,3);
+const resumeOnly=match('resume-stale',{players:[p('A',250)]});
+resumeOnly.resume={state:{log:[{pid:'A',hit:'S',segment:20}]}};
+assert.equal(getChallengeDartEvidence(resumeOnly,'A'),null,'a finished match cannot use a potentially partial resume log as its record');
+assert.equal(challengeArchiveItems([resumeOnly],{playerId:'A'})[0].dartsKnown,false);
+const summary=match('has-report',{players:[p('A',250,{darts:8})],rows:[dart('A'),dart('A'),dart('A')]});
+row=challengeArchiveItems([summary],{playerId:'A'})[0];
+assert.equal(row.darts,8,'preserve reported number, do not silently overwrite conflicts');
+assert.equal(row.dartsRecoveredFromJournal,false);
+assert.equal(buildChallengeArchiveAudit([row]).problems.find(p=>p.code==='JOURNAL_CONFLICT')?.count,1);
+const noScore=match('no-score',{players:[{id:'A',name:'Player A'}],rows:[dart('A')]});
+assert.equal(buildChallengeArchiveAudit(challengeArchiveItems([noScore],{playerId:'A'})).recordEligible,1,'path record only needs a verified positive dart count');
+const asString=JSON.stringify(buildChallengeArchiveAudit([...rowsA,...rowsB],[multi]));
+for(const secret of ['Player A','Player B','multi-global-only','multi-ambiguous','solo-arcade'])assert.ok(!asString.includes(secret));
+assert.equal(buildChallengeArchiveAudit([row]).recoveredDarts,0);
+console.log('✅ V111: strict per-player dart restoration, SOLO/DUO/MULTI, legacy, no global fallback, no fake records or identity leakage');

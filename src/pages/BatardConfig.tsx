@@ -49,7 +49,7 @@ export default function BatardConfig(props: any) {
 
   return (
     <div className="page">
-      <PageHeader
+      <PageHeader difficultyGameId="batard"
         title="BÂTARD"
         tickerSrc={tickerBatard}
         left={<BackDot onClick={goBack} />}

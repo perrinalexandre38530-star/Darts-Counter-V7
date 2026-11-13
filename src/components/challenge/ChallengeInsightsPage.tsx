@@ -133,6 +133,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
        <div><strong>{reliability.withoutDetail}</strong><span>SANS DÉTAIL</span></div>
        <div><strong>{reliability.inProgress}</strong><span>EN COURS · EXCLUES</span></div>
       </div>
+      {reliability.recoveredDarts>0&&<p className="mss-ci-darts-recovered">✓ {reliability.recoveredDarts} partie{reliability.recoveredDarts>1?'s':''} : le nombre exact de fléchettes a été retrouvé à partir du journal du joueur, sans inventer d'impacts ni modifier History V4.</p>}
       {(reliability.unknownConfig>0||reliability.missingDartsForMinimum>0||reliability.missingScores>0||reliability.dartCountConflicts>0||reliability.missingDates>0)&&<p className="mss-ci-reliability-note">
        {[
         reliability.unknownConfig?`${reliability.unknownConfig} configuration(s) non documentée(s)`:null,
@@ -152,6 +153,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
         <span><b>{audit.recordEligible}</b><small>MESURES EXPLOITABLES</small></span>
         <span><b>{audit.notEligible}</b><small>SANS MESURE DE RECORD</small></span>
         <span><b>{audit.inProgress}</b><small>EN COURS · EXCLUES</small></span>
+        <span><b>{audit.recoveredDarts}</b><small>FLÉCHETTES RÉCUPÉRÉES</small></span>
        </div>
        {audit.duplicateSnapshots>0&&<p className="mss-ci-audit-duplicates">{audit.duplicateSnapshots} copie(s) supplémentaires d’une même partie détectée(s) dans les données chargées. Une seule version de chaque partie est retenue pour les statistiques.</p>}
        {audit.problems.length?<div className="mss-ci-audit-findings">{audit.problems.map(problem=><div key={problem.code} className={problem.severity}><strong>{problem.count}</strong><span>{problem.message}</span></div>)}</div>:<p>Aucune anomalie détectée parmi les informations présentes dans ces parties.</p>}

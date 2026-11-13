@@ -6,6 +6,8 @@ import {useAwenaOptional} from '../awena/AwenaProvider';
 import {useFullscreenPlay} from '../hooks/useFullscreenPlay';
 import {History} from '../lib/history';
 import {recordTrainingDetailedSession} from '../training/stats/trainingStatsHub';
+import TrainingChallengeVoiceGuide from '../training/ui/TrainingChallengeVoiceGuide';
+import '../training/ui/trainingChallengeVoiceGuide.css';
 import {getChallengeTrainingPreset} from '../training/catalog/challengeTrainingCatalog';
 import {saveTrainingArcadeDraft,clearTrainingArcadeDraft} from '../training/profile/trainingArcadeDraft';
 import {getArcadeChallenge} from '../lib/challengeArcadeCatalog';
@@ -224,6 +226,15 @@ export default function ChallengeArcadePlay({go,params}:{go:(tab:any,params?:any
     <div className="ca-goal"><small>{finished?'RÉSULTAT FINAL':'OBJECTIF ACTUEL'}</small><strong>{finished?'✓':targetLabel}</strong><span>{modeDetails.kind==='path'||modeDetails.kind==='team'?`${active.index}/${active.totalObjectives} OBJECTIFS`:shownScore}</span>
      <div className="ca-meter"><i style={{width:(100*progressRatio)+'%'}}/></div><p>{active.message||'Le moteur recalcule chaque impact et le score après toute annulation.'}</p>
     </div>
+    {fromTrainingLab && !isHistoryView && haveSetup && <TrainingChallengeVoiceGuide
+      presetId={trainingPresetId} title={definition.title} playerName={active.player.name}
+      goal={finished ? 'Parcours terminé' : targetLabel}
+      phase={`Volée ${Math.floor(currentPlayerHits.length / 3) + 1}`}
+      stageKey={`${activeId}:${Math.floor(currentPlayerHits.length / 3)}`} sessionKey={sessionId}
+      finished={finished} darts={active.attempts} score={active.score} accuracy={finished ? active.accuracy : null}
+      objectivesDone={modeDetails.kind === 'path' || modeDetails.kind === 'team' ? active.index : null}
+      objectivesTotal={modeDetails.kind === 'path' || modeDetails.kind === 'team' ? active.totalObjectives : null}
+    />}
     {sequence.length>0&&<div className="ca-sequence" aria-label="Objectifs du parcours">{sequence.slice(0,60).map((step,index)=><span key={index} className={index<active.index?'passed':index===active.index?'current':''}>{step.label}</span>)}</div>}
     {id==='bounty-hunt'&&<div className="ca-bounty"><h2>PRIMES DISPONIBLES</h2><div>{arcadeBountyNumbers(rules).map(n=><span key={n}>N° {n} · {n*10} PTS</span>)}</div></div>}
     {board&&<div className="ca-territories"><h2>CARTE DES TERRITOIRES</h2><div>{numbers.map(n=><span key={n} className={board[n]?'owned':''} title={board[n]?`Occupé par ${players.find(p=>p.id===board[n]?.owner)?.name||'joueur'}`:'Libre'}>{n}<small>{board[n]?(players.find(p=>p.id===board[n]?.owner)?.name.slice(0,2)||'✓'):'—'}</small></span>)}</div></div>}

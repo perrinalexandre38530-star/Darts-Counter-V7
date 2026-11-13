@@ -29,6 +29,6 @@ assert.ok(audit.problems.some(p=>p.code==='NO_DARTS'&&p.count===1));
 assert.equal(challengeArchiveItems([base],{playerId:'P2'}).length,1);
 const str=JSON.stringify(audit);
 for(const secret of ['Nom privé','Autre joueur','P1','P2','valid','ongoing','no-darts',String(challengeRecordConfigKey(base))])assert.ok(!str.includes(secret),'audit must not leak personal or match data: '+secret);
-assert.deepEqual(buildChallengeArchiveAudit([]),{schema:'mss-challenge-audit-v1',scope:'selected-challenge-and-profile',total:0,finished:0,inProgress:0,recordEligible:0,notEligible:0,duplicateSnapshots:0,journalVerified:0,summaryOnly:0,withoutDetail:0,problems:[],eligibleByMode:[]});
+assert.deepEqual(buildChallengeArchiveAudit([]),{schema:'mss-challenge-audit-v1',scope:'selected-challenge-and-profile',total:0,finished:0,inProgress:0,recordEligible:0,notEligible:0,duplicateSnapshots:0,journalVerified:0,summaryOnly:0,withoutDetail:0,recoveredDarts:0,problems:[],eligibleByMode:[]});
 assert.deepEqual(rows.map(r=>r.id),['valid','ongoing','no-darts','old']); // read-only; order deterministic
 console.log('✅ CHALLENGE V108 — read-only anonymized data audit, profile isolation, record eligibility, empty case');

@@ -23,6 +23,8 @@
 // =============================================================
 
 import React from "react";
+import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -972,6 +974,7 @@ export default function KillerConfigPage(props: Props) {
   </div>
 </div>
 
+      <DartsRelatedModesPanel gameId={isProgressive ? "killer_progressive" : "killer"} accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
       {/* CONTENT */}
       <div ref={contentRef as any} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         {!isProgressive && (
