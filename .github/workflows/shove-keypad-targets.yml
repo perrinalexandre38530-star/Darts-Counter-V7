@@ -1,0 +1,35 @@
+name: SHOVE A PENNY - targeted regression
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/gameEngines/shoveAPennyTargets.ts'
+      - 'src/lib/gameEngines/wave61Engine.ts'
+      - 'src/pages/Wave61SharedPlay.tsx'
+      - 'src/pages/Wave61SharedConfig.tsx'
+      - 'src/components/KeypadTargets.*'
+      - 'src/components/ShovePennyCricketBoard.tsx'
+      - 'tools/test-wave61-shove-targeted-keypad-v101.mjs'
+      - '.github/workflows/shove-keypad-targets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shove-targets:
+    name: Check targeted keypad and engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: SHOVE A PENNY sequential-target regression
+        run: node tools/test-wave61-shove-targeted-keypad-v101.mjs
+      - name: Check TypeScript
+        run: npm run typecheck
