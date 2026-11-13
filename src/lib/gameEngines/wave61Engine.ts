@@ -4768,11 +4768,12 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
   const activeId = state.players[state.activePlayerIndex]?.id;
   if (state.modeId === "shove_a_penny") {
     const marks = state.special?.shoveMarksByPlayer?.[activeId] || {};
+    const rule = shoveRuleSet(state.config?.modeOptions?.ruleSet);
     const marksPerBox = modeOptionNumber(state.config, "marksPerBox", 3, 2, 5);
     let projected = { ...marks };
     const darts: GameDart[] = [];
     for (let i = 0; i < 3; i++) {
-      const targetNum = shoveNextTarget(projected, marksPerBox);
+      const targetNum = shoveNextTarget(projected, marksPerBox, rule);
       const bed = level === "hard" ? "T" : level === "normal" ? "D" : "S";
       const dart = targetNum === null
         ? ({ bed: "MISS" } as GameDart)
@@ -4780,7 +4781,7 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
           ? ({ bed: level === "hard" ? "IB" : "OB" } as GameDart)
           : ({ bed, number: targetNum } as GameDart);
       darts.push(dart);
-      projected = projectShoveMarks(projected, [dart], marksPerBox);
+      projected = projectShoveMarks(projected, [dart], marksPerBox, rule);
     }
     return darts;
   }
@@ -5179,8 +5180,10 @@ export function wave61PrimaryMetric(state: Wave61State, playerId: string): { val
   if (state.modeId === "saut_a_la_corde") return { value: Math.round(Number(state.progress[playerId] || 0)), label: "SAUTS", sub: `combo ${state.special?.ropeComboByPlayer?.[playerId] || 0} · rythme ${state.special?.ropePaceByPlayer?.[playerId] || 1}` };
   if (state.modeId === "replicat") return { value: Number(state.progress[playerId] || 0), label: "COPIES", sub: `${state.scores[playerId] || 0} pts · ${stats.hits || 0} exacts` };
   if (state.modeId === "shove_a_penny") {
-    const maxMarks = SHOVE_TARGETS.length * modeOptionNumber(state.config, "marksPerBox", 3, 2, 5);
-    return { value: Number(state.progress[playerId] || 0), label: "MARQUES", sub: `${state.progress[playerId] || 0}/${maxMarks} · ${state.scores[playerId] || 0} pts` };
+    const rule = shoveRuleSet(state.config?.modeOptions?.ruleSet);
+    const maxMarks = shoveTargets(rule).length * modeOptionNumber(state.config, "marksPerBox", 3, 2, 5);
+    const sub = String(state.progress[playerId] || 0) + "/" + maxMarks + (rule === "traditional" ? " · 1 à 9" : " · 15 à BULL");
+    return { value: Number(state.progress[playerId] || 0), label: "MARQUES", sub };
   }
   if (state.modeId === "green_vs_red") {
     const color = state.special?.greenRedColorByPlayer?.[playerId] || "GREEN";
