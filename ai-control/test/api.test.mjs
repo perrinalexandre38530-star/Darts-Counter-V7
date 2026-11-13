@@ -158,9 +158,41 @@ test('bootstrap distinguishes active QA workflow from inactive AI engine',async(
   const response=await onRequest(context('bootstrap'));
   assert.equal(response.status,200);
   const body=await response.json();
-  assert.equal(body.qaPilot.state,'WORKFLOW ACTIF');
+  assert.equal(body.qaPilot.state,'EN ATTENTE DE FUSION');
   assert.equal(body.engineActive,false);
   assert.equal(body.certifiedAgents,0);
   assert.ok(calls.every(x=>x.m==='GET'));
+ }finally{globalThis.fetch=original;}
+});
+
+test('bootstrap considers QA actionable only when its file is present on the default branch',async()=>{
+ const original=globalThis.fetch;
+ const baseline=fixtureFetch([]);
+ globalThis.fetch=(url,options)=>{
+  const path=new URL(url).pathname;
+  if(path.endsWith('/actions/workflows/mss-qa-pilot.yml'))return Promise.resolve(ok({state:'active'}));
+  if(path.endsWith('/contents/.github/workflows/mss-qa-pilot.yml'))return Promise.resolve(ok({type:'file',name:'mss-qa-pilot.yml'}));
+  return baseline(url,options);
+ };
+ try{
+  const response=await onRequest(context('bootstrap'));
+  assert.equal(response.status,200);
+  const body=await response.json();
+  assert.equal(body.qaPilot.state,'ACTIF SUR MAIN');
+  assert.equal(body.engineActive,false);
+ }finally{globalThis.fetch=original;}
+});
+test('bootstrap fails closed if checking default-branch QA installation is forbidden',async()=>{
+ const original=globalThis.fetch;
+ const baseline=fixtureFetch([]);
+ globalThis.fetch=(url,options)=>{
+  const path=new URL(url).pathname;
+  if(path.endsWith('/actions/workflows/mss-qa-pilot.yml'))return Promise.resolve(ok({state:'active'}));
+  if(path.endsWith('/contents/.github/workflows/mss-qa-pilot.yml'))return Promise.resolve(ok({message:'Forbidden'},403));
+  return baseline(url,options);
+ };
+ try{
+  const response=await onRequest(context('bootstrap'));
+  assert.equal((await response.json()).qaPilot.state,'NON VÉRIFIÉ SUR MAIN');
  }finally{globalThis.fetch=original;}
 });
