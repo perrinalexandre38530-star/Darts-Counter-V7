@@ -33,3 +33,35 @@ jobs:
         run: node tools/test-wave61-shove-targeted-keypad-v101.mjs
       - name: Check TypeScript
         run: npm run typecheck
+
+  package-pr35:
+    name: ZIP fichiers modifies PR 35
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Prepare changed files
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/shove-pr35/files"
+          mkdir -p "$out"
+          while IFS= read -r -d '' file; do
+            test -f "$file" || continue
+            mkdir -p "$out/$(dirname "$file")"
+            cp "$file" "$out/$file"
+          done < <(git diff --name-only --diff-filter=ACMRT -z "$BASE_SHA" HEAD)
+          find "$out" -type f | sort
+      - name: Upload patch ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHOVE_A_PENNY_PR35_FICHIERS_MODIFIES
+          path: ${{ runner.temp }}/shove-pr35/files/
+          retention-days: 30
+          if-no-files-found: error
