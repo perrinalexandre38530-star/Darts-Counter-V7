@@ -1,7 +1,7 @@
 // @ts-nocheck
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
-import { SHOVE_TARGETS, shoveNextTarget, shoveMarkForDart, projectShoveMarks } from "./shoveAPennyTargets";
+import { SHOVE_TARGETS, shoveNextTarget, shoveMarkForDart, projectShoveMarks, shoveTargets, shoveRuleSet } from "./shoveAPennyTargets";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
 export const WAVE61_ENGINE_VERSION = 25;
@@ -127,7 +127,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
   const difficulty: Wave61Difficulty = raw?.difficulty === "easy" || raw?.difficulty === "hard" ? raw.difficulty : "normal";
   const botLevel: Wave61Difficulty = raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : difficulty;
   const forcedRounds = modeId === "nine_dart_century" ? 3 : modeId === "double_down" ? 9 : modeId === "green_vs_red" ? 11 : modeId === "athletisme" ? 6 : null;
-  const forcedGoal = modeId === "nine_dart_century" ? 100 : modeId === "shove_a_penny" ? 7 * clamp(Number(raw?.modeOptions?.marksPerBox || 3), 2, 5) : modeId === "green_vs_red" ? 11 : null;
+  const forcedGoal = modeId === "nine_dart_century" ? 100 : modeId === "shove_a_penny" ? shoveTargets(shoveRuleSet(raw?.modeOptions?.ruleSet ?? "traditional")).length * clamp(Number(raw?.modeOptions?.marksPerBox || 3), 2, 5) : modeId === "green_vs_red" ? 11 : null;
   return {
     modeId,
     variantId: raw?.variantId ? String(raw.variantId) : undefined,
@@ -260,8 +260,8 @@ function racletteNeeds(state: Wave61State, playerId: string) {
   };
 }
 
-function blankShoveMarks() {
-  return Object.fromEntries(SHOVE_TARGETS.map((n) => [String(n), 0]));
+function blankShoveMarks(rule: "electronic" | "traditional" = "electronic") {
+  return Object.fromEntries(shoveTargets(rule).map((n) => [String(n), 0]));
 }
 
 function sniperContracts(seedText: string, count = 12): Array<{ number?: number; bed: "S" | "D" | "T" | "OB" | "IB" }> {
@@ -634,7 +634,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       centuryBustsByPlayer: Object.fromEntries(ids.map((id) => [id, 0])),
       centuryLockedByPlayer: modeId === "nine_dart_century" ? Object.fromEntries(ids.map((id) => [id, false])) : {},
       centuryDartsAtLockByPlayer: modeId === "nine_dart_century" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
-      shoveMarksByPlayer: modeId === "shove_a_penny" ? Object.fromEntries(ids.map((id) => [id, blankShoveMarks()])) : {},
+      shoveMarksByPlayer: modeId === "shove_a_penny" ? Object.fromEntries(ids.map((id) => [id, blankShoveMarks(shoveRuleSet(config?.modeOptions?.ruleSet ?? "traditional"))])) : {},
       shoveHistory: [],
       greenRedColorByPlayer: modeId === "green_vs_red" ? greenRedColorAssignments(ids, config, teamByPlayer, seedText) : {},
       greenRedStepByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -1579,55 +1579,63 @@ function nextOpponentId(state: Wave61State, playerId: string): string | null {
 
 function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
   const marksByPlayer = state.special.shoveMarksByPlayer || (state.special.shoveMarksByPlayer = {});
-  const marks = marksByPlayer[playerId] || (marksByPlayer[playerId] = blankShoveMarks());
+  const rule = shoveRuleSet(state.config?.modeOptions?.ruleSet);
+  const targets = shoveTargets(rule);
+  const marks = marksByPlayer[playerId] || (marksByPlayer[playerId] = blankShoveMarks(rule));
   const marksPerBox = modeOptionNumber(state.config, "marksPerBox", 3, 2, 5);
   const overflowRule = modeOptionNumber(state.config, "overflowRule", 1, 0, 2);
   const overflowBonus = modeOptionNumber(state.config, "overflowBonus", 25, 0, 100);
-  const initialTarget = shoveNextTarget(marks, marksPerBox);
+  const initialTarget = shoveNextTarget(marks, marksPerBox, rule);
   if (initialTarget == null) { finishWith(state, playerId); return { delta: 0, hits: 0 }; }
   let gained = 0, hits = 0, bonusScore = 0;
   for (const d of darts) {
-    // Chaque fléchette peut fermer sa case : la suivante vise alors la nouvelle case.
-    const currentTarget = shoveNextTarget(marks, marksPerBox);
+    const currentTarget = shoveNextTarget(marks, marksPerBox, rule);
     if (currentTarget === null) break;
-    const currentKey = String(currentTarget);
-    const { key, marks: amount } = shoveMarkForDart(d);
+    const hit = shoveMarkForDart(d, rule);
+    const key = hit.key, amount = hit.marks;
     if (!key || !amount) continue;
-    if (key !== currentKey) {
-      events.push(`• ${wave61DartLabel(d)} hors case · cible ${currentTarget === 25 ? "BULL" : currentTarget}`);
+    if (rule === "electronic" && key !== String(currentTarget)) {
+      events.push("• " + wave61DartLabel(d) + " hors case · cible " + (currentTarget === 25 ? "BULL" : currentTarget));
       continue;
     }
     hits += 1;
-    const before = Number(marks[currentKey] || 0);
+    const before = Number(marks[key] || 0);
     const room = Math.max(0, marksPerBox - before);
     const own = Math.min(room, amount);
     const overflow = Math.max(0, amount - own);
-    marks[currentKey] = before + own;
+    marks[key] = before + own;
     gained += own;
-    if (own) events.push(`🪙 ${currentTarget === 25 ? "BULL" : currentTarget} +${own} marque(s)`);
+    if (own) events.push("🪙 " + (key === "25" ? "BULL" : key) + " +" + own + " marque(s)");
     if (overflow > 0) {
       if (overflowRule === 1) {
         const oppId = nextOpponentId(state, playerId);
         if (oppId) {
-          const opp = marksByPlayer[oppId] || (marksByPlayer[oppId] = blankShoveMarks());
-          const oppRoom = Math.max(0, marksPerBox - Number(opp[currentKey] || 0));
-          const shove = Math.min(oppRoom, overflow);
-          opp[currentKey] = Number(opp[currentKey] || 0) + shove;
-          if (shove) state.progress[oppId] = SHOVE_TARGETS.reduce((sum, n) => sum + Number(opp[String(n)] || 0), 0);
-          if (shove) events.push(`↪ ${shove} surplus poussé(s) à ${state.players.find((p) => p.id === oppId)?.name || "l'adversaire"}`);
+          const opp = marksByPlayer[oppId] || (marksByPlayer[oppId] = blankShoveMarks(rule));
+          const oppBefore = Number(opp[key] || 0);
+          const oppRoom = Math.max(0, marksPerBox - oppBefore);
+          let shove = Math.min(oppRoom, overflow);
+          // Le dernier trait doit être acquis par le joueur, jamais offert.
+          const othersClosed = targets.every((n) => String(n) === key || Number(opp[String(n)] || 0) >= marksPerBox);
+          if (othersClosed && oppBefore + shove >= marksPerBox) shove = Math.min(shove, Math.max(0, marksPerBox - oppBefore - 1));
+          opp[key] = oppBefore + shove;
+          if (shove) state.progress[oppId] = targets.reduce((sum, n) => sum + Number(opp[String(n)] || 0), 0);
+          if (shove) events.push("↪ " + shove + " surplus poussé(s) à " + (state.players.find((p) => p.id === oppId)?.name || "l'adversaire"));
         }
       } else if (overflowRule === 2) {
         const earned = overflow * overflowBonus;
         bonusScore += earned;
-        events.push(`💰 Surplus converti · +${earned}`);
-      } else events.push(`🪙 ${overflow} surplus perdu(s)`);
+        events.push("💰 Surplus converti · +" + earned);
+      } else events.push("🪙 " + overflow + " surplus perdu(s)");
     }
   }
-  const total = SHOVE_TARGETS.reduce((sum, n) => sum + Number(marks[String(n)] || 0), 0);
+  const total = targets.reduce((sum, n) => sum + Number(marks[String(n)] || 0), 0);
   state.progress[playerId] = total;
-  state.scores[playerId] = Number(state.scores[playerId] || 0) + gained * 25 + bonusScore;
-  state.special.shoveHistory = [...(state.special.shoveHistory || []), { playerId, target: initialTarget, gained, total }].slice(-30);
-  if (total >= SHOVE_TARGETS.length * marksPerBox) finishWith(state, playerId);
+  // Version traditionnelle : seulement les marques, aucun faux score en points.
+  if (rule === "electronic" || overflowRule === 2) {
+    state.scores[playerId] = Number(state.scores[playerId] || 0) + (rule === "electronic" ? gained * 25 : 0) + bonusScore;
+  }
+  state.special.shoveHistory = [...(state.special.shoveHistory || []), { playerId, target: rule === "electronic" ? initialTarget : "libre_1_9", gained, total }].slice(-30);
+  if (total >= targets.length * marksPerBox) finishWith(state, playerId);
   return { delta: gained, hits };
 }
 
