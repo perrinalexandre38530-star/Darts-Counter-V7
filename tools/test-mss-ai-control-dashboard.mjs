@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { normalizeReport, renderDashboard } from './mss-ai-control-dashboard-core.mjs';
+const A='a'.repeat(40),B='b'.repeat(40);
+const sample=(overrides={})=>({schema:'mss-ai-control-preflight-v2',preflight:{ok:true,branch:'main',localSha:A,remoteSha:A,errors:[],actions:[],...overrides},qa:{status:'PASS',tests:[{name:'Pilote QA',exitCode:0,error:null}]},scope:'sync-and-qa'});
+test('PC aligned requires verified same full SHA',()=>{assert.equal(normalizeReport(sample(),'2026-11-14').pc.status,'ALIGNE');assert.equal(normalizeReport(sample({remoteSha:B}),'now').pc.status,'NON_CERTIFIE');});
+test('never certify StackBlitz',()=>assert.equal(normalizeReport(sample(),'now').stackblitz.status,'NON_VERIFIE'));
+test('preflight block remains visible',()=>{let x=sample({ok:false,errors:['Désynchronisé']});x.qa={status:'BLOQUÉ',tests:[],errors:[]};const r=normalizeReport(x,'now');assert.equal(r.pc.status,'NON_CERTIFIE');assert.equal(r.qa.status,'BLOQUÉ');assert.match(renderDashboard(r),/Désynchronisé/);});
+test('QA suite failure displayed',()=>{const x=sample();x.qa={status:'FAIL',tests:[{name:'Auditeur',exitCode:1,error:'erreur'}]};assert.match(renderDashboard(normalizeReport(x,'now')),/FAIL/);});
+test('HTML escaping prevents injection in report',()=>{const x=sample({errors:['<script>alert("X")</script>']});const html=renderDashboard(normalizeReport(x,'now'));assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;script&gt;'));});
+test('sync only does not claim QA PASS',()=>{const x=sample();x.qa={status:'NON_EXECUTE',tests:[]};x.scope='sync-only';assert.equal(normalizeReport(x,'now').qa.scope,'SYNC_SEULEMENT');});
+test('bad schema rejected',()=>assert.throws(()=>normalizeReport({schema:'bad'},'now')));

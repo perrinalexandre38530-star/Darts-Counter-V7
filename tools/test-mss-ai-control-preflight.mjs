@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { evaluatePreflight, qaVerdict } from './mss-ai-control-preflight-core.mjs';
+const sha='a'.repeat(40);
+const clean={branch:'main',localSha:sha,remoteSha:sha,dirty:false};
+test('main à jour : autorise les tests QA',()=>assert.equal(evaluatePreflight(clean).checks,true));
+test('commit divergent : blocage sans reset automatique',()=>{const r=evaluatePreflight({...clean,localSha:'b'.repeat(40)});assert.equal(r.ok,false);assert.match(r.actions.join(' '),/pull --ff-only/);});
+test('fichiers modifiés : exige une sauvegarde',()=>{const r=evaluatePreflight({...clean,dirty:true});assert.equal(r.checks,false);assert.match(r.actions.join(' '),/ZIP/);});
+test('Git simplifié StackBlitz : ne certifie jamais une synchronisation',()=>assert.equal(evaluatePreflight({...clean,gitKnown:false}).ok,false));
+test('GitHub inaccessible : mode fail-closed',()=>assert.equal(evaluatePreflight({...clean,remoteSha:null}).ok,false));
+test('branche alternative : blocage',()=>assert.equal(evaluatePreflight({...clean,branch:'feature'}).ok,false));
+test('échec de test QA : FAIL',()=>assert.equal(qaVerdict({ok:true},[{name:'QA',exitCode:1}]).status,'FAIL'));
+test('tests QA tous réussis : PASS',()=>assert.equal(qaVerdict({ok:true},[{name:'QA',exitCode:0}]).status,'PASS'));
+test('précontrôle bloqué : aucun test ne peut être présenté comme PASS',()=>assert.equal(qaVerdict({ok:false,errors:['divergence']},[]).status,'BLOQUÉ'));

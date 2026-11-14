@@ -3,6 +3,7 @@ import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 import { SHOVE_TARGETS, shoveNextTarget, shoveMarkForDart, projectShoveMarks, shoveTargets, shoveRuleSet, shoveClosedCases, shoveTotalMarks } from "./shoveAPennyTargets";
 import { rollShoveBotDart, rollShoveBotVisitForm, shoveBotFallbackStars } from "./shoveBotAccuracy";
+import { rankShovePlayers } from "./shoveAPennyRanking";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
 export const WAVE61_ENGINE_VERSION = 25;
@@ -1332,6 +1333,10 @@ function finishWith(state: Wave61State, playerId: string, teamId: string | null 
 }
 
 function bestPlayer(state: Wave61State): string | null {
+  // The SHOVE winner must be the first player in the SAME ordering used by
+  // end-of-game screens, History V4 and exported reports. In a timed match,
+  // equal marks are decided by the lower valid dart count, not player index.
+  if (state.modeId === "shove_a_penny") return rankShovePlayers(state)[0] || null;
   const alive = state.players.filter((p) => !state.eliminated[p.id]);
   const pool = alive.length ? alive : state.players;
   return [...pool].sort((a, b) => primaryValue(state, b.id) - primaryValue(state, a.id))[0]?.id || null;
@@ -1595,8 +1600,18 @@ function selectShoveGiftRecipient(
   marksByPlayer: Record<string, Record<string, number>>, marksPerBox: number,
 ): string | null {
   const ownTeam = state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] : null;
-  const possible = state.players.filter((p) => p.id !== playerId && !state.eliminated[p.id] &&
-    (!ownTeam || state.config.teamByPlayer?.[p.id] !== ownTeam));
+  const targets = shoveTargets(shoveRuleSet(state.config?.modeOptions?.ruleSet));
+  const possible = state.players.filter((p) => {
+    if (p.id === playerId || state.eliminated[p.id]) return false;
+    if (ownTeam && state.config.teamByPlayer?.[p.id] === ownTeam) return false;
+    const marks = marksByPlayer[p.id] || {};
+    const remaining = marksPerBox - Number(marks[key] || 0);
+    if (remaining <= 0) return false; // Never send a surplus to a closed sector.
+    // A gift cannot provide the final mark needed to win. Such a player can
+    // still receive gifts if the case needs at least two more marks.
+    const othersClosed = targets.every((n) => String(n) === key || Number(marks[String(n)] || 0) >= marksPerBox);
+    return !othersClosed || remaining > 1;
+  });
   if (!possible.length) return null;
   const preferred = String(state.config?.modeOptions?.giftTargetRule || "next");
   const targetId = String(state.config?.modeOptions?.giftRecipientId || "");
@@ -1605,13 +1620,17 @@ function selectShoveGiftRecipient(
     if (chosen) return chosen.id;
   }
   if (preferred === "most_needed") {
-    // Whoever still needs the most marks on this specific number.
-    const sorted = [...possible].sort((a, b) =>
-      Number(marksByPlayer[a.id]?.[key] || 0) - Number(marksByPlayer[b.id]?.[key] || 0));
-    return sorted[0]?.id || null;
+    // Whoever is missing the most marks on this particular sector.
+    return [...possible].sort((a, b) =>
+      Number(marksByPlayer[a.id]?.[key] || 0) - Number(marksByPlayer[b.id]?.[key] || 0))[0]?.id || null;
   }
-  const nextId = nextOpponentId(state, playerId);
-  return possible.some((p) => p.id === nextId) ? nextId : possible[0].id;
+  // Respect seating order, but skip recipients with no open capacity.
+  const start = state.players.findIndex((p) => p.id === playerId);
+  for (let i = 1; i < state.players.length; i++) {
+    const candidate = state.players[(start + i) % state.players.length];
+    if (candidate && possible.some((p) => p.id === candidate.id)) return candidate.id;
+  }
+  return possible[0]?.id || null;
 }
 
 function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
@@ -4721,10 +4740,25 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
 
 function advanceWave61Turn(state: Wave61State): Wave61State {
   if (state.phase !== "playing" || !state.players.length) return state;
+  const shoveFixedRounds = state.modeId === "shove_a_penny"
+    && String(state.config?.modeOptions?.endMode || "first_finish") === "fixed_rounds";
+  const shoveHasOpenCases = (id: string) => shoveNextTarget(
+    state.special?.shoveMarksByPlayer?.[id],
+    modeOptionNumber(state.config, "marksPerBox", 3, 2, 5),
+    shoveRuleSet(state.config?.modeOptions?.ruleSet),
+  ) !== null;
+  // In limited-round SHOVE, fully completed players cannot score any more
+  // marks. Skip their turns entirely: otherwise they accumulate bogus misses,
+  // darts and visits that corrupt accuracy and History stats.
+  if (shoveFixedRounds && !state.players.some((p) => shoveHasOpenCases(p.id))) {
+    const winner = bestPlayer(state);
+    if (winner) finishWith(state, winner);
+    return state;
+  }
   let next = state.activePlayerIndex;
   for (let i = 0; i < state.players.length; i++) {
     next = (next + 1) % state.players.length;
-    if (!state.eliminated[state.players[next].id]) break;
+    if (!state.eliminated[state.players[next].id] && (!shoveFixedRounds || shoveHasOpenCases(state.players[next].id))) break;
   }
   const wrapped = next <= state.activePlayerIndex;
   if (wrapped && state.modeId === "mafia" && mafiaPhase(state) === "DAY") resolveMafiaDay(state);
