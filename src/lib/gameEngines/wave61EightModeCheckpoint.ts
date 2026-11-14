@@ -1,15 +1,19 @@
 /**
- * Durable, single-level checkpoints for the eight Wave61 variants/FUN modes.
+ * Durable, single-level checkpoints for selected Wave61 variants/FUN modes,
+ * including SHOVE A PENNY (History V4 / Android resume).
  *
  * History V4 persists the last committed visit, but the transient React undo
  * stack is lost when the app or Android process is restarted. Keep only ONE
  * pre-visit snapshot (no nested history of snapshots) in the canonical state.
+ * SHOVE saves this only after a completed, non-terminal visit. On undo of
+ * its first visit the caller also deletes the old History record/tombstones it.
  */
 import { cloneWave61State, type Wave61State } from "./wave61Engine";
 
 const EIGHT_MODE_IDS = new Set([
   "black_vs_white", "three_colors", "la_suite", "color_call",
   "bim_bam_boum", "saute_moutons", "troupeau_en_danger", "une_ptite_raclette",
+  "shove_a_penny",
 ]);
 
 export function withWave61EightModeUndoCheckpoint(

@@ -9,29 +9,68 @@ type Props = {
 
 /**
  * En-tête commun des fenêtres flottantes SHOVE A PENNY.
- * Les titres de section restent sous le ticker, comme dans le panneau STATS validé.
+ * Le bouton fermer est superposé en haut à droite du ticker,
+ * et le titre du panneau est centré juste en dessous.
  */
 export default function ShoveFloatingHeader({ title, accent, onClose }: Props) {
   return (
-    <header data-shove-floating-header="1" style={{ display: "grid", gap: 8 }}>
-      <img
-        src={shoveTicker}
-        alt="SHOVE A PENNY"
-        style={{ display: "block", width: "100%", height: "auto", maxHeight: 125, objectFit: "contain", objectPosition: "center", borderRadius: 12 }}
-      />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <strong style={{ minWidth: 0, color: accent, fontSize: 11, fontWeight: 1100, letterSpacing: 1.05, lineHeight: 1.3 }}>
-          {title}
-        </strong>
+    <header data-shove-floating-header="1" style={{ display: "grid", gap: 10 }}>
+      <div style={{ position: "relative" }}>
+        <img
+          src={shoveTicker}
+          alt="SHOVE A PENNY"
+          style={{
+            display: "block",
+            width: "100%",
+            height: "auto",
+            maxHeight: 125,
+            objectFit: "contain",
+            objectPosition: "center",
+            borderRadius: 12,
+          }}
+        />
         <button
           type="button"
           onClick={onClose}
           aria-label={`Fermer ${title.toLowerCase()}`}
-          style={{ width: 38, height: 38, flex: "0 0 38px", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: 18, cursor: "pointer" }}
+          title="Fermer"
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            border: `1px solid ${accent}99`,
+            background: "rgba(8, 12, 24, .82)",
+            color: accent,
+            fontSize: 20,
+            fontWeight: 1000,
+            lineHeight: 1,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            boxShadow: `0 0 0 1px rgba(0,0,0,.25), 0 8px 18px rgba(0,0,0,.35), 0 0 14px ${accent}33`,
+            backdropFilter: "blur(4px)",
+          }}
         >
           ×
         </button>
       </div>
+
+      <strong
+        style={{
+          width: "100%",
+          textAlign: "center",
+          color: accent,
+          fontSize: 11,
+          fontWeight: 1100,
+          letterSpacing: 1.05,
+          lineHeight: 1.3,
+        }}
+      >
+        {title}
+      </strong>
     </header>
   );
 }

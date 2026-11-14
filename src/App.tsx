@@ -7533,7 +7533,25 @@ case "babyfoot_team_edit":
         page = <CapitalConfig setTab={go} go={go} store={store} params={routeParams} />;
         break;
       case "capital_play":
-        page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "capital", routeParams), { navigate: false })} />;
+        // CAPITAL persiste déjà la partie via sa file History V4. Ce callback
+        // n'arrive qu'après confirmation de cette écriture et ne doit JAMAIS
+        // redéclencher pushHistory (double upsert concurrent du même match).
+        page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => {
+          if (!m?.id || String(m?.status) !== "finished") return;
+          // Comptabiliser la partie pour la monétisation après le commit local,
+          // comme les autres modes, sans provoquer une seconde écriture V4.
+          try { markCompletedMatchForAds(String(m.id), "capital"); } catch {}
+          try { recordProfileUsageFromMatch(m, "capital", safeArray(store?.profiles)); } catch {}
+          setStore((previous) => {
+            const history = [...((previous as any).history ?? [])];
+            const index = history.findIndex((row: any) => String(row?.id || row?.matchId) === String(m.id));
+            if (index >= 0) history[index] = m;
+            else history.unshift(m);
+            const next = { ...previous, history } as Store;
+            scheduleStorePersist(next);
+            return next;
+          });
+        }} />;
         break;
 
       case "loterie_config":
