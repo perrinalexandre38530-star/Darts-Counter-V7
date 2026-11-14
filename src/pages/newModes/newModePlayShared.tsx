@@ -115,7 +115,7 @@ export function PlayerCard({profile,active,accent,value,subValue,badge,wins=0,mu
   </div>;
 }
 
-export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onConfig,onGames,onStats,onHistory,extra,outcome}:any){
+export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onConfig,onGames,onStats,onHistory,extra,exportActions,outcome}:any){
   const defeat = outcome === "defeat";
   const w=profiles.find((p:any)=>String(p.id)===String(winner))||profiles[0];
   return <div style={{...panelStyle(accent+"66"),width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden",padding:"clamp(10px,3vw,16px)",textAlign:"center",boxShadow:`0 0 30px ${accent}20,0 18px 46px rgba(0,0,0,.48)`}}>
@@ -125,6 +125,7 @@ export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onCo
     <div style={{marginTop:3,color:SOFT,fontSize:11,overflowWrap:"anywhere"}}>{defeat ? "Les loups ont emporté le troupeau. Rejoue pour le défendre !" : <>remporte {title} · {Number(legWins?.[winner]||0)} manche{Number(legWins?.[winner]||0)>1?"s":""}</>}</div>
     {extra?<div style={{marginTop:12,width:"100%",maxWidth:"100%",minWidth:0,overflow:"hidden"}}>{extra}</div>:null}
     {(onStats || onHistory) ? <div style={{display:"grid",gridTemplateColumns:onStats&&onHistory?"repeat(2,minmax(0,1fr))":"minmax(0,1fr)",gap:8,marginTop:14}}>{onStats?<button type="button" onClick={onStats} style={{...actionStyle(accent),minWidth:0}}>📊 STATS</button>:null}{onHistory?<button type="button" onClick={onHistory} style={{...actionStyle("#7dc8ff"),minWidth:0}}>🕘 HISTORIQUE</button>:null}</div>:null}
+    {exportActions ? <div style={{marginTop:8}}>{exportActions}</div> : null}
     <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginTop:(onStats||onHistory)?8:14}}><button type="button" onClick={onReplay} style={{...actionStyle(accent),minWidth:0}}>↻ REJOUER</button><button type="button" onClick={onConfig} style={{...actionStyle("#9ea7bb"),minWidth:0}}>CONFIGURATION</button></div>
     <button type="button" onClick={onGames} style={{...actionStyle("#fff"),width:"100%",minWidth:0,marginTop:8}}>RETOUR AUX JEUX</button>
   </div>;

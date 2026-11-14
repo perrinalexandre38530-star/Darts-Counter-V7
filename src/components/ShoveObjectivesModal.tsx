@@ -1,5 +1,6 @@
 import React from 'react';
 import { CricketMarkIcon } from './MaskIcon';
+import ShoveFloatingHeader from './ShoveFloatingHeader';
 import { shoveTargets, type ShoveMarks, type ShoveRuleSet } from '../lib/gameEngines/shoveAPennyTargets';
 
 type Tab = 'objective' | 'advice' | 'marks' | 'rules' | 'settings';
@@ -29,7 +30,9 @@ export default function ShoveObjectivesModal(p:Props) {
   ];
   return <div role="dialog" aria-modal="true" aria-label="Objectifs SHOVE A PENNY" data-shove-objective-modal="1" onClick={p.onClose} style={{position:'fixed',inset:0,zIndex:1500,display:'grid',placeItems:'center',padding:10,background:'rgba(2,4,9,.84)',backdropFilter:'blur(8px)'}}>
     <section onClick={e=>e.stopPropagation()} style={{width:'min(630px,100%)',maxHeight:'88dvh',overflowY:'auto',background:'#0c1320',borderRadius:19,border:`1px solid ${p.accent}80`,padding:12,boxShadow:'0 25px 75px rgba(0,0,0,.7)'}}>
-      <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:10}}><strong style={{color:p.accent,letterSpacing:.8}}>SHOVE A PENNY · OBJECTIFS</strong><button type="button" onClick={p.onClose} aria-label="Fermer" style={{width:35,height:35,borderRadius:10,background:'#1c2535',border:'1px solid #516179',color:'#fff',fontSize:20,cursor:'pointer'}}>×</button></header>
+      <div style={{ marginBottom: 10 }}>
+        <ShoveFloatingHeader title="OBJECTIFS ET CONSEILS" accent={p.accent} onClose={p.onClose} />
+      </div>
       <nav aria-label="Onglets de l'objectif" style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:3,marginBottom:13}}>
         {tabs.map(t=><button key={t.id} type="button" aria-current={tab===t.id?'page':undefined} onClick={()=>setTab(t.id)} style={{borderRadius:9,padding:'8px 2px',minHeight:41,border:`1px solid ${tab===t.id?p.accent:'#394357'}`,background:tab===t.id?`${p.accent}27`:'#141d2c',color:tab===t.id?p.accent:'#d2dceb',fontWeight:1000,fontSize:'clamp(8px,1.7vw,10px)',cursor:'pointer'}}>{t.label}</button>)}
       </nav>

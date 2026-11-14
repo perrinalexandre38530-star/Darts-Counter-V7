@@ -12,11 +12,12 @@ import KeypadTargets from "../components/KeypadTargets";
 import ShoveActivePlayerCard from "../components/ShoveActivePlayerCard";
 import ShoveObjectivesModal from "../components/ShoveObjectivesModal";
 import ShoveStatsDashboard from "../components/ShoveStatsDashboard";
+import ShoveFinalExportActions from "../components/ShoveFinalExportActions";
 import ShoveTurnBriefing from "../components/ShoveTurnBriefing";
 import ShoveMatchMidZone from "../components/ShoveMatchMidZone";
 import shovePlayersTicker from "../assets/tickers/ticker_shove_players.webp";
 import shoveMarksTicker from "../assets/tickers/ticker_shove_marks.webp";
-import shoveStatsTicker from "../assets/tickers/ticker_shove_a_penny.webp";
+import ShoveFloatingHeader from "../components/ShoveFloatingHeader";
 
 function ShoveRankingNavIcon({ color = "currentColor", size = 18 }: { color?: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1464,6 +1465,7 @@ export default function Wave61SharedPlay(props: any) {
   // Serialize checkpoints for this match. Two overlapping IndexedDB upserts
   // (BOT recap then CONTINUER) must never finish in the opposite order.
   const historyWriteQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+  const [shoveHistorySaveError, setShoveHistorySaveError] = React.useState("");
   const persist = React.useCallback((s: Wave61State, clearDraft = false) => {
     // Une partie n'existe dans l'Historique V4 qu'après sa première volée validée.
     // Les saisies partielles restent enregistrables après cette première volée.
@@ -1482,7 +1484,14 @@ export default function Wave61SharedPlay(props: any) {
     historyWriteQueueRef.current = historyWriteQueueRef.current
       .catch(() => undefined)
       .then(() => History.upsert(record))
-      .catch(() => undefined);
+      .then(() => { if (spec.id === "shove_a_penny") setShoveHistorySaveError(""); })
+      .catch((error) => {
+        console.warn('[wave61-history] checkpoint save failed', error);
+        if (spec.id === "shove_a_penny") {
+          if (s.phase === "finished") finishedRef.current = false;
+          setShoveHistorySaveError(String((error as Error)?.message || error || "Enregistrement impossible"));
+        }
+      });
   }, [buildRecord, spec.id]);
 
   const commit = React.useCallback((next: Wave61State, previous = state) => {
@@ -1683,7 +1692,24 @@ export default function Wave61SharedPlay(props: any) {
     setShoveOverlay(null);
     shoveAnnouncedTurnRef.current = "";
     setNotice("Dernière volée annulée");
-    persist(restored, true);
+    if (spec.id === "shove_a_penny" && restored.phase === "playing" && !(restored.visits || []).length) {
+      // Undo of the FIRST validated visit: remove the now-empty live checkpoint.
+      // This deletion is queued after any pending upsert to avoid a phantom
+      // "partie en cours" appearing again in History V4 / on another device.
+      const matchId = matchIdRef.current;
+      // History V4 tombstones are intentionally irreversible for cloud restores.
+      // Start a NEW canonical match identity if play resumes after this undo.
+      matchIdRef.current = `wave61-${spec.id}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      historyWriteQueueRef.current = historyWriteQueueRef.current
+        .catch(() => undefined)
+        .then(() => History.remove(matchId))
+        .catch((error) => {
+          console.warn('[shove-history] removal of empty checkpoint failed', error);
+          setNotice("Annulation effectuée, mais la suppression de l'archive vide a échoué.");
+        });
+    } else {
+      persist(restored, true);
+    }
   };
 
   const closeVisitRecap = () => {
@@ -1848,6 +1874,10 @@ export default function Wave61SharedPlay(props: any) {
     setState(createWave61State(players, spec.id, config));
   }
 
+  const retryShoveHistorySave = () => {
+    finishedRef.current = false;
+    persist(state, true);
+  };
   const roundLabel = spec.id === "shove_a_penny" && String(state.config?.modeOptions?.endMode || "first_finish") !== "fixed_rounds" ? state.roundIndex + 1 : Math.min(config.rounds, state.roundIndex + 1);
   const teamMode = config.participantMode === "teams";
 
@@ -1971,14 +2001,12 @@ export default function Wave61SharedPlay(props: any) {
       style={{ position:"fixed", inset:0, zIndex:1200, background:"rgba(0,0,0,.76)", backdropFilter:"blur(8px)", display:"grid", placeItems:"center", padding:14 }}
     >
       <div onClick={(e)=>e.stopPropagation()} style={{ width:"min(560px,96vw)", maxHeight:"78dvh", overflow:"auto", borderRadius:20, border:`1px solid ${accent}66`, background:"linear-gradient(155deg,rgba(14,18,29,.99),rgba(5,7,13,.99))", boxShadow:`0 22px 70px rgba(0,0,0,.7),0 0 34px ${accent}20`, padding:13 }}>
-        {spec.id === "shove_a_penny" && quickPanel === "stats" ? (
-          <div data-shove-stats-ticker-header="1" style={{ display:"grid", gap:8 }}>
-            <img src={shoveStatsTicker} alt="SHOVE A PENNY" style={{ display:"block", width:"100%", height:"auto", maxHeight:125, objectFit:"contain", objectPosition:"center", borderRadius:12 }} />
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
-              <strong style={{ color:accent, fontSize:11, fontWeight:1100, letterSpacing:1.05 }}>STATISTIQUES DE LA PARTIE</strong>
-              <button type="button" onClick={()=>setQuickPanel(null)} aria-label="Fermer" style={{ width:38, height:38, flex:"0 0 38px", borderRadius:12, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"#fff", fontSize:18, cursor:"pointer" }}>×</button>
-            </div>
-          </div>
+        {spec.id === "shove_a_penny" ? (
+          <ShoveFloatingHeader
+            title={titles[quickPanel] || "INFORMATIONS"}
+            accent={accent}
+            onClose={() => setQuickPanel(null)}
+          />
         ) : (
           <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 38px", gap:8, alignItems:"center" }}>
             <div><div style={{ color:accent, fontSize:9, fontWeight:1100, letterSpacing:1.05 }}>{titles[quickPanel]}</div><div style={{ marginTop:2, color:"#fff", fontSize:16, fontWeight:1100 }}>{spec.label}</div></div>
@@ -2112,7 +2140,7 @@ export default function Wave61SharedPlay(props: any) {
       </div> : null}
 
       {state.phase === "finished" ? <div style={{ flex:1,minHeight:0,overflowY:"auto",padding:10,display:"grid",placeItems:"start center" }}>
-        <div style={{ width:"min(720px,100%)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={()=>go?.("darts_mode_summary",{rec:buildRecord(state,"finished"),mode:spec.id,from:"game_end"})} onHistory={()=>go?.("statsHub",{tab:"history",mode:spec.id,focusMatchId:matchIdRef.current})} onConfig={()=>go?.("wave61_config",{gameId:spec.id})} onGames={()=>go?.("games",{gamesView:"all"})} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label}/>} /></div>
+        <div style={{ width:"min(720px,100%)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={()=>go?.("darts_mode_summary",{rec:buildRecord(state,"finished"),mode:spec.id,from:"game_end"})} onHistory={()=>go?.("statsHub",{tab:"history",mode:spec.id,focusMatchId:matchIdRef.current})} onConfig={()=>go?.("wave61_config",{gameId:spec.id})} onGames={()=>go?.("games",{gamesView:"all"})} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label}/>} exportActions={spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={shoveHistorySaveError} onRetrySave={retryShoveHistorySave}/> : null} /></div>
       </div> : <div style={isLandscapeTablet
         ? { flex:1,minHeight:0,display:"grid",gridTemplateColumns:"minmax(0,.92fr) minmax(440px,1.08fr)",gap:8,padding:"5px 7px 7px",overflow:"hidden" }
         : { flex:1,minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden" }
@@ -2245,7 +2273,7 @@ export default function Wave61SharedPlay(props: any) {
         {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 28, height: 28, borderRadius: 9, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, cursor: "pointer" }}>🔊</button> : null}
       </div> : null}
 
-      {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
+      {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={shoveHistorySaveError} onRetrySave={retryShoveHistorySave}/> : null} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
         <section data-wave61-zone="players" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ ...panelStyle(accent + "45"), padding: compactHeight ? 7 : 9, flex: "0 0 auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div><div style={{ color: accent, fontSize: compactHeight ? 8.4 : 9.5, fontWeight: 1100, letterSpacing: .8 }}>ROUND {roundLabel}/{config.rounds}</div><div style={{ marginTop: 2, color: "#fff", fontSize: compactHeight ? 12 : 14, fontWeight: 1000 }}>{activePlayer?.name || "—"}</div></div><button type="button" onClick={doUndo} disabled={!canUndo} style={{ ...actionStyle(accent, !canUndo), minHeight: compactHeight ? 32 : 36, padding: "0 8px", fontSize: 9 }}>↶ UNDO</button></div>
@@ -2388,7 +2416,7 @@ export default function Wave61SharedPlay(props: any) {
 
         {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
         <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={5} />
-      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} />}
+      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={shoveHistorySaveError} onRetrySave={retryShoveHistorySave}/> : null} />}
     </div>
   </div>;
 }
