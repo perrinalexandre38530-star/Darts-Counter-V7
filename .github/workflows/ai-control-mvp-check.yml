@@ -1,0 +1,36 @@
+name: MSS AI CONTROL - verifier la plateforme
+
+on:
+  pull_request:
+    paths:
+      - "ai-control/**"
+      - ".github/workflows/ai-control-mvp-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mss-ai-control-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Lire les fichiers du projet
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verifier la syntaxe du navigateur et des fonctions
+        run: |
+          node --check ai-control/public/app.js
+          node --check ai-control/functions/_middleware.js
+          node --check 'ai-control/functions/api/[[path]].js'
+      - name: Tester la logique de gestion des missions
+        run: node --test ai-control/test/*.test.mjs
