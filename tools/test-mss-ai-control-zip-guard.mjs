@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {reviewFiles,validateZipPath,sha256} from './mss-zip-guard-core.mjs';
+const b=s=>Buffer.from(s);
+for(const p of ['src/App.tsx','tools/x.mjs','a/b/c.json']) assert.equal(validateZipPath(p),true);
+for(const p of ['../secret','a/../secret','/tmp/x','C:/foo','a\\b','a//b','a/./b']) assert.equal(validateZipPath(p),false,p);
+const entries=new Map([['a',b('new')],['b',b('same')],['c',b('new')],['d',b('new')]]);
+const existing=new Map([['a',{exists:true,tracked:true,dirty:false,bytes:b('old')}],['b',{exists:true,tracked:true,dirty:false,bytes:b('same')}],['c',{exists:true,tracked:true,dirty:true,bytes:b('old')}]]);
+const result=reviewFiles(entries,existing);
+assert.equal(result.status,'BLOQUE');assert.deepEqual(result.counts,{AJOUT:1,IDENTIQUE:1,REVISION:1,CONFLIT:1});
+assert.equal(reviewFiles(new Map([['d',b('new')]]),new Map(),{manifest:{baseCommit:'a'.repeat(40)},localCommit:'a'.repeat(40)}).status,'OK');
+assert.equal(reviewFiles(new Map([['a',b('new')]]),new Map([['a',{exists:true,tracked:true,dirty:false,bytes:b('old')}]]),{manifest:{baseCommit:'a'.repeat(40),files:{a:{sha256:sha256(b('WRONG'))}}},localCommit:'a'.repeat(40)}).status,'BLOQUE');
+assert.equal(reviewFiles(new Map([['a',b('new')]]),new Map([['a',{exists:true,tracked:true,dirty:false,bytes:b('old')}]]),{manifest:{baseCommit:'b'.repeat(40)},localCommit:'a'.repeat(40)}).status,'REVISION_REQUISE');
+console.log('MSS ZIP GUARD V5 : 12 assertions/suites OK');
