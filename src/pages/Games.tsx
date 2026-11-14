@@ -82,9 +82,7 @@ function findTickerById(id: string): string | null {
   const raw = String(id || "");
   if (!raw) return null;
 
-  // Killer Progressif réutilise volontairement le ticker du Killer existant.
-  // Aucun nouvel asset n'est requis et l'identité visuelle reste uniforme.
-  const requested = raw.trim().toLowerCase() === "killer_progressive" ? "killer" : raw;
+  const requested = raw;
 
   // Accepte plusieurs conventions de nommage (underscore, tiret, espaces)
   // pour éviter les "missing ticker" lorsqu'un id diffère du nom de fichier.
@@ -517,16 +515,14 @@ export default function Games({ setTab, params }: Props) {
 
     const baseId = id === "mario_kart"
       ? "darts_racer"
-      : id === "killer_progressive"
-        ? "killer"
-        : id === "fifty_one_by_five"
+      : id === "fifty_one_by_five"
           ? "51_by_5"
           : id === "ptit_hun"
             ? "ptit_1"
             : id;
 
     // CHASE et SPLIT SCORE possèdent des visuels FR/EN, pas de ticker générique.
-    if (lang === "fr" && (id === "chase" || id === "split_score")) {
+    if (lang === "fr" && (id === "chase" || id === "split_score" || id === "killer_progressive")) {
       return findTickerById(`${baseId}_fr`) || findTickerById(baseId);
     }
     if (lang !== "fr") {

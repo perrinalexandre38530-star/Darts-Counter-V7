@@ -42,6 +42,9 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
+import tickerKillerProgressiveFr from "../assets/tickers/ticker_killer_progressive_fr.webp";
+import tickerKillerProgressiveEn from "../assets/tickers/ticker_killer_progressive_en.webp";
+import { useLang } from "../contexts/LangContext";
 
 // ✅ Ticker 2 (fond carte JOUEURS) — safe fallback (évite crash si nom diff)
 // On scanne les tickers killer existants et on tente de prendre la variante "2".
@@ -2536,6 +2539,7 @@ function truthy(v: any) {
 }
 
 export default function KillerPlay({ store, go, config, onFinish }: Props) {
+  const { lang } = useLang();
   const [castStatusTick, setCastStatusTick] = React.useState(0);
   React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   const startedAt = React.useMemo(() => Date.now(), []);
@@ -6489,8 +6493,8 @@ return (
 >
   <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
     <img
-      src={tickerKiller as any}
-      alt="Killer"
+      src={progressiveMode ? (String(lang).startsWith("fr") ? tickerKillerProgressiveFr : tickerKillerProgressiveEn) : tickerKiller}
+      alt={progressiveMode ? "Killer Progressif" : "Killer"}
       draggable={false}
       style={{ width: "100%", height: tickerHeight, objectFit: "cover", display: "block" }}
     />
@@ -6725,7 +6729,7 @@ return (
           overflow: "hidden",
           cursor: "pointer",
           textAlign: "left",
-          backgroundImage: `url(${tickerKiller2})`,
+          backgroundImage: `url(${progressiveMode ? (String(lang).startsWith("fr") ? tickerKillerProgressiveFr : tickerKillerProgressiveEn) : tickerKiller2})`,
           backgroundBlendMode: "screen",
           backgroundColor: "rgba(0,0,0,.18)",
           backgroundSize: "cover",

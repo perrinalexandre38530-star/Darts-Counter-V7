@@ -35,6 +35,8 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
+import tickerKillerProgressiveFr from "../assets/tickers/ticker_killer_progressive_fr.webp";
+import tickerKillerProgressiveEn from "../assets/tickers/ticker_killer_progressive_en.webp";
 import InfoDot from "../components/InfoDot";
 import KillerAwenaRulesVideo from "../components/KillerAwenaRulesVideo";
 import killerAwenaRulesPosterFr from "../assets/videos/killer_awena_rules_poster.webp";
@@ -936,7 +938,7 @@ export default function KillerConfigPage(props: Props) {
 >
   <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
     <img
-      src={tickerKiller as any}
+      src={isProgressive ? (String(lang).startsWith("fr") ? tickerKillerProgressiveFr : tickerKillerProgressiveEn) : tickerKiller}
       alt={isProgressive ? "Killer Progressif" : "Killer"}
       draggable={false}
       style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}

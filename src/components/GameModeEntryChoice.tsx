@@ -23,8 +23,9 @@ const tickerAliases: Record<string, string> = {
   "superbull": "super_bull",
   "bss king": "bss_king",
   "president": "president",
-  "killer progressif": "killer",
-  "killer progressive": "killer",
+  "killer progressif": "killer_progressive",
+  "killer progressive": "killer_progressive",
+  "progressive killer": "killer_progressive",
   "game_170": "v170", "170": "v170", "ptit_hun": "ptit_1",
   "ptit_hun": "ptit_1",
   "training_super_bull": "super_bull",
@@ -70,7 +71,7 @@ export default function GameModeEntryChoice({ title, tickerId, onQuick, onArcade
   const isFr = String(lang || "fr").toLowerCase() === "fr";
   // Un mode récent peut avoir un libellé différent de son identifiant
   // (ex. 9 DART CENTURY). Le ticker doit provenir de l'ID de la carte.
-  const modeTicker = (tickerId ? resolveEntryTicker(tickerId, lang) : null) || resolveEntryTicker(title, lang);
+  const modeTicker = (gameId ? resolveEntryTicker(gameId, lang) : null) || (tickerId ? resolveEntryTicker(tickerId, lang) : null) || resolveEntryTicker(title, lang);
 
   const labels = isFr
     ? {

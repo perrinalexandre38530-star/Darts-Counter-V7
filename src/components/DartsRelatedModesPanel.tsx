@@ -32,13 +32,13 @@ export default function DartsRelatedModesPanel({ gameId, onOpenGame, accent = "#
         {isFr ? "VARIANTES" : "VARIANTS"}
       </strong>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(132px,1fr))", gap: 8, padding: "2px 1px 5px" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, padding: "2px 1px 5px" }}>
       {siblings.map(id => {
         const game = DARTS_GAMES.find(g => g.id === id);
         if (!game) return null;
         const tickerKey = ({
           ptit_hun: "ptit_1", training_super_bull: "super_bull", top_10_training: "top_10",
-          training_x01: "x01", killer_progressive: "killer",
+          training_x01: "x01",
         } as Record<string, string>)[id] || id;
         const ticker = getTicker(tickerKey, String(lang || "fr"));
         const mainLink = id === family.mainId;

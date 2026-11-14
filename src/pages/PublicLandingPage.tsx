@@ -258,7 +258,6 @@ function landingTickerFor(gameId: string, lang: Lang): string | null {
   const alias: Record<string,string> = {
     fifty_one_by_five: "51_by_5",
     mario_kart: "darts_racer",
-    killer_progressive: "killer",
     departements: "territories_fr",
     training_x01: "x01",
     training_super_bull: "super_bull",

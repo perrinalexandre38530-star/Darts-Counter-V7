@@ -24,7 +24,7 @@ const asId = (v: unknown): string => String(v ?? '').trim();
 const isShove = (v: unknown) => /^shove[_-]?a[_-]?penny$/i.test(String(v ?? '').trim());
 const findSavedId = (player: ChallengeExportPlayer, saved: any[]) => {
   const exactId = asId(player.participantId);
-  if (exactId && saved.some(p => asId(p.id) === exactId)) return exactId;
+  if (exactId && (!saved.length || saved.some(p => asId(p.id) === exactId))) return exactId;
   const names = saved.filter(p => String(p?.name || '').trim().toLowerCase() === player.name.trim().toLowerCase());
   return names.length === 1 ? asId(names[0].id) : '';
 };
@@ -47,21 +47,39 @@ export function enrichShoveHistoryReport(report: ChallengeExportReport, entry: a
   const snapshot = obj(payload.stateSnapshot || entry?.resume?.state);
   const options = obj(snapshot.config?.modeOptions || summary.config?.modeOptions || payload.config?.modeOptions);
   const knownMarks = obj(saved.marksByPlayer || snapshot.special?.shoveMarksByPlayer);
-  const sampleMarks = obj(Object.values(knownMarks)[0]);
+  const compactStats = obj(summary.playerStats);
+  const compactSample = array(summary.playerStats)[0] || Object.values(compactStats)[0];
+  const sampleMarks = obj(Object.values(knownMarks)[0] || obj(compactSample).shoveAPenny?.marksBySector);
   const inferredRule = Object.hasOwn(sampleMarks, '25') ? 'electronic' : Object.hasOwn(sampleMarks, '1') ? 'traditional' : 'electronic';
   const rule = String(saved.ruleSet ?? options.ruleSet ?? inferredRule) === 'electronic' ? 'electronic' : 'traditional';
   const targets = rule === 'electronic' ? [15,16,17,18,19,20,25] : [1,2,3,4,5,6,7,8,9];
   const need = Math.max(2, Math.min(5, numeric(saved.marksPerBox ?? options.marksPerBox) ?? 3));
   const full = need * targets.length;
   const marksMap = obj(saved.marksByPlayer || snapshot.special?.shoveMarksByPlayer);
-  const ranking = array(summary.rankings);
+  // History V4 may keep its complete state, or a compact summary after a
+  // cross-device backup. playerStats is a dictionary in current Wave61 saves,
+  // but older archives may contain an array. Neither form may be discarded.
+  const playerStatsMap = obj(summary.playerStats);
+  const savedStats = array(summary.playerStats).length
+    ? array(summary.playerStats)
+    : Object.entries(playerStatsMap).map(([id, value]) => ({ ...obj(value), id }));
+  const ranking = array(summary.rankings).length
+    ? array(summary.rankings)
+    : savedStats.filter(row => numeric(row?.rank) !== null && Number(row.rank) > 0)
+      .sort((a, b) => Number(a.rank) - Number(b.rank));
   const originalPlayers = array(entry?.players).length ? array(entry.players) : array(snapshot.players);
   const savedPlayers = array(snapshot.players).length ? array(snapshot.players) : originalPlayers;
   const nameOf = (id: string): string =>
-    String(originalPlayers.find(p => asId(p?.id) === id)?.name || savedPlayers.find(p => asId(p?.id) === id)?.name || id);
+    String(originalPlayers.find(p => asId(p?.id) === id)?.name
+      || savedPlayers.find(p => asId(p?.id) === id)?.name
+      || savedStats.find(p => asId(p?.id) === id)?.name || id);
   const completeOrder = array(saved.finishOrder).length ? array(saved.finishOrder).map(asId) : array(snapshot.special?.shoveFinishOrder).map(asId);
   const rankedIds = ranking.map(p => asId(p?.id || p?.playerId)).filter(Boolean);
-  const orderedIds = Array.from(new Set([...rankedIds, ...completeOrder, ...savedPlayers.map(p=>asId(p?.id)).filter(Boolean)]));
+  const orderedIds = Array.from(new Set([
+    ...rankedIds, ...completeOrder,
+    ...savedPlayers.map(p=>asId(p?.id)).filter(Boolean),
+    ...savedStats.map(p=>asId(p?.id)).filter(Boolean),
+  ]));
   if (!report.players.length && orderedIds.length) {
     report.players = orderedIds.map((id): ChallengeExportPlayer => ({
       participantId: id, name: nameOf(id), score: Number.NaN, accuracy: null,
@@ -77,7 +95,6 @@ export function enrichShoveHistoryReport(report: ChallengeExportReport, entry: a
   });
   const visits = array(payload.visits).length ? array(payload.visits) : array(snapshot.visits);
   const statById = obj(snapshot.statsByPlayer || summary.statsByPlayer);
-  const savedStats = array(summary.playerStats);
   const rulesLabel = rule === 'electronic' ? '15 À 20 + BULL · DANS L’ORDRE' : '1 À 9 · ORDRE LIBRE';
   const endMode = String(saved.endMode ?? options.endMode ?? 'first_finish');
   const endLabel = endMode === 'full_ranking' ? 'Classement complet' : endMode === 'fixed_rounds' ? 'Rounds limités' : 'Premier joueur à tout fermer';
@@ -88,9 +105,11 @@ export function enrichShoveHistoryReport(report: ChallengeExportReport, entry: a
   const bySector: string[][] = targets.map(n => [n === 25 ? 'BULL' : String(n)]);
   for (const [index, player] of report.players.entries()) {
     const id = findSavedId(player, savedPlayers);
-    const personal = obj(marksMap[id] || ranking.find(p => asId(p?.id) === id)?.shoveAPenny?.marksBySector);
-    const hasMarks = Object.keys(personal).length > 0;
     const savedRow = obj(savedStats.find(p => asId(p?.id) === id));
+    const personal = obj(marksMap[id]
+      || savedRow.shoveAPenny?.marksBySector
+      || ranking.find(p => asId(p?.id) === id)?.shoveAPenny?.marksBySector);
+    const hasMarks = Object.keys(personal).length > 0;
     const st = obj(statById[id] || savedRow);
     const ownedVisits = visits.filter(v => asId(v?.playerId) === id);
     const total = hasMarks ? targets.reduce((sum, n) => sum + (numeric(personal[String(n)]) ?? 0), 0) : null;
@@ -139,7 +158,7 @@ export function enrichShoveHistoryReport(report: ChallengeExportReport, entry: a
     const first = page*4, subset = report.players.slice(first,first+4);
     return sec(`SHOVE · TABLEAU DES MARQUES${report.players.length > 4 ? ` · ${first+1}–${first+subset.length}` : ''}`,
       ['SECTEUR', ...subset.map(p=>p.name)], bySector.map(row=>[row[0],...row.slice(first+1,first+1+subset.length)]),
-      'Marques par case ; 3/3 signifie fermée. Les cases incomplètes ne rapportent aucune fermeture.');
+      `Marques par case ; ${need}/${need} signifie fermée. Les cases incomplètes ne rapportent aucune fermeture.`);
   });
   report.details = [
     sec('PARAMÈTRES DE LA PARTIE', ['PARAMÈTRE','VALEUR'], savedConfig.map(v=>[v.label,v.value])),
