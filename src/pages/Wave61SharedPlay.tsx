@@ -17,7 +17,7 @@ import ShoveTurnBriefing from "../components/ShoveTurnBriefing";
 import ShoveMatchMidZone from "../components/ShoveMatchMidZone";
 import shovePlayersTicker from "../assets/tickers/ticker_shove_players.webp";
 import shoveMarksTicker from "../assets/tickers/ticker_shove_marks.webp";
-import shoveStatsTicker from "../assets/tickers/ticker_shove_a_penny.webp";
+import ShoveFloatingHeader from "../components/ShoveFloatingHeader";
 
 function ShoveRankingNavIcon({ color = "currentColor", size = 18 }: { color?: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2001,14 +2001,12 @@ export default function Wave61SharedPlay(props: any) {
       style={{ position:"fixed", inset:0, zIndex:1200, background:"rgba(0,0,0,.76)", backdropFilter:"blur(8px)", display:"grid", placeItems:"center", padding:14 }}
     >
       <div onClick={(e)=>e.stopPropagation()} style={{ width:"min(560px,96vw)", maxHeight:"78dvh", overflow:"auto", borderRadius:20, border:`1px solid ${accent}66`, background:"linear-gradient(155deg,rgba(14,18,29,.99),rgba(5,7,13,.99))", boxShadow:`0 22px 70px rgba(0,0,0,.7),0 0 34px ${accent}20`, padding:13 }}>
-        {spec.id === "shove_a_penny" && quickPanel === "stats" ? (
-          <div data-shove-stats-ticker-header="1" style={{ display:"grid", gap:8 }}>
-            <img src={shoveStatsTicker} alt="SHOVE A PENNY" style={{ display:"block", width:"100%", height:"auto", maxHeight:125, objectFit:"contain", objectPosition:"center", borderRadius:12 }} />
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
-              <strong style={{ color:accent, fontSize:11, fontWeight:1100, letterSpacing:1.05 }}>STATISTIQUES DE LA PARTIE</strong>
-              <button type="button" onClick={()=>setQuickPanel(null)} aria-label="Fermer" style={{ width:38, height:38, flex:"0 0 38px", borderRadius:12, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"#fff", fontSize:18, cursor:"pointer" }}>×</button>
-            </div>
-          </div>
+        {spec.id === "shove_a_penny" ? (
+          <ShoveFloatingHeader
+            title={titles[quickPanel] || "INFORMATIONS"}
+            accent={accent}
+            onClose={() => setQuickPanel(null)}
+          />
         ) : (
           <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 38px", gap:8, alignItems:"center" }}>
             <div><div style={{ color:accent, fontSize:9, fontWeight:1100, letterSpacing:1.05 }}>{titles[quickPanel]}</div><div style={{ marginTop:2, color:"#fff", fontSize:16, fontWeight:1100 }}>{spec.label}</div></div>
