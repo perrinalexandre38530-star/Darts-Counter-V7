@@ -47,6 +47,7 @@ import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 import { loadBotPlayers } from "../lib/bots";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { History } from "../lib/history";
+import { applyOrganizationPlayContext } from "../organizations/organizationPlayContext";
 import { createCapitalHistoryWriteQueue } from "../lib/capitalHistoryQueue";
 import { buildDartsTelemetry } from "../lib/dartsTelemetry";
 import { playSfx, unlockAudio } from "../lib/sfx";
@@ -929,6 +930,10 @@ export default function CapitalPlay(props: any) {
   );
   const [visits, setVisits] = useState<CapitalVisit[]>([]);
   const [finishedRecord, setFinishedRecord] = useState<any>(null);
+  // Le résultat est affichable immédiatement, mais l'Historique n'est confirmé
+  // qu'après l'écriture autoritaire History V4 (et non après un second upsert App).
+  const [historySaveStatus, setHistorySaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [historySaveError, setHistorySaveError] = useState("");
   const historySavedRef = useRef(false);
   // Les checkpoints et la sauvegarde finale partagent une file FIFO. Sinon un
   // checkpoint asynchrone de la volée précédente peut arriver après la fin.
@@ -941,6 +946,21 @@ export default function CapitalPlay(props: any) {
   }
   function enqueueCapitalHistoryWrite(record: any) {
     return historyWriteQueueRef.current!(record);
+  }
+  function commitFinishedCapitalRecord(record: any) {
+    setHistorySaveStatus("saving");
+    setHistorySaveError("");
+    // Ne pas publier le match vers le miroir App avant le commit local.
+    // Le callback App est une notification uniquement : il n'écrit plus dans History.
+    void enqueueCapitalHistoryWrite(record).then(() => {
+      setHistorySaveStatus("saved");
+      try { props?.onFinish?.(record); }
+      catch (error) { console.warn("[Capital] affichage du résultat enregistré impossible", error); }
+    }).catch((error: unknown) => {
+      console.error("[Capital] sauvegarde finale History V4 impossible", error);
+      setHistorySaveError("Enregistrement non confirmé. Vérifie l'espace disponible, puis réessaie avant de quitter la partie.");
+      setHistorySaveStatus("error");
+    });
   }
   const matchIdRef = useRef(`capital-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const startedAtRef = useRef(Date.now());
@@ -1461,10 +1481,33 @@ export default function CapitalPlay(props: any) {
       record.summary.telemetryExact = !visits.some((visit: CapitalVisit) => visit.scoreInputMode === "visit_score");
       record.summary.telemetryCoverage = record.summary.telemetryExact ? "full" : "partial";
     }
+    // Organisation / installation active : métadonnées appliquées à la SEULE
+    // écriture History V4, avant le commit (elles ne seront pas perdues).
+    try { applyOrganizationPlayContext(record); } catch (error) {
+      console.warn("[Capital] contexte organisation indisponible", error);
+    }
     setFinishedRecord(record);
-    void enqueueCapitalHistoryWrite(record as any);
-    try { props?.onFinish?.(record); } catch {}
+    commitFinishedCapitalRecord(record);
   }, [isFinished, visits, playerStats, teamStats, matchStats, winningPlayerIds, winnerTeam, cfg, contracts, capitalPlayers, capitalIntegrity, props?.onFinish]);
+
+  const CapitalSaveIndicator = () => (
+    <div role={historySaveStatus === "error" ? "alert" : "status"}
+      style={{ margin: "8px 12px", padding: "9px 11px", borderRadius: 10,
+        background: historySaveStatus === "error" ? "rgba(255,120,70,.12)" : "rgba(245,191,64,.10)",
+        border: `1px solid ${historySaveStatus === "error" ? "#ff985e" : "rgba(255,205,96,.45)"}`,
+        color: historySaveStatus === "error" ? "#ffcab1" : "#ffe3a4", fontSize: 12 }}>
+      {historySaveStatus === "saving" ? "Sauvegarde de la partie dans l’Historique V4…" :
+       historySaveStatus === "saved" ? "✓ Partie enregistrée dans l’Historique V4." :
+       historySaveStatus === "error" ? historySaveError : "Résultat en préparation…"}
+      {historySaveStatus === "error" && finishedRecord ? (
+        <button type="button" onClick={() => commitFinishedCapitalRecord(finishedRecord)}
+          style={{ display: "block", marginTop: 8, padding: "8px 12px", borderRadius: 8,
+            background: "#ffd16f", border: 0, color: "#201000", fontWeight: 950 }}>
+          RÉESSAYER LA SAUVEGARDE
+        </button>
+      ) : null}
+    </div>
+  );
 
   const EndModal = () => {
     if (!isFinished || !endModalOpen) return null;
@@ -1566,6 +1609,7 @@ export default function CapitalPlay(props: any) {
             overflowY: "auto",
           }}
         >
+          <CapitalSaveIndicator />
           {/* Header */}
           <div
             style={{
@@ -2058,6 +2102,7 @@ export default function CapitalPlay(props: any) {
                 Stats détaillées
               </button>
             </div>
+            <CapitalSaveIndicator />
             <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>Appuie sur retour pour rejouer / reconfigurer.</div>
           </div>
         ) : (
