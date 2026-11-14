@@ -1,0 +1,44 @@
+name: MSS AI CONTROL - Main Sentinel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/mss-main-guard*.mjs'
+      - 'tools/test-mss-main-guard.mjs'
+      - '.github/workflows/mss-main-sentinel.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/mss-main-guard*.mjs'
+      - 'tools/test-mss-main-guard.mjs'
+      - '.github/workflows/mss-main-sentinel.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  sentinel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify single-main decision rules
+        run: node --test tools/test-mss-main-guard.mjs
+      - name: Verify repository script syntax
+        run: node --check tools/mss-main-guard.mjs && node --check tools/mss-main-guard-core.mjs
+      - name: Verify workflow runs against main for push and schedule
+        if: github.event_name != 'pull_request'
+        env:
+          EXPECTED_MAIN: ${{ github.event.repository.default_branch }}
+        run: |
+          test "$EXPECTED_MAIN" = "main"
+          test "${GITHUB_REF_NAME}" = "main"
