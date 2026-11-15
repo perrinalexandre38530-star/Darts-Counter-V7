@@ -8,7 +8,6 @@
 // ✅ PRESETS/VOICE: action compacte intégrée dans la rangée du haut, à côté d'ANNULER
 // ============================================
 import React from "react";
-import { mssHitColor } from "../lib/mssVisualCharter";
 import type { Dart as UIDart } from "../lib/types";
 
 type KeypadAuxAction = {
@@ -82,6 +81,8 @@ type Props = {
   onBackspace?: () => void; // supprime la dernière entrée locale (utilisé sur clic droit ANNULER)
   onCancel: () => void; // logique "Annuler" déléguée au parent
   onNumber: (n: number) => void; // 0..20 (0 = MISS)
+  /** Afficher MISS plutôt que 0 pour les modes qui distinguent explicitement la touche manquée. */
+  showMissOnZero?: boolean;
   onBull: () => void; // OB/DBULL (25/50)
   onValidate: () => void; // bouton Valider
 
@@ -268,8 +269,10 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
   disableSegmentNumbers = false,
   highlightSegmentNumbers = null,
   highlightColor = "#ffe46b",
+  showMissOnZero = false,
 }: {
   onNumber: (n: number) => void;
+  showMissOnZero?: boolean;
   disableSegmentNumbers?: boolean;
   highlightSegmentNumbers?: number[] | null;
   highlightColor?: string;
@@ -294,7 +297,6 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
               type="button"
               style={{
                 ...cell,
-                ...(n === 0 ? { color: "#fff", fontSize: 12, fontWeight: 1000, borderColor: "#ff6b77", background: "linear-gradient(180deg,#e14656,#951a2c)", boxShadow: "0 0 14px rgba(255,76,89,.18)" } : null),
                 ...(highlighted.has(Number(n)) && n !== 0 ? {
                   borderColor: `${highlightColor}cc`,
                   color: "#fff",
@@ -302,15 +304,15 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
                   boxShadow: `0 0 0 1px ${highlightColor}44 inset, 0 0 18px ${highlightColor}28`,
                   transform: "translateY(-1px)",
                 } : null),
+                ...(n === 0 && showMissOnZero ? { background: "linear-gradient(180deg,#b9344c,#89162d)", borderColor: "#ed6b82", color: "#fff", fontSize: "clamp(9px,2.3vw,13px)", boxShadow: "0 0 13px rgba(220,46,76,.2)" } : null),
                 ...(blocked ? { opacity: .28, filter: "grayscale(1)", cursor: "not-allowed", boxShadow: "none" } : null)
               }}
               onClick={() => { if (!blocked) onNumber(n); }}
               disabled={blocked}
               aria-disabled={blocked}
               title={blocked ? "Choisis d'abord DOUBLE, TRIPLE, GROS ou PETIT" : (n === 0 ? "MISS" : String(n))}
-              aria-label={n === 0 ? "MISS" : String(n)}
             >
-              {n === 0 ? "MISS" : n}
+              {n === 0 && showMissOnZero ? "MISS" : n}
             </button>
             );
           })}
@@ -357,6 +359,7 @@ export default function Keypad({
   onBackspace,
   onCancel,
   onNumber,
+  showMissOnZero = false,
   onBull,
   onValidate,
   hidePreview = false,
@@ -496,7 +499,7 @@ export default function Keypad({
           {[0,1,2].map((index) => (
             <React.Fragment key={index}>
               {previewRenderer ? previewRenderer(currentThrow[index], index) : (
-                <span style={{ ...chip, color: mssHitColor(currentThrow[index]), borderColor: currentThrow[index] ? mssHitColor(currentThrow[index]) + "99" : "rgba(255,255,255,.10)", boxShadow: currentThrow[index] ? `inset 0 -2px 0 ${mssHitColor(currentThrow[index])}66` : "none" }}>{fmt(currentThrow[index])}</span>
+                <span style={{ ...chip, color: index === 0 ? "#eec7ff" : index === 1 ? "#cfe6ff" : "#ffe7c0" }}>{fmt(currentThrow[index])}</span>
               )}
             </React.Fragment>
           ))}
@@ -951,7 +954,7 @@ export default function Keypad({
         </div>
       ) : null}
 
-      <KeypadNumberGrid onNumber={handleNumber} disableSegmentNumbers={disableSegmentNumbers} highlightSegmentNumbers={highlightSegmentNumbers} highlightColor={guideColor} />
+      <KeypadNumberGrid showMissOnZero={showMissOnZero} onNumber={handleNumber} disableSegmentNumbers={disableSegmentNumbers} highlightSegmentNumbers={highlightSegmentNumbers} highlightColor={guideColor} />
 
       {/* BULL ou SLOT à gauche + centre + VALIDER */}
       <div

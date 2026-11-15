@@ -31,14 +31,12 @@ import RepeatMasterPlay from "../training/modes/repeat/RepeatMasterPlay";
 import ChallengesPlay from "../training/modes/challenges/ChallengesPlay";
 import EvolutionPlay from "../training/modes/evolution/EvolutionPlay";
 import TrainingLabPlay from "../training/modes/lab/TrainingLabPlay";
+import { getTrainingExercise } from "../training/catalog/trainingExerciseCatalog";
 
 type Props = {
   modeId: string;
   onExit: () => void;
   profiles?: Profile[];
-  initialChallengeCatalog?: boolean;
-  onOpenChallenge?: (config: any, presetId: string, snapshot?: any) => void;
-  onCustomizeChallenge?: (presetId: string, participantId: string) => void;
 };
 
 type TrainingQueuedParticipant = {
@@ -102,7 +100,7 @@ function normalizeQueue(config: any, profiles?: Profile[]): TrainingQueuedPartic
   return out;
 }
 
-export default function TrainingModePage({ modeId, onExit, profiles, initialChallengeCatalog = false, onOpenChallenge, onCustomizeChallenge }: Props) {
+export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   const { user, online } = useAuthOnline();
   const currentProfile = useCurrentProfile();
   const id = canonicalTrainingId(modeId);
@@ -168,6 +166,19 @@ export default function TrainingModePage({ modeId, onExit, profiles, initialChal
   }, [currentProfile, id, profiles]);
 
   const start = React.useCallback((nextConfig: any) => beginRun(nextConfig), [beginRun]);
+  const startCorrectiveExercise = React.useCallback((exerciseId: string) => {
+    if (id !== "training_lab" || phase !== "play" || !currentProfile?.id) return;
+    const selected = getTrainingExercise(exerciseId);
+    if (!selected) return;
+    // A fresh session, isolated from any program/certification/previous draft.
+    beginRun({
+      exerciseId: selected.id,
+      family: selected.family,
+      sessionKind: "exercise",
+      returnExerciseDetailId: selected.id,
+      correctionFromExerciseId: String(config?.exerciseId || ""),
+    });
+  }, [beginRun, config?.exerciseId, currentProfile?.id, id, phase]);
 
   const queue = React.useMemo(() => normalizeQueue(config, profiles), [config, profiles]);
   const activeParticipant = queue[participantIndex] || null;
@@ -271,7 +282,7 @@ export default function TrainingModePage({ modeId, onExit, profiles, initialChal
   }, [activeParticipant, config, participantIndex, queue.length]);
 
   const configProps = { profiles, onStart: start, onExit: exitAndSync };
-  const labConfigProps = { ...configProps, accountProfile: currentProfile || null, initialChallengeCatalog, onOpenChallenge, onCustomizeChallenge, initialDetailExerciseId: id === "training_lab" ? String(config?.returnExerciseDetailId || "") || null : null };
+  const labConfigProps = { ...configProps, accountProfile: currentProfile || null, initialDetailExerciseId: id === "training_lab" ? String(config?.returnExerciseDetailId || "") || null : null };
   const playProps = { config: activePlayConfig, onExit: finishOrAdvance };
 
   if (phase === "summary" && summary) {
@@ -307,7 +318,7 @@ export default function TrainingModePage({ modeId, onExit, profiles, initialChal
     case "training_challenges": return <ChallengesPlay key={`${config?.groupSessionId}-${participantIndex}`} {...playProps} />;
     case "training_super_bull": return <SuperBullPlay key={`${config?.groupSessionId}-${participantIndex}`} {...playProps} />;
     case "training_evolution": return <EvolutionPlay {...playProps} />;
-    case "training_lab": return <TrainingLabPlay key={`${config?.groupSessionId}-${participantIndex}`} {...playProps} />;
+    case "training_lab": return <TrainingLabPlay key={`${config?.groupSessionId}-${participantIndex}`} {...playProps} onStartCorrection={startCorrectiveExercise} />;
     default:
       return <div style={{ padding: 18 }}><button type="button" onClick={exitAndSync}>← Retour</button><p>Mode Training inconnu : {id}</p></div>;
   }

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { isPrisonerPlayerWinner, prisonerCourseLength, uniquePrisonerRecords } from "../../lib/gameEngines/prisonerHistoryStats";
 
 const ACCENT = "#e4c06b";
 const GOOD = "#65efb4";
@@ -13,7 +14,7 @@ function pid(row: any) { return txt(row?.id || row?.playerId || row?.profileId |
 function pname(row: any) { return txt(row?.name || row?.playerName || row?.displayName || "Joueur"); }
 function ratio(a: number, b: number) { return b > 0 ? (a / b) * 100 : 0; }
 function pct(value: number) { return `${Math.round(value * 10) / 10}%`; }
-function playedAt(record: any) { return n(record?.updatedAt || record?.summary?.finishedAt || record?.payload?.summary?.finishedAt || record?.createdAt); }
+function playedAt(record: any) { const value = record?.updatedAt ?? record?.summary?.finishedAt ?? record?.payload?.summary?.finishedAt ?? record?.createdAt; if (typeof value === "string" && !Number.isFinite(Number(value))) { const parsed = Date.parse(value); return Number.isFinite(parsed) ? parsed : 0; } return n(value); }
 function isPrisoner(record: any) { const blob = [record?.kind, record?.mode, record?.summary?.kind, record?.summary?.mode, record?.payload?.kind, record?.payload?.mode, record?.payload?.summary?.mode].map((v) => txt(v).toLowerCase()).join(" "); return blob.includes("prisoner"); }
 function pools(record: any) { return [record?.payload?.stats?.players, record?.payload?.summary?.players, record?.payload?.summary?.perPlayer, record?.summary?.players, record?.summary?.perPlayer, record?.payload?.players, record?.players].filter(Array.isArray); }
 function findRow(record: any, id: string, name?: string | null) { const wantedName = txt(name).toLowerCase(); for (const pool of pools(record)) { const byId = pool.find((row: any) => pid(row) === String(id)); if (byId) return byId; if (wantedName) { const byName = pool.find((row: any) => pname(row).toLowerCase() === wantedName); if (byName) return byName; } } return null; }
@@ -25,10 +26,10 @@ function kpi(label: string, value: any, detail?: any, color = ACCENT) { return <
 function section(title: string, children: React.ReactNode) { return <section style={{ marginTop: 12, borderRadius: 18, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", padding: 12 }}><div style={{ color: ACCENT, fontSize: 11, fontWeight: 1000, textTransform: "uppercase", marginBottom: 9 }}>{title}</div>{children}</section>; }
 
 export default function PrisonerStatsTabFull({ records = [], playerId, playerName }: any) {
-  const matches = React.useMemo(() => (Array.isArray(records) ? records : []).filter(isPrisoner).map((record) => ({ record, row: findRow(record, String(playerId || ""), playerName) })).filter((item) => item.row).sort((a, b) => playedAt(b.record) - playedAt(a.record)), [records, playerId, playerName]);
+  const matches = React.useMemo(() => uniquePrisonerRecords((Array.isArray(records) ? records : []).filter(isPrisoner)).map((record) => ({ record, row: findRow(record, String(playerId || ""), playerName) })).filter((item) => item.row).sort((a, b) => playedAt(b.record) - playedAt(a.record)), [records, playerId, playerName]);
   const rows = matches.map((item) => item.row);
   const games = matches.length;
-  const wins = matches.filter(({ record, row }) => row?.win === true || row?.winner === true || winnerIds(record).includes(String(playerId))).length;
+  const wins = matches.filter(({ record, row }) => isPrisonerPlayerWinner(record, row, String(playerId))).length;
   const completed = rows.filter((r) => r?.completed === true).length;
   const eliminated = rows.filter((r) => r?.eliminated === true).length;
   const darts = sum(rows, "dartsThrown", "darts");
@@ -52,7 +53,10 @@ export default function PrisonerStatsTabFull({ records = [], playerId, playerNam
   const maxOwned = best(rows, "maxDartsOwned", "finalDartsOwned");
   const minOwned = low(rows, "minDartsOwned", "finalDartsOwned");
   const avgFinalOwned = games ? sum(rows, "finalDartsOwned", "dartsOwned") / games : 0;
+  const courseLengths = matches.map(({ record }) => prisonerCourseLength(record));
+  const sharedCourseLength = courseLengths.every((length) => length === courseLengths[0]) ? (courseLengths[0] || 20) : null;
   const avgProgress = games ? sum(rows, "progress", "targetsCompleted") / games : 0;
+  const avgCompletion = games ? matches.reduce((total, { record, row }) => total + Math.min(100, ratio(n(row?.progress ?? row?.targetsCompleted), prisonerCourseLength(record))), 0) / games : 0;
   const progressAccuracy = ratio(sum(rows, "progressHits"), darts);
   const capturePerVisit = visits ? captures / visits : 0;
 
@@ -77,7 +81,7 @@ export default function PrisonerStatsTabFull({ records = [], playerId, playerNam
         {kpi("Parties", games, `${wins} victoire${wins > 1 ? "s" : ""}`)}
         {kpi("Win rate", pct(ratio(wins, games)), `${wins}/${games}`)}
         {kpi("Parcours terminés", completed, `${eliminated} élimination${eliminated > 1 ? "s" : ""}`, GOOD)}
-        {kpi("Progression moyenne", `${avgProgress.toFixed(1)}/20`, `Précision progression ${pct(progressAccuracy)}`)}
+        {kpi("Progression moyenne", sharedCourseLength ? `${avgProgress.toFixed(1)}/${sharedCourseLength}` : pct(avgCompletion), sharedCourseLength ? `Précision progression ${pct(progressAccuracy)}` : `Parcours variables · ${avgProgress.toFixed(1)} cibles moy. · Précision ${pct(progressAccuracy)}`)}
         {kpi("Captures", captures, `${opponentCaptures} adverses • ${rescues} sauvetages`, CYAN)}
         {kpi("Fléchettes perdues", captureLosses, "capturées par les adversaires", BAD)}
         {kpi("Prisonniers créés", prisoners, `${remaining} encore prisonniers en fin de partie`, PINK)}
@@ -92,7 +96,7 @@ export default function PrisonerStatsTabFull({ records = [], playerId, playerNam
 
       {targetAgg.length ? section("Efficacité par cible", <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(82px,1fr))", gap: 7 }}>{targetAgg.map((row: any) => <div key={row.key} style={{ padding: 9, borderRadius: 13, background: "rgba(0,0,0,.22)", textAlign: "center", border: `1px solid ${row.progressHits ? `${GOOD}35` : "rgba(255,255,255,.06)"}` }}><div style={{ color: ACCENT, fontSize: 16, fontWeight: 1000 }}>{row.key}</div><div style={{ color: row.progressHits ? GOOD : BAD, fontSize: 12, fontWeight: 1000 }}>{row.progressHits}/{row.dartsAimed}</div><div style={{ color: "#9298aa", fontSize: 8.5 }}>{pct(row.accuracy)}</div><div style={{ marginTop: 2, color: PINK, fontSize: 8 }}>SI pièges {row.prisonerMistakes}</div></div>)}</div>) : null}
 
-      {section("Parties récentes", <div style={{ display: "grid", gap: 7 }}>{matches.slice(0, 10).map(({ record, row }, index) => { const won = row?.win === true || row?.winner === true || winnerIds(record).includes(String(playerId)); const date = playedAt(record) ? new Date(playedAt(record)).toLocaleDateString("fr-FR") : "—"; return <div key={record?.id || index} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: 10, borderRadius: 15, border: `1px solid ${won ? `${ACCENT}66` : "rgba(255,255,255,.08)"}`, background: won ? `${ACCENT}0d` : "rgba(255,255,255,.03)" }}><div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: won ? ACCENT : "rgba(255,255,255,.07)", color: won ? "#080a10" : "#c8cbd6", fontWeight: 1000 }}>{won ? "WIN" : row?.eliminated ? "OUT" : `${n(row?.progress)}/20`}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{date} • {record?.summary?.participantMode === "teams" ? "Équipes" : "Joueurs"}</div><div style={{ color: "#aeb3c3", fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n(row?.progress)}/20 • {n(row?.captures)} captures • {n(row?.prisonersCreated)} prisonniers • {n(row?.finalDartsOwned ?? row?.dartsOwned)} fléchettes fin • {n(row?.offboardMisses)} MISS</div></div><div style={{ textAlign: "right" }}><div style={{ color: ACCENT, fontSize: 20, fontWeight: 1000 }}>{n(row?.progress)}/20</div><div style={{ color: "#9297aa", fontSize: 9.5 }}>progression</div></div></div>; })}</div>)}
+      {section("Parties récentes", <div style={{ display: "grid", gap: 7 }}>{matches.slice(0, 10).map(({ record, row }, index) => { const won = isPrisonerPlayerWinner(record, row, String(playerId)); const date = playedAt(record) ? new Date(playedAt(record)).toLocaleDateString("fr-FR") : "—"; const courseLength = prisonerCourseLength(record); return <div key={record?.id || index} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: 10, borderRadius: 15, border: `1px solid ${won ? `${ACCENT}66` : "rgba(255,255,255,.08)"}`, background: won ? `${ACCENT}0d` : "rgba(255,255,255,.03)" }}><div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: won ? ACCENT : "rgba(255,255,255,.07)", color: won ? "#080a10" : "#c8cbd6", fontWeight: 1000 }}>{won ? "WIN" : row?.eliminated ? "OUT" : `${n(row?.progress)}/${courseLength}`}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{date} • {record?.summary?.participantMode === "teams" ? "Équipes" : "Joueurs"}</div><div style={{ color: "#aeb3c3", fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n(row?.progress)}/{courseLength} • {n(row?.captures)} captures • {n(row?.prisonersCreated)} prisonniers • {n(row?.finalDartsOwned ?? row?.dartsOwned)} fléchettes fin • {n(row?.offboardMisses)} MISS</div></div><div style={{ textAlign: "right" }}><div style={{ color: ACCENT, fontSize: 20, fontWeight: 1000 }}>{n(row?.progress)}/{courseLength}</div><div style={{ color: "#9297aa", fontSize: 9.5 }}>progression</div></div></div>; })}</div>)}
     </>}
   </div>;
 }

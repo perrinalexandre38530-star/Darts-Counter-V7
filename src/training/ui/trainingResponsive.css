@@ -274,177 +274,58 @@
   .mssTrainingProgressTrack > div,.mssTrainingDarts img,.mssTrainingHubPrimaryNav button { transition:none!important; }
 }
 
-/* V99 / Training Wave 3 — lisibilité du dernier bilan, sans allonger l'accueil. */
-.mssTrainingHubLastResult {
-  margin-left:auto; flex:0 0 auto; min-height:25px; border:1px solid rgba(140,255,204,.28);
-  background:rgba(80,255,174,.07); color:#9ef5ce; padding:4px 7px;
-  border-radius:8px; font-size:9px; font-weight:950; cursor:pointer;
-}
-.mssTrainingHubLastResult:focus-visible { outline:2px solid #67ecff; outline-offset:2px; }
-.mssTrainingSessionStats { min-width:0; }
-.mssTrainingSessionComparison {
-  display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:10px;
-  padding:9px; border:1px solid rgba(255,255,255,.1); border-radius:11px;
-  background:rgba(0,0,0,.20); font-variant-numeric:tabular-nums;
-}
-.mssTrainingSessionComparison > span { color:#8ceafd; font-size:9px; font-weight:900; flex:1 1 100%; }
-.mssTrainingSessionComparison > strong { padding:5px 7px; border-radius:7px; background:rgba(255,255,255,.05); font-size:10px; white-space:nowrap; }
-.mssTrainingSessionComparison > strong.isUp { color:#8cffcb; }
-.mssTrainingSessionComparison > strong.isDown { color:#ffadb6; }
-.mssTrainingSessionCoach {
-  margin-top:11px; padding:11px; border-radius:12px;
-  border:1px solid rgba(39,220,255,.25);
-  background:linear-gradient(120deg,rgba(39,220,255,.075),rgba(185,156,255,.04));
-}
-.mssTrainingSessionCoachTitle { color:#8ceafd; font-size:10px; font-weight:950; letter-spacing:.35px; }
-.mssTrainingSessionCoach p { margin:5px 0 0; font-size:12px; line-height:1.4; }
-.mssTrainingSessionCoach small { display:block; margin-top:6px; color:#f6d28a; font-size:10px; line-height:1.35; }
-.mssTrainingSessionCoach button {
-  width:100%; margin-top:10px; min-height:38px; padding:8px 12px;
-  border:1px solid rgba(39,220,255,.45); border-radius:10px;
-  background:rgba(39,220,255,.14); color:#b9f7ff; font-size:11px;
-  font-weight:950; cursor:pointer;
-}
-.mssTrainingSessionCoach button:focus-visible { outline:2px solid #67ecff; outline-offset:2px; }
-.mssTrainingSessionExerciseTrack { height:4px; margin:0 7px 7px; border-radius:8px; overflow:hidden; background:rgba(255,255,255,.10); }
-.mssTrainingSessionExerciseTrack span { display:block; height:100%; background:linear-gradient(90deg,#12b9dc,#80f6d2); border-radius:8px; }
 
-/* Les bilans de fin de séance restent consultables sur les écrans les plus étroits.
-   Le bouton de sortie demeure atteignable même lorsque les métriques défilent. */
-.mssTrainingResultBackdrop { box-sizing:border-box; padding:max(7px,env(safe-area-inset-top)) 8px max(7px,env(safe-area-inset-bottom))!important; }
-.mssTrainingResultSheet { box-sizing:border-box; width:min(560px,100%); max-height:calc(100dvh - 16px)!important; overscroll-behavior:contain; scrollbar-width:thin; }
-.mssTrainingResultAction { position:sticky; bottom:0; z-index:1; box-shadow:0 -8px 16px rgba(3,9,17,.9); }
-@media (max-width:380px) {
-  .mssTrainingResultSheet { padding:11px!important; border-radius:15px!important; }
-  .mssTrainingResultSummary { grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:6px!important; }
-  .mssTrainingResultSummary > div { padding:6px 4px!important; }
-  .mssTrainingResultMetrics { gap:6px!important; }
-  .mssTrainingResultMetrics > div { padding:7px!important; }
-  .mssTrainingResultAction { height:42px!important; }
+/* V129 / vague 8 : le clavier conserve une zone utile lors des rotations Android.
+   L'aperçu se replie dans sa propre colonne si la hauteur est trop faible :
+   on ne fait jamais défiler la page de jeu entière pour atteindre la saisie. */
+.mssTrainingPlay { height:100vh; height:100dvh; max-height:100dvh; }
+.mssTrainingPlayMain { min-height:0; max-height:100%; }
+.mssTrainingPlayOverview { min-width:0; scrollbar-width:thin; overscroll-behavior:contain; }
+.mssTrainingInput, .mssTrainingHubFit, .mssTrainingPad { min-height:0; max-height:100%; }
+.mssTrainingStatsBackdrop, .mssTrainingMethodsBackdrop { box-sizing:border-box; padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom)); }
+.mssTrainingStatsSheet,.mssTrainingMethodsSheet { max-height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+.mssTrainingCoachCorrection { margin-top:12px; padding:10px 11px; border:1px solid rgba(39,220,255,.25); border-radius:12px; background:linear-gradient(120deg,rgba(39,220,255,.09),rgba(156,102,255,.045)); }
+.mssTrainingCoachCorrectionTitle { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.mssTrainingCoachCorrectionTitle > div { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.mssTrainingCoachCorrectionTitle small { color:#65e9ff; font-size:9px; font-weight:950; letter-spacing:.5px; }
+.mssTrainingCoachCorrectionTitle strong { color:#fff; font-size:13px; }
+.mssTrainingCoachCorrectionTitle button { flex:0 0 38px; height:38px; display:grid; place-items:center; border:1px solid rgba(39,220,255,.43); border-radius:10px; color:#7cecff; background:rgba(39,220,255,.12); cursor:pointer; }
+.mssTrainingCoachCorrectionTitle button:disabled { opacity:.4; }
+.mssTrainingCoachCorrection p { font-size:11px; line-height:1.45; opacity:.88; margin:7px 0; }
+.mssTrainingCoachNext { font-size:10px; font-weight:900; color:#8cecff; line-height:1.4; }
+@media (orientation:portrait) {
+  .mssTrainingPlayOverview { flex:0 1 auto; max-height:48%; overflow-y:auto; }
+  .mssTrainingInput { flex:1 1 52%; min-height:0; }
 }
-@media (max-height:600px) {
-  .mssTrainingResultSheet { max-height:calc(100dvh - 10px)!important; padding:10px!important; border-radius:14px!important; }
-  .mssTrainingResultSummary { margin-top:7px!important; gap:6px!important; }
-  .mssTrainingResultSummary > div { padding:6px 4px!important; }
-  .mssTrainingResultMetrics { margin-top:6px!important; gap:5px!important; }
-  .mssTrainingResultMetrics > div { padding:6px 8px!important; }
-  .mssTrainingResultAction { margin-top:9px!important; }
+@media (orientation:portrait) and (max-height:760px) {
+  .mssTrainingPlayOverview { max-height:42%; }
+  .mssTrainingInput { flex:1 1 58%; }
 }
-@media (orientation:landscape) and (max-height:440px) {
-  .mssTrainingPlayOverview { scrollbar-width:thin; }
-  .mssTrainingPlayMain { min-height:0; }
-  .mssTrainingResultSheet { max-height:calc(100dvh - 8px)!important; }
+@media (orientation:portrait) and (max-height:590px) {
+  .mssTrainingPlayOverview { max-height:35%; }
+  .mssTrainingInput { flex:1 1 65%; }
+  .mssTrainingKpis,.mssTrainingTargetHint { display:none!important; }
 }
-
-.mssTrainingSessionCoach button.mssTrainingFocusExercise { border-color:rgba(255,216,107,.40); background:rgba(255,216,107,.09); color:#ffe2a4; }
-
-
-/* Catalogue Challenge V128 : statuts des 44 nouvelles fiches */
-.mssChallengeAvailability{min-height:40px;padding:8px;border:1px solid rgba(39,220,255,.26);border-radius:10px;background:#0e1827;color:#c4f6ff;font-size:10px;font-weight:900;max-width:100%}
-.mssChallengeCatalogNotReady{margin-top:auto;margin-bottom:12px;padding:9px;border:1px dashed rgba(255,210,100,.34);border-radius:9px;background:rgba(255,210,100,.045);color:#efd4a0;font-size:9px;line-height:1.5}
-.mssChallengeCatalogCardHead small{white-space:nowrap}.mssChallengeCatalogCard.is-planned{border-color:rgba(255,200,110,.16)}
-@media(max-width:540px){.mssChallengeAvailability{flex:1 1 130px;min-width:0}.mssChallengeCatalogCard{padding:11px}}
-
-
-/* Rebase V135 : fiches Challenge lisibles sur petits téléphones, sans grille écrasée. */
-@media (max-width:460px){
- .mssChallengeCatalogGrid{grid-template-columns:1fr;gap:8px}
- .mssChallengeCatalogActions{grid-template-columns:repeat(2,minmax(0,1fr))}
- .mssChallengeCatalogCard{padding:12px}
- .mssChallengeCatalogCard h4{font-size:12px}
- .mssChallengeCatalogCard p{font-size:10px;min-height:0}
- .mssChallengeCatalogCardHead span{font-size:8px}
- .mssChallengeCatalogActions button{min-height:38px}
- .mssChallengeCatalogDialog{max-height:calc(100dvh - 20px)}
+@media (orientation:landscape) and (min-width:610px) {
+  .mssTrainingPlayOverview { max-height:100%; overflow-y:auto; min-height:0; }
+  .mssTrainingInput { align-self:stretch; min-height:0; }
 }
-
-/* V162 / Training wave 5 — Challenge catalogue, Awena and comparable-session details.
-   Styles are scoped: no effect on game HUDs or the competitive Challenge page. */
-.mssChallengeCatalog { display:flex; flex-direction:column; min-width:0; gap:12px; color:#edfaff; }
-.mssChallengeCatalog *, .mssChallengeCatalog *::before, .mssChallengeCatalog *::after { box-sizing:border-box; }
-.mssChallengeCatalogHero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:14px; border-radius:17px; border:1px solid rgba(39,220,255,.23); background:linear-gradient(120deg,rgba(24,76,98,.27),rgba(8,15,30,.95)); }
-.mssChallengeCatalogHeroText { flex:1 1 230px; min-width:0; }
-.mssChallengeCatalogEyebrow, .mssChallengeCoachHead small { display:block; font-size:9px; font-weight:950; letter-spacing:1px; color:#64e8ff; }
-.mssChallengeCatalogHero h3 { margin:5px 0 6px; font-size:clamp(15px,3.2vw,20px); line-height:1.15; }
-.mssChallengeCatalogHero p, .mssChallengeCoachHead p { margin:0; color:#a9c7d7; font-size:10.5px; line-height:1.4; }
-.mssChallengeCatalogMetrics { display:flex; gap:8px; }
-.mssChallengeCatalogMetrics > div { min-width:65px; padding:8px 10px; text-align:center; border-radius:12px; background:rgba(0,0,0,.27); border:1px solid rgba(255,255,255,.09); }
-.mssChallengeCatalogMetrics b { display:block; font-size:21px; font-variant-numeric:tabular-nums; color:#73e9ff; }
-.mssChallengeCatalogMetrics small { display:block; font-size:8px; font-weight:900; color:#9cbbcc; }
-.mssChallengeCoach { padding:12px; border:1px solid rgba(255,216,107,.25); border-radius:16px; background:linear-gradient(135deg,rgba(255,216,107,.065),rgba(39,220,255,.035)); }
-.mssChallengeCoachHead { display:flex; align-items:center; gap:10px; margin-bottom:11px; }
-.mssChallengeCoachIcon { flex:0 0 35px; width:35px; height:35px; display:grid; place-items:center; border-radius:12px; background:rgba(255,216,107,.1); border:1px solid rgba(255,216,107,.3); font-size:21px; color:#ffe59d; }
-.mssChallengeCoachHead h4 { margin:3px 0; font-size:14px; }
-.mssChallengeCoachGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
-.mssChallengeCoachTile { display:flex; flex-direction:column; min-width:0; gap:6px; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:rgba(5,16,29,.7); }
-.mssChallengeCoachTile strong { font-size:11px; line-height:1.3; }
-.mssChallengeCoachTile p { flex:1; margin:0; font-size:9.5px; line-height:1.45; color:#b4c5d3; }
-.mssChallengeCoachTag { font-size:8px; font-weight:950; letter-spacing:.5px; color:#ffe1a1; }
-.mssChallengeCoachTile button { min-height:35px; border-radius:9px; border:1px solid rgba(255,216,107,.43); background:rgba(255,216,107,.10); color:#ffe4ae; font-size:10px; font-weight:950; cursor:pointer; }
-.mssChallengeCatalogControls { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
-.mssChallengeCatalogControls > button { flex:0 0 auto; min-height:38px; padding:6px 9px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#cbeaf7; font-size:9px; font-weight:950; cursor:pointer; }
-.mssChallengeCatalogControls > button.is-active { border-color:rgba(39,220,255,.64); background:rgba(39,220,255,.12); }
-.mssChallengeCatalogSearch { display:flex; align-items:center; flex:1 1 205px; min-width:0; gap:7px; padding:0 10px; min-height:40px; border:1px solid rgba(39,220,255,.3); border-radius:11px; background:rgba(3,15,27,.7); color:#69e8ff; }
-.mssChallengeCatalogSearch input { min-width:0; flex:1; border:0; outline:0; background:transparent; color:#eafaff; font-size:11px; }
-.mssChallengeCatalogSearch input::placeholder { color:#91aaba; }
-.mssChallengeCatalogFilters { display:flex; gap:5px; flex-wrap:wrap; }
-.mssChallengeCatalogFilters button { padding:6px 9px; min-height:30px; border-radius:999px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.045); color:#abc7d4; font-size:9px; font-weight:900; cursor:pointer; }
-.mssChallengeCatalogFilters button.is-active { color:#00202c; background:#70e9ff; border-color:#70e9ff; }
-.mssChallengeCatalogCount { color:#94b2c6; font-size:9px; font-weight:900; }
-.mssChallengeCatalogGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
-.mssChallengeCatalogCard { display:flex; flex-direction:column; min-width:0; gap:9px; padding:13px; border:1px solid rgba(39,220,255,.17); background:rgba(5,16,29,.82); border-radius:14px; }
-.mssChallengeCatalogCardHead { display:flex; justify-content:space-between; flex-wrap:wrap; gap:5px; color:#6ce4f8; font-size:9px; font-weight:950; letter-spacing:.5px; }
-.mssChallengeCatalogCardHead small { color:#bdc9d6; font-size:8px; }
-.mssChallengeCatalogCard h4 { margin:0; font-size:14px; line-height:1.2; }
-.mssChallengeCatalogCard > p { margin:0; flex:1; color:#a7bed0; font-size:10.5px; line-height:1.45; }
-.mssChallengeCatalogProgress { display:flex; flex-direction:column; gap:5px; }
-.mssChallengeCatalogProgress > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:7px; color:#b5d5e4; font-size:9px; }
-.mssChallengeCatalogProgress b { color:#7deaff; font-size:12px; }
-.mssChallengeCatalogProgressTrack { width:100%; height:6px; border-radius:99px; background:rgba(255,255,255,.1); overflow:hidden; }
-.mssChallengeCatalogProgressTrack i { display:block; height:100%; background:linear-gradient(90deg,#22bce4,#72efff); border-radius:99px; }
-.mssChallengeCatalogTrend, .mssChallengeCatalogCompareHint { font-size:9px; line-height:1.3; color:#9bdec4; }
-.mssChallengeCatalogCompareHint { color:#a7b9ce; }
-.mssChallengeCatalogActions { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:auto; }
-.mssChallengeCatalogActions button, .mssChallengeCatalogResume button, .mssChallengeCatalogDialog footer button { min-width:0; min-height:37px; padding:7px 9px; border:1px solid rgba(39,220,255,.32); background:rgba(39,220,255,.08); border-radius:9px; color:#d3f6ff; font-size:9px; font-weight:950; cursor:pointer; }
-.mssChallengeCatalogActions button:last-child, .mssChallengeCatalogDialog footer button:last-child { border-color:rgba(39,220,255,.6); background:linear-gradient(180deg,#46e5ff,#1aafd1); color:#001e2b; }
-.mssChallengeCatalog button:disabled { opacity:.45; cursor:not-allowed; }
-.mssChallengeCatalogResume { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:7px; padding:8px; border-radius:9px; background:rgba(255,216,107,.065); color:#ffdeab; font-size:9px; }
-.mssChallengeCatalogNotice, .mssChallengeCatalogEmpty { padding:12px; border-radius:11px; border:1px solid rgba(255,216,107,.25); background:rgba(255,216,107,.05); font-size:11px; line-height:1.4; }
-.mssChallengeCatalogEmpty button { background:none; border:none; color:#7ce9ff; text-decoration:underline; cursor:pointer; }
-.mssChallengeCatalogOverlay { position:fixed; inset:0; z-index:1300; display:grid; place-items:center; padding: max(10px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom)); background:rgba(1,5,10,.83); backdrop-filter:blur(9px); }
-.mssChallengeCatalogDialog { display:flex; flex-direction:column; gap:11px; width:min(540px,100%); max-height:calc(100dvh - 22px); overflow:auto; overscroll-behavior:contain; border-radius:18px; padding:15px; background:linear-gradient(150deg,#122f3a,#080f20); border:1px solid rgba(39,220,255,.4); box-shadow:0 20px 80px rgba(0,0,0,.6); }
-.mssChallengeCatalogDialog > header { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
-.mssChallengeCatalogDialog header small { font-size:9px; color:#75e9ff; }
-.mssChallengeCatalogDialog h3 { margin:4px 0; font-size:17px; }
-.mssChallengeCatalogDialog header button { flex:0 0 34px; width:34px; height:34px; border:1px solid rgba(255,255,255,.15); border-radius:9px; background:rgba(255,255,255,.06); color:#fff; font-size:21px; cursor:pointer; }
-.mssChallengeCatalogDialog > p { font-size:11px; color:#b7cddd; line-height:1.5; margin:0; }
-.mssChallengeCatalogDialogMetrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
-.mssChallengeCatalogDialogMetrics > div { min-width:0; display:flex; flex-direction:column; gap:4px; padding:9px 5px; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.035); text-align:center; }
-.mssChallengeCatalogDialogMetrics small { font-size:8px; color:#a6c2cf; }
-.mssChallengeCatalogDialogMetrics b { font-size:14px; color:#6ce7ff; }
-.mssChallengeCatalogDialog footer { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
-.mssChallengeCatalogComparison { display:flex; flex-direction:column; gap:5px; padding:9px; border-radius:11px; border:1px solid rgba(39,220,255,.23); background:rgba(39,220,255,.06); font-size:10px; line-height:1.4; }
-.mssChallengeCatalogComparison b { font-size:9px; color:#78edff; letter-spacing:.5px; }
-.mssChallengeCatalogComparison strong { color:#b4f5ca; }
-.mssChallengeCatalogComparison small { color:#acbdcf; }
-.mssChallengeCatalog button:focus-visible, .mssChallengeCatalog input:focus-visible, .mssChallengeCatalog select:focus-visible { outline:2px solid #ffe09b; outline-offset:2px; }
-@media(max-width:650px) { .mssChallengeCoachGrid { grid-template-columns:1fr; } .mssChallengeCoachTile { display:grid; grid-template-columns:1fr auto; gap:4px 8px; } .mssChallengeCoachTile .mssChallengeCoachTag { grid-column:1 / -1; } .mssChallengeCoachTile button { grid-column:2; grid-row:2 / 4; align-self:center; } .mssChallengeCoachTile p { grid-column:1; } }
-@media(max-width:460px) { .mssChallengeCatalog { gap:9px; } .mssChallengeCatalogHero { padding:10px; } .mssChallengeCatalogHero p { font-size:9.5px; } .mssChallengeCatalogMetrics > div { padding:5px 8px; } .mssChallengeCatalogGrid { grid-template-columns:1fr; } .mssChallengeCatalogCard { padding:11px; } .mssChallengeCatalogControls { gap:5px; } .mssChallengeCatalogControls > button { flex:1 1 100px; } .mssChallengeCatalogDialog { padding:11px; } .mssChallengeCatalogDialog footer { grid-template-columns:1fr 1fr; } .mssChallengeCatalogDialog footer button:first-child { grid-column:1 / -1; } }
-@media(orientation:landscape) and (max-height:460px) { .mssChallengeCatalogDialog { max-height:calc(100dvh - 8px); padding:9px 12px; } .mssChallengeCatalogOverlay { padding:4px; } .mssChallengeCatalogHero { padding:8px 12px; } }
-/* AWENA Academy adds a sixth navigation destination; keep all tabs reachable on phones. */
-@media (max-width:600px) {
- .mssTrainingHubPrimaryNav { grid-template-columns:repeat(6,minmax(0,1fr))!important; }
- .mssTrainingHubPrimaryNav button { min-width:0!important; }
- .mssTrainingHubPrimaryNav button span:last-child { font-size:clamp(6px,1.55vw,8px)!important; line-height:1.1!important; white-space:normal!important; overflow-wrap:anywhere!important; }
+@media (orientation:landscape) and (max-height:420px) {
+  .mssTrainingPlay { --mss-training-header-height:clamp(35px,10dvh,43px); }
+  .mssTrainingPlayMain { gap:4px; padding:2px 4px max(3px,env(safe-area-inset-bottom)); }
+  .mssTrainingInputToolbar { min-height:27px; padding:0 3px 2px; }
+  .mssTrainingMethodButton { width:27px; height:27px; }
+  .mssTrainingInput > .mssTrainingProgramCue { display:none; }
+  .mssTrainingKpis { display:none; }
 }
-/* V107 W6 — compact spoken coaching. Never steals keyboard height on small screens. */
-.mssTrainingVoiceBar { flex:0 0 auto; display:flex; align-items:center; gap:5px; min-height:27px; width:100%; padding:2px 5px; box-sizing:border-box; border:1px solid rgba(39,220,255,.19); border-radius:10px; background:rgba(39,220,255,.045); }
-.mssTrainingVoiceHint { display:flex; min-width:0; flex:1; align-items:center; gap:5px; font-size:9px; font-weight:900; white-space:nowrap; color:#85eaff; overflow:hidden; }
-.mssTrainingVoiceHint span { min-width:0; color:#bdd8df; opacity:.75; font-size:9px; font-weight:500; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
-.mssTrainingVoiceBar button { flex:0 0 auto; border:1px solid rgba(39,220,255,.25); border-radius:8px; background:rgba(39,220,255,.08); min-height:24px; color:#dcf9ff; padding:3px 7px; cursor:pointer; font-size:10px; font-weight:900; }
-.mssTrainingVoiceBar button.is-active { background:rgba(80,255,174,.15); border-color:rgba(80,255,174,.45); color:#9cffd6; }
-.mssTrainingVoiceNotice { flex:0 0 auto; font-size:9px; line-height:1.2; color:#ffd86b; }
-.mssTrainingResultVoice button,.mssTrainingReplaySummary { border:1px solid rgba(39,220,255,.3); color:#b3f6ff; background:rgba(39,220,255,.08); border-radius:9px; font-weight:900; font-size:9px; padding:8px 10px; cursor:pointer; }
-.mssTrainingResultVoice button { margin-bottom:7px; }
-.mssTrainingReplaySummary { margin-top:8px; }
-@media (max-height:740px), (max-width:420px) { .mssTrainingVoiceBar { min-height:24px; padding:1px 3px; } .mssTrainingVoiceBar button { min-height:22px; padding:2px 5px; } .mssTrainingVoiceHint span { display:none; } }
+@media (max-width:380px) { .mssTrainingResultKpis { gap:4px!important; } .mssTrainingResultKpis > div { padding:6px 2px!important; } }
+
+/* V134/Vague 9 : une seule action corrective compacte dans le bilan. */
+.mssTrainingCorrectiveAction { margin-top:10px; padding:9px; border-radius:11px; border:1px solid rgba(80,255,174,.24); background:rgba(80,255,174,.055); display:grid; gap:8px; min-width:0; }
+.mssTrainingCorrectiveAction > div { display:grid; gap:3px; min-width:0; }
+.mssTrainingCorrectiveAction small { font-size:8px; font-weight:950; letter-spacing:.5px; color:#8bffcd; }
+.mssTrainingCorrectiveAction strong { font-size:12px; overflow-wrap:anywhere; }
+.mssTrainingCorrectiveAction span { font-size:10px; line-height:1.35; opacity:.75; }
+.mssTrainingCorrectiveAction button { min-height:40px; width:100%; border:1px solid rgba(80,255,174,.45); border-radius:10px; background:rgba(80,255,174,.14); color:#b5ffdf; font-size:10px; font-weight:950; cursor:pointer; }
+.mssTrainingCorrectiveAction button:focus-visible { outline:2px solid #8bffcd; outline-offset:2px; }
+@media (max-height:600px) { .mssTrainingCorrectiveAction { padding:7px; gap:5px; } }

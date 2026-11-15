@@ -7,8 +7,6 @@ import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/train
 import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
 import { buildTrainingLiveAdaptation, buildTrainingLiveStepCoach, type TrainingLiveAdaptation } from "../../profile/trainingLiveCoach";
 import { buildTrainingSessionReview } from "../../profile/trainingSessionReview";
-import { buildTrainingResultVoiceText, buildTrainingSessionVoiceText, buildTrainingStepVoiceText } from "../../profile/trainingVoiceScripts";
-import { useTrainingVoiceCoach } from "../../ui/useTrainingVoiceCoach";
 import { chooseHistoryAwareNextFamily } from "../../profile/trainingSessionHistoryCoach";
 import { buildTrainingCoachingEffectiveness, chooseCoachingEffectiveNextFamily } from "../../profile/trainingCoachingEffectiveness";
 import { isDoubleDart, makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
@@ -22,6 +20,7 @@ import { buildTrainingProgression } from "../../coach/trainingDiagnosis";
 import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 import { clearTrainingExerciseDraft, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
 import { buildTrainingExercisePostSessionFeedback, getTrainingExerciseProgressionSnapshot, type TrainingExercisePostSessionFeedback } from "../../profile/trainingExerciseFeedback";
+import { buildTrainingCorrectiveRoute } from "../../profile/trainingCorrectiveRoute";
 
 type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number; quickDarts: number };
 type ProgramStepResult = {
@@ -41,7 +40,7 @@ type ProgramStepResult = {
 };
 const emptyRun = (): RunState => ({ darts: 0, hits: 0, points: 0, progress: 0, checkoutTotal: 0, quickDarts: 0 });
 
-function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () => void }) {
+function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config: any; onExit: () => void; onStartCorrection?: (exerciseId: string) => void }) {
   const accountParticipantId = String(config?.activeParticipant?.id || config?.selectedPlayerIds?.[0] || "").trim() || null;
   const initialProgramIds = React.useMemo(() => {
     const ids = Array.isArray(config?.programExerciseIds) ? config.programExerciseIds.map(String).filter(Boolean) : [];
@@ -72,23 +71,6 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
   const totalSteps = programIds.length;
   const sequence = exercise.sequence || [];
   const liveStepCoach = React.useMemo(() => buildTrainingLiveStepCoach(exercise, stepIndex, totalSteps), [exercise, stepIndex, totalSteps]);
-  const voiceCoach = useTrainingVoiceCoach();
-  const spokenStep = React.useMemo(() => buildTrainingStepVoiceText(exercise, liveStepCoach, stepIndex, totalSteps), [exercise, liveStepCoach, stepIndex, totalSteps]);
-  const spokenResult = result ? buildTrainingResultVoiceText({
-    title: exercise.title,
-    success: !!result.success,
-    performanceScore: Number(result.metrics?.performanceScore) || 0,
-    completionPct: Number(result.metrics?.completionPct) || 0,
-    accuracyPct: result.metrics?.precisionUnavailable ? null : Number(result.metrics?.accuracyPct ?? 0),
-    nextCue: isProgram ? liveAdaptation?.body : exerciseFeedback?.nextObjective,
-  }) : "";
-  React.useEffect(() => {
-    if (!result && !programSummaryOpen) voiceCoach.announce(`step:${stepIndex}:${exercise.id}`, spokenStep);
-  }, [exercise.id, programSummaryOpen, result, spokenStep, stepIndex, voiceCoach.announce]);
-  React.useEffect(() => {
-    if (result) voiceCoach.announce(`result:${stepIndex}:${exercise.id}`, spokenResult);
-  }, [exercise.id, result, spokenResult, stepIndex, voiceCoach.announce]);
-
   const goal = exercise.engine === "target_hits" ? Math.max(1, exercise.hitsGoal || 1) : exercise.engine === "sequence" ? Math.max(1, sequence.length) : exercise.engine === "score_darts" ? Math.max(1, exercise.scoreGoal || 1) : Math.max(1, exercise.checkoutScore || 1);
   const individualExercise = !isProgram && String(config?.sessionKind || "exercise") === "exercise";
   const persistIndividualDraft = React.useCallback(() => {
@@ -104,6 +86,20 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       secondsLeft: null,
     });
   }, [accountParticipantId, exercise.id, individualExercise]);
+
+  React.useEffect(() => {
+    if (!individualExercise) return;
+    const persistOnLeave = () => persistIndividualDraft();
+    const persistOnHide = () => { if (document.visibilityState === "hidden") persistOnLeave(); };
+    document.addEventListener("visibilitychange", persistOnHide);
+    window.addEventListener("pagehide", persistOnLeave);
+    window.addEventListener("orientationchange", persistOnLeave);
+    return () => {
+      document.removeEventListener("visibilitychange", persistOnHide);
+      window.removeEventListener("pagehide", persistOnLeave);
+      window.removeEventListener("orientationchange", persistOnLeave);
+    };
+  }, [individualExercise, persistIndividualDraft]);
 
   const resetForNextExercise = React.useCallback(() => {
     stateRef.current = emptyRun();
@@ -330,19 +326,6 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
     return { rows, steps, successes, darts, accuracy, precisionUnavailable, performance, best };
   }, [programResults]);
 
-  const spokenSummary = buildTrainingSessionVoiceText({
-    title: String(config?.programTitle || "Programme Training"),
-    successes: programSummary.successes,
-    steps: programSummary.steps,
-    performance: programSummary.performance,
-    precisionUnavailable: programSummary.precisionUnavailable,
-    accuracyPct: programSummary.accuracy,
-    advice: postSessionCoach?.body || null,
-  });
-  React.useEffect(() => {
-    if (programSummaryOpen && postSessionCoach) voiceCoach.announce(`summary:${String(config?.groupSessionId || config?.programId || 'program')}`, spokenSummary);
-  }, [config?.groupSessionId, config?.programId, postSessionCoach, programSummaryOpen, spokenSummary, voiceCoach.announce]);
-
   const sessionReview = React.useMemo(() => buildTrainingSessionReview({
     plannedExerciseIds: plannedProgramIdsRef.current,
     actualExerciseIds: programIds,
@@ -438,33 +421,40 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
         { label: isProgram ? "ÉTAPE" : "RESTE", value: isProgram ? `${stepIndex + 1}/${totalSteps}` : Math.max(0, exercise.maxDarts - s.darts) },
       ]}
     >
-      <div className="mssTrainingVoiceBar" aria-label="Conseils vocaux Awena">
-        <span className="mssTrainingVoiceHint" title={liveStepCoach.cue}>✦ AWENA · {isProgram ? liveStepCoach.phaseLabel : "CONSEIL"} <span>{liveStepCoach.cue}</span></span>
-        <button type="button" onClick={() => voiceCoach.say(spokenStep)} title="Écouter la consigne" aria-label="Écouter la consigne Awena">🔊</button>
-        <button type="button" className={voiceCoach.automatic ? "is-active" : ""} aria-pressed={voiceCoach.automatic} onClick={() => voiceCoach.setAuto(!voiceCoach.automatic)} title="Activer ou désactiver le guidage automatique d'Awena">AUTO {voiceCoach.automatic ? "✓" : "○"}</button>
-      </div>
-      {voiceCoach.notice && <div className="mssTrainingVoiceNotice" role="status">{voiceCoach.notice}</div>}
+      {isProgram && <div className="mssTrainingProgramCue" style={{ marginBottom: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.075),rgba(140,90,255,.05))" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>AWENA • {liveStepCoach.phaseLabel}</div>
+          <div style={{ fontSize: 8, fontWeight: 900, opacity: .55 }}>CIBLE PERF. {liveStepCoach.targetScore}/100</div>
+        </div>
+        <div style={{ marginTop: 5, fontSize: 10.5, fontWeight: 900 }}>{liveStepCoach.objective}</div>
+        <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .68 }}>{liveStepCoach.cue}</div>
+      </div>}
       <TrainingDartPad enableMethods disabled={!!result} onVisit={onVisit} onQuickVisit={onQuickVisit} allowQuickScore={exercise.engine === "score_darts"} maxQuickDarts={exercise.maxDarts - s.darts} storageKey={accountParticipantId || "training"} notice={<div style={{ fontSize: 10.5, textAlign: "center", opacity: .68 }}>{isProgram ? "Chaque étape est enregistrée séparément pour affiner le diagnostic Awena." : "Clavier et cible enregistrent les zones exactes. Score volée conserve le total sans inventer de précision."}</div>} />
     </TrainingPlayLayout>
     <TrainingResultModal
       open={!!result}
       success={!!result?.success}
       title={isProgram ? `${result?.success ? "Étape réussie" : "Étape terminée"} — ${stepIndex + 1}/${totalSteps}` : result?.success ? "Exercice réussi" : "Objectif non atteint"}
+      coachFocus={exercise.title}
+      precisionAvailable={!!result && !result.metrics?.precisionUnavailable && !Number(result.metrics?.aggregatedDarts || 0)}
+      correctiveRoute={result && individualExercise && onStartCorrection ? buildTrainingCorrectiveRoute(exercise, {
+        success: !!result.success,
+        precisionAvailable: !result.metrics?.precisionUnavailable && !Number(result.metrics?.aggregatedDarts || 0),
+      }) : null}
+      onStartCorrection={individualExercise ? onStartCorrection : undefined}
       stats={result?.stats || makeTrainingStats({ darts: 0, hits: 0, points: 0, startedAt: Date.now() })}
-      summaryCards={result?.metrics?.precisionUnavailable ? [
+      summaryCards={(result?.metrics?.precisionUnavailable || Number(result?.metrics?.aggregatedDarts || 0) > 0) ? [
         { label: "SCORE", value: Math.round(result.stats.score) }, { label: "FLÉCHETTES", value: result.stats.darts },
         { label: "TOUCHES", value: "—" }, { label: "PRÉCISION", value: "Non mesurée" },
       ] : undefined}
       metrics={result ? [
         { label: "EXERCICE", value: exercise.title },
         { label: "PROGRESSION", value: `${Math.round(result.metrics.completionPct)}%` },
-        { label: "PRÉCISION", value: result.metrics.accuracyPct == null ? "Non mesurée" : `${Math.round(result.metrics.accuracyPct)}%` },
+        { label: "PRÉCISION", value: result.metrics.accuracyPct == null || Number(result.metrics?.aggregatedDarts || 0) > 0 ? "Non comparable" : `${Math.round(result.metrics.accuracyPct)}%` },
         { label: "PERFORMANCE", value: `${result.metrics.performanceScore}/100` },
         ...(isProgram && liveAdaptation ? [{ label: "AWENA", value: liveAdaptation.headline }] : []),
       ] : []}
-      note={<div className="mssTrainingResultVoice">
-        <button type="button" onClick={() => voiceCoach.say(spokenResult)}>🔊 ÉCOUTER LE BILAN AWENA</button>
-        {isProgram && liveAdaptation ? <div style={{ padding: 10, borderRadius: 12, background: liveAdaptation.tone === "positive" ? "rgba(80,255,174,.07)" : liveAdaptation.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: liveAdaptation.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : liveAdaptation.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>FEEDBACK AWENA</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{liveAdaptation.headline}</div><div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .7 }}>{liveAdaptation.body}</div><div style={{ marginTop: 6, fontSize: 8, fontWeight: 900, color: "#27dcff" }}>{liveAdaptation.nextLabel}</div></div> : exerciseFeedback ? <div style={{ padding: 10, borderRadius: 12, background: exerciseFeedback.levelUp ? "rgba(80,255,174,.07)" : "rgba(39,220,255,.06)", border: exerciseFeedback.levelUp ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>PROGRESSION PERSONNELLE</div><div style={{ marginTop: 4, fontSize: 12, fontWeight: 1000 }}>{exerciseFeedback.masteredNow ? "MAÎTRISE DÉBLOQUÉE" : exerciseFeedback.levelUp ? `NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ` : `NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{ marginTop: 5, fontSize: 9.2, lineHeight: 1.42, opacity: .72 }}>{exerciseFeedback.newRecord ? `Nouveau record • ${exerciseFeedback.currentPerformance}/100. ` : ""}{exerciseFeedback.afterLevel >= 5 ? "Exercice maîtrisé." : `Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div> : null}</div>}
+      note={isProgram && liveAdaptation ? <div style={{ padding: 10, borderRadius: 12, background: liveAdaptation.tone === "positive" ? "rgba(80,255,174,.07)" : liveAdaptation.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: liveAdaptation.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : liveAdaptation.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>FEEDBACK AWENA</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{liveAdaptation.headline}</div><div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .7 }}>{liveAdaptation.body}</div><div style={{ marginTop: 6, fontSize: 8, fontWeight: 900, color: "#27dcff" }}>{liveAdaptation.nextLabel}</div></div> : exerciseFeedback ? <div style={{ padding: 10, borderRadius: 12, background: exerciseFeedback.levelUp ? "rgba(80,255,174,.07)" : "rgba(39,220,255,.06)", border: exerciseFeedback.levelUp ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>PROGRESSION PERSONNELLE</div><div style={{ marginTop: 4, fontSize: 12, fontWeight: 1000 }}>{exerciseFeedback.masteredNow ? "MAÎTRISE DÉBLOQUÉE" : exerciseFeedback.levelUp ? `NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ` : `NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{ marginTop: 5, fontSize: 9.2, lineHeight: 1.42, opacity: .72 }}>{exerciseFeedback.newRecord ? `Nouveau record • ${exerciseFeedback.currentPerformance}/100. ` : ""}{exerciseFeedback.afterLevel >= 5 ? "Exercice maîtrisé." : `Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div> : null}
       actionLabel={isProgram ? (stepIndex + 1 < totalSteps ? "ÉTAPE SUIVANTE" : "VOIR LE BILAN") : "TERMINER"}
       onClose={closeResult}
     />
@@ -474,7 +464,6 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
         <div style={{ fontSize: 9.5, color: "#27dcff", fontWeight: 950, letterSpacing: 1.2 }}>BILAN DE SÉANCE</div>
         <div style={{ marginTop: 5, fontSize: 18, fontWeight: 950 }}>{config?.programTitle || "Programme Training"}</div>
         <div style={{ marginTop: 5, fontSize: 10.5, opacity: .62 }}>Toutes les étapes ont été enregistrées séparément dans ta progression.</div>
-        <button type="button" className="mssTrainingReplaySummary" onClick={() => voiceCoach.say(spokenSummary)}>🔊 ÉCOUTER LE BILAN D’AWENA</button>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 14 }}>
           {[
@@ -545,10 +534,10 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
 }
 
 
-export default function TrainingLabPlay(props: { config: any; onExit: () => void }) {
+export default function TrainingLabPlay(props: { config: any; onExit: () => void; onStartCorrection?: (exerciseId: string) => void }) {
   const ids = Array.isArray(props.config?.programExerciseIds) ? props.config.programExerciseIds.map(String).filter(Boolean) : [];
   const exerciseId = ids.length ? ids[Math.max(0, Math.min(ids.length - 1, Number(props.config?.resumeStepIndex) || 0))] : String(props.config?.exerciseId || "");
   const exercise = getTrainingExercise(exerciseId);
-  if (exercise?.engine === "custom") return <TrainingCustomExercisePlay config={props.config} onExit={props.onExit} exercise={exercise} />;
+  if (exercise?.engine === "custom") return <TrainingCustomExercisePlay config={props.config} onExit={props.onExit} onStartCorrection={props.onStartCorrection} exercise={exercise} />;
   return <TrainingLabStandardPlay {...props} />;
 }

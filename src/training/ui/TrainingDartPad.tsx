@@ -136,10 +136,10 @@ export default function TrainingDartPad({
   }, [disabled]);
 
   React.useEffect(() => {
-    if ((method === "visit_score" && !canQuick) || (method === "voice" && !voice.supported) || (method === "camera" && !cameraAvailable) || (method === "external" && !externalConnected)) {
+    if ((method === "visit_score" && !canQuick) || (method === "camera" && !cameraAvailable) || (method === "external" && !externalConnected) || (method === "voice" && !voice.supported)) {
       setMethod("keypad");
     }
-  }, [method, canQuick, voice.supported, cameraAvailable, externalConnected]);
+  }, [method, canQuick, cameraAvailable, externalConnected, voice.supported]);
 
   const changeMethod = (next: TrainingMethod) => {
     if (disabled || currentThrow.length > 0) return;

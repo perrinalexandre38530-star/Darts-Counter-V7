@@ -8,9 +8,8 @@ import { EXTENDED_RULE_BY_ID, type ExtendedTrainingRule } from "../../catalog/tr
 import { evaluateExtendedOutcome } from "../../profile/trainingExtendedOutcome";
 import { getTrainingTechniqueGuide } from "../../catalog/trainingTechniqueGuides";
 import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
+import { buildTrainingCorrectiveRoute } from "../../profile/trainingCorrectiveRoute";
 import { buildTrainingExercisePostSessionFeedback, getTrainingExerciseProgressionSnapshot, type TrainingExercisePostSessionFeedback } from "../../profile/trainingExerciseFeedback";
-import { buildTrainingResultVoiceText, pronounceDartSegments } from "../../profile/trainingVoiceScripts";
-import { useTrainingVoiceCoach } from "../../ui/useTrainingVoiceCoach";
 
 const clamp = (n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const visitScore=(v:TrainingDart[])=>v.reduce((s,d)=>s+d.score,0);
@@ -96,7 +95,7 @@ function missionSuccess(m:any,darts:TrainingDart[]){
   return false;
 }
 
-export default function TrainingCustomExercisePlay({config,onExit,exercise}:{config:any;onExit:()=>void;exercise:any}){
+export default function TrainingCustomExercisePlay({config,onExit,onStartCorrection,exercise}:{config:any;onExit:()=>void;onStartCorrection?:(exerciseId:string)=>void;exercise:any}){
   const resolvedRule=EXTENDED_RULE_BY_ID[exercise.ruleId||exercise.id];
   const rule: ExtendedTrainingRule = resolvedRule || { id: String(exercise?.id || "unknown"), title: String(exercise?.title || "Exercice indisponible"), subtitle: "Définition d’exercice introuvable.", family: exercise?.family || "regularity", difficulty: 1, kind: "technique", params: { focus: "Cet exercice doit être réparé avant de pouvoir être joué." } };
   const ruleMissing = !resolvedRule;
@@ -109,11 +108,16 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
   const [exerciseFeedback,setExerciseFeedback]=React.useState<TrainingExercisePostSessionFeedback|null>(null);
   const resumedSeconds = getEffectiveDraftSeconds(resumeExerciseDraft);
   const [secondsLeft,setSecondsLeft]=React.useState(resumedSeconds == null ? (rule.durationSec||0) : resumedSeconds);
+  const secondsRef=React.useRef(secondsLeft);
+  secondsRef.current=secondsLeft;
+  const [foreground,setForeground]=React.useState(() => typeof document === "undefined" || !document.hidden);
   const finishedRef=React.useRef(false);
   const participantIds=config?.selectedPlayerIds;
 
   const persistDraft=React.useCallback((nextState:State=stateRef.current,nextSeconds=secondsLeft)=>{
     if(finishedRef.current || String(config?.sessionKind || "exercise") !== "exercise") return;
+    // Prevent a pagehide event in the same tick from writing an older render snapshot.
+    stateRef.current = nextState;
     saveTrainingExerciseDraft({exerciseId:exercise.id,participantId,engine:"custom",savedAt:Date.now(),startedAt:startedAt.current,state:nextState,visitHistory:[],secondsLeft:rule.durationSec?nextSeconds:null});
   },[config?.sessionKind,exercise.id,participantId,rule.durationSec,secondsLeft]);
 
@@ -134,7 +138,39 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
     setResult({success:outcome.passed,metrics,outcome,stats:makeTrainingStats({darts:s.darts,hits:s.hits,points:Math.max(0,s.points),startedAt:startedAt.current,endedAt})});
   },[config,exercise,participantId,participantIds,rule]);
 
-  React.useEffect(()=>{ if(!rule.durationSec||result)return; const id=setInterval(()=>setSecondsLeft(x=>{if(x<=1){clearInterval(id); setTimeout(()=>finish(true),0); return 0;}return x-1}),1000); return()=>clearInterval(id);},[finish,result,rule.durationSec]);
+  React.useEffect(() => {
+    const onHidden = () => {
+      if (document.hidden) persistDraft(stateRef.current, secondsRef.current);
+      setForeground(!document.hidden);
+    };
+    const onPageHide = () => persistDraft(stateRef.current, secondsRef.current);
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("orientationchange", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("orientationchange", onPageHide);
+    };
+  }, [persistDraft]);
+
+  // A small periodic checkpoint helps if Android kills the process without pagehide.
+  React.useEffect(() => {
+    if (!rule.durationSec || result || !foreground) return;
+    const id = window.setInterval(() => persistDraft(stateRef.current, secondsRef.current), 5000);
+    return () => window.clearInterval(id);
+  }, [foreground, persistDraft, result, rule.durationSec]);
+
+  React.useEffect(() => {
+    if (!rule.durationSec || result || !foreground) return;
+    const id = window.setInterval(() => setSecondsLeft((current) => {
+      if (document.hidden || finishedRef.current) return current;
+      if (current <= 1) { window.clearInterval(id); window.setTimeout(() => finish(true), 0); secondsRef.current = 0; return 0; }
+      secondsRef.current = current - 1;
+      return current - 1;
+    }), 1000);
+    return () => window.clearInterval(id);
+  }, [finish, foreground, result, rule.durationSec]);
 
   const applyVisit=React.useCallback((visit:TrainingDart[])=>{
     if(result||!visit.length)return;
@@ -221,33 +257,13 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
     });
   };
   const manualHit=(value:number)=>setState(prev=>{const s={...prev,darts:prev.darts+1,hits:prev.hits+(value>0?1:0),points:prev.points+value};persistDraft(s,secondsLeft);return s});
-  const handleExit=React.useCallback(()=>{ if(!result) persistDraft(stateRef.current,secondsLeft); onExit(); },[onExit,persistDraft,result,secondsLeft]);
+  const handleExit=React.useCallback(()=>{ if(!result) persistDraft(stateRef.current,secondsRef.current); onExit(); },[onExit,persistDraft,result]);
   const s=state;
   const timeText=rule.durationSec?`${Math.floor(secondsLeft/60)}:${String(secondsLeft%60).padStart(2,"0")}`:null;
   const manual=rule.kind==="manual_hits";
   const technique=rule.kind==="technique";
   const techniqueSteps = technique ? getTrainingTechniqueGuide(rule.id, String(rule.params?.focus || "Reproduis un geste fluide.")) : [];
   const techniqueStage = Math.max(0, Math.min(techniqueSteps.length, Number(s.aux?.techniqueStage || 0)));
-  const voiceCoach = useTrainingVoiceCoach();
-  const rawCustomStep = technique
-    ? `${exercise.title}. Étape ${Math.min(techniqueStage + 1, techniqueSteps.length)} sur ${techniqueSteps.length}. ${techniqueSteps[techniqueStage]?.title || "Pratique libre"}. ${techniqueSteps[techniqueStage]?.cue || "Conserve une routine stable."}`
-    : `${exercise.title}. ${rule.subtitle}. ${rule.level1Label || "Suis l'objectif indiqué sur la cible."}`;
-  const spokenCustomStep = pronounceDartSegments(rawCustomStep);
-  const spokenCustomResult = result ? buildTrainingResultVoiceText({
-    title: exercise.title,
-    success: !!result.success,
-    performanceScore: Number(result.metrics?.performanceScore) || 0,
-    completionPct: Number(result.metrics?.completionPct) || 0,
-    accuracyPct: result.metrics?.precisionUnavailable ? null : Number(result.metrics?.accuracyPct ?? 0),
-    nextCue: exerciseFeedback?.nextObjective,
-  }) : "";
-  React.useEffect(() => {
-    if (!ruleMissing && !result) voiceCoach.announce(`custom:${exercise.id}:${technique ? techniqueStage : 0}`, spokenCustomStep);
-  }, [exercise.id, result, ruleMissing, spokenCustomStep, technique, techniqueStage, voiceCoach.announce]);
-  React.useEffect(() => {
-    if (result) voiceCoach.announce(`custom-result:${exercise.id}`, spokenCustomResult);
-  }, [exercise.id, result, spokenCustomResult, voiceCoach.announce]);
-
   const advanceTechnique = (direction: number) => {
     setState(prev => {
       const next: State = { ...prev, aux: { ...prev.aux, techniqueStage: Math.max(0, Math.min(techniqueSteps.length, Number(prev.aux?.techniqueStage || 0) + direction)) } };
@@ -270,12 +286,6 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
       progress={{value:rule.rounds?Math.min(rule.rounds,s.round):Math.min(100,s.points),max:rule.rounds||100,label:rule.family.toUpperCase()}}
       kpis={[{label:"DARTS",value:s.darts},{label:"POINTS",value:s.points},{label:"TOURS",value:rule.rounds?`${Math.min(s.round+1,rule.rounds)}/${rule.rounds}`:s.round+1},{label:"TEMPS",value:timeText||"—"}]}
     >
-      <div className="mssTrainingVoiceBar" aria-label="Conseils vocaux Awena">
-        <span className="mssTrainingVoiceHint" title={spokenCustomStep}>✦ AWENA · {technique ? `ÉTAPE ${techniqueStage+1}` : "CONSEIL"}<span>{technique ? techniqueSteps[techniqueStage]?.title || "Pratique libre" : rule.subtitle}</span></span>
-        <button type="button" onClick={() => voiceCoach.say(spokenCustomStep)} aria-label="Écouter le conseil Awena">🔊</button>
-        <button type="button" aria-pressed={voiceCoach.automatic} className={voiceCoach.automatic ? "is-active" : ""} onClick={() => voiceCoach.setAuto(!voiceCoach.automatic)}>AUTO {voiceCoach.automatic ? "✓" : "○"}</button>
-      </div>
-      {voiceCoach.notice && <div className="mssTrainingVoiceNotice" role="status">{voiceCoach.notice}</div>}
       {technique ? <div style={{padding:"16px 12px",display:"grid",gap:12}}>
         <div style={{fontSize:10,fontWeight:950,letterSpacing:1,color:"#27dcff"}}>PARCOURS TECHNIQUE MSS • {techniqueStage < techniqueSteps.length ? `ÉTAPE ${techniqueStage+1}/${techniqueSteps.length}` : "PRATIQUE LIBRE"}</div>
         <div style={{display:"flex",gap:6}}>{techniqueSteps.map((step,index)=><div key={step.title} aria-label={`Étape ${index+1}`} style={{flex:1,height:6,borderRadius:99,background: index <= techniqueStage ? "#27dcff" : "rgba(255,255,255,.12)"}}/>)}</div>
@@ -292,9 +302,9 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
         {(rule.params?.manualScores||[0,1]).map((v:number,i:number)=><button key={v} onClick={()=>manualHit(v)} style={{minHeight:80,borderRadius:14,border:"1px solid rgba(255,255,255,.12)",background:v?"rgba(80,255,174,.08)":"rgba(255,80,80,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>{rule.params?.manualLabels?.[i]|| (v?"TOUCHÉ":"RATÉ")}<div style={{marginTop:5,fontSize:12,opacity:.6}}>+{v}</div></button>)}
       </div> : <TrainingDartPad enableMethods disabled={!!result} onVisit={applyVisit} onQuickVisit={onQuickVisit} allowQuickScore={quickScoreCompatible} storageKey={participantId || "training"} requireFullVisit={false} notice={<div style={{fontSize:11,textAlign:"center",opacity:.72}}>Saisis tes fléchettes normalement. Le moteur applique automatiquement les règles de l'exercice.</div>} />}
     </TrainingPlayLayout>
-    <TrainingResultModal summaryCards={result?.metrics?.precisionUnavailable ? [
+    <TrainingResultModal summaryCards={(result?.metrics?.precisionUnavailable || Number(result?.metrics?.aggregatedDarts || 0) > 0) ? [
       { label: "SCORE", value: result?.stats?.score ?? 0 }, { label: "FLÉCHETTES", value: result?.stats?.darts ?? 0 },
       { label: "TOUCHES", value: "—" }, { label: "PRÉCISION", value: "Non mesurée" },
-    ] : undefined} open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"NIVEAU",value:`${exerciseFeedback?.afterLevel??0}/5`}]:[]} note={<div className="mssTrainingResultVoice"><button type="button" onClick={() => voiceCoach.say(spokenCustomResult)}>🔊 ÉCOUTER LE BILAN AWENA</button>{exerciseFeedback?<div style={{padding:10,borderRadius:12,background:exerciseFeedback.levelUp?"rgba(80,255,174,.07)":"rgba(39,220,255,.06)",border:exerciseFeedback.levelUp?"1px solid rgba(80,255,174,.22)":"1px solid rgba(39,220,255,.18)"}}><div style={{fontSize:8,fontWeight:950,letterSpacing:1,opacity:.58}}>PROGRESSION PERSONNELLE</div><div style={{marginTop:4,fontSize:12,fontWeight:1000}}>{exerciseFeedback.masteredNow?"MAÎTRISE DÉBLOQUÉE":exerciseFeedback.levelUp?`NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ`:`NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{marginTop:5,fontSize:9.2,lineHeight:1.42,opacity:.72}}>{exerciseFeedback.newRecord?`Nouveau record • ${exerciseFeedback.currentPerformance}/100. `:""}{exerciseFeedback.afterLevel>=5?"Exercice maîtrisé.":`Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div>:null}</div>} onClose={handleExit}/>
+    ] : undefined} open={!!result} success={!!result?.success} coachFocus={exercise.title} precisionAvailable={!!result && !result.metrics?.precisionUnavailable && !Number(result.metrics?.aggregatedDarts || 0)} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"NIVEAU",value:`${exerciseFeedback?.afterLevel??0}/5`}]:[]} note={exerciseFeedback?<div style={{padding:10,borderRadius:12,background:exerciseFeedback.levelUp?"rgba(80,255,174,.07)":"rgba(39,220,255,.06)",border:exerciseFeedback.levelUp?"1px solid rgba(80,255,174,.22)":"1px solid rgba(39,220,255,.18)"}}><div style={{fontSize:8,fontWeight:950,letterSpacing:1,opacity:.58}}>PROGRESSION PERSONNELLE</div><div style={{marginTop:4,fontSize:12,fontWeight:1000}}>{exerciseFeedback.masteredNow?"MAÎTRISE DÉBLOQUÉE":exerciseFeedback.levelUp?`NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ`:`NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{marginTop:5,fontSize:9.2,lineHeight:1.42,opacity:.72}}>{exerciseFeedback.newRecord?`Nouveau record • ${exerciseFeedback.currentPerformance}/100. `:""}{exerciseFeedback.afterLevel>=5?"Exercice maîtrisé.":`Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div>:null} correctiveRoute={result && String(config?.sessionKind || "exercise") === "exercise" && onStartCorrection ? buildTrainingCorrectiveRoute(exercise, {success:!!result.success,precisionAvailable:!result.metrics?.precisionUnavailable && !Number(result.metrics?.aggregatedDarts || 0)}) : null} onStartCorrection={onStartCorrection} onClose={handleExit}/>
   </>;
 }

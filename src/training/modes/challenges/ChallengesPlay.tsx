@@ -408,6 +408,8 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       <TrainingResultModal
         open={!!result}
         success={!!result?.success}
+        coachFocus={title}
+        precisionAvailable={true}
         title={challengeId === "JDC_CHALLENGE" || challengeId === "DOUBLES_8_BONUS" ? "Challenge terminé" : result?.success ? "Défi réussi" : "Défi manqué"}
         stats={
           result?.stats ||

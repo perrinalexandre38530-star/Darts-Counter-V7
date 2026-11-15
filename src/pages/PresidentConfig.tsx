@@ -1,5 +1,4 @@
 // @ts-nocheck
-import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // PRÉSIDENT — configuration guidée / complète
 // =============================================================
@@ -115,7 +114,7 @@ export default function PresidentConfig(props: any) {
   const selectedItems = selectedProfiles.map((profile: any) => ({ id: String(profile.id), kind: isBotLike(profile) ? "bot" : "player", name: profile?.name || profile?.displayName || "Joueur", profile }));
   const selectedBotCount = selectedProfiles.filter(isBotLike).length;
   const valid = selectedIds.length >= 3 && selectedIds.length <= 8;
-  const deckCapacity = deckCopies * 20;
+  const deckCapacity = deckCopies * 13;
   const needCards = selectedIds.length * handSize;
   const deckWarning = needCards > deckCapacity;
 
@@ -165,15 +164,15 @@ export default function PresidentConfig(props: any) {
   const reign = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>FORMAT DU RÈGNE</div>
     <OptionRow label="Manches"><OptionSelect value={rounds} options={[1,3,5,7,10]} onChange={(v: any) => setRounds(Number(v) as any)} /></OptionRow>
     <OptionRow label="Cartes / joueur"><OptionSelect value={handSize} options={[6,8,10,12,14,16]} onChange={(v: any) => setHandSize(Number(v))} /></OptionRow>
-    <OptionRow label="Copies 1→20"><OptionSelect value={deckCopies} options={[3,4,5]} onChange={(v: any) => setDeckCopies(Number(v) as any)} /></OptionRow>
-    <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
+    <OptionRow label="Copies du paquet (3 à As, 2)"><OptionSelect value={deckCopies} options={[3,4,5]} onChange={(v: any) => setDeckCopies(Number(v) as any)} /></OptionRow>
+    <OptionRow label="Ordre de départ aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
     <div style={rowHelp}>Chaque manche redistribue une nouvelle main. À partir de la manche 2, les taxes Président/Trou du cul sont appliquées automatiquement après la distribution.</div>
     {deckWarning ? <div style={{ marginTop: 8, color: "#ffd36e", fontSize: 10.5 }}>Le moteur complètera automatiquement le paquet si {needCards} cartes sont nécessaires pour une capacité nominale de {deckCapacity}.</div> : null}
   </section>;
 
   const chaos = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>VARIANTE</div>
     <OptionRow label="Mode"><OptionSelect value={variant} options={[{ value: "classic", label: "Président classique" }, { value: "chaos", label: "Président Chaos" }]} onChange={setVariant} /></OptionRow>
-    {variant === "chaos" ? <><OptionRow label="BULL = Joker simple"><OptionToggle value={bullJoker} onChange={setBullJoker} /></OptionRow><OptionRow label="DBULL = Coup d'État"><OptionToggle value={coupEtat} onChange={setCoupEtat} /></OptionRow><OptionRow label="T20 = Révolution"><OptionToggle value={revolution} onChange={setRevolution} /></OptionRow></> : null}
+    {variant === "chaos" ? <><OptionRow label="BULL = Joker simple"><OptionToggle value={bullJoker} onChange={setBullJoker} /></OptionRow><OptionRow label="DBULL = Coup d'État"><OptionToggle value={coupEtat} onChange={setCoupEtat} /></OptionRow><OptionRow label="T14 (As) = Révolution"><OptionToggle value={revolution} onChange={setRevolution} /></OptionRow></> : null}
     <div style={rowHelp}>{variant === "classic" ? "La version de référence : aucune règle spéciale, uniquement la précision sur S/D/T et la hiérarchie." : "Chaos ajoute les événements spéciaux sans modifier la mécanique de main, plis et taxes."}</div>
     <PresidentCardPreview color={primary} />
   </section>;
@@ -185,14 +184,14 @@ export default function PresidentConfig(props: any) {
 
   const summary = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 9 }}>RÉSUMÉ</div>
     <div style={{ display: "grid", gap: 7, fontSize: 11.5 }}>
-      {[["Participants", `${selectedIds.length} joueurs`],["Règne", `${rounds} manche${rounds > 1 ? "s" : ""}`],["Main", `${handSize} cartes`],["Paquet", `${deckCopies}× valeurs 1–20`],["Variante", variant === "chaos" ? "CHAOS" : "CLASSIQUE"],["Saisie", scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
+      {[["Participants", `${selectedIds.length} joueurs`],["Règne", `${rounds} manche${rounds > 1 ? "s" : ""}`],["Main", `${handSize} cartes`],["Paquet", `${deckCopies}× 13 rangs`],["Variante", variant === "chaos" ? "CHAOS" : "CLASSIQUE"],["Saisie", scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
     </div>
   </section>;
 
   const blockByStep = [participants, reign, chaos, input, summary];
 
   return <div style={{ minHeight: "100dvh", paddingBottom: 90, overflowX: "hidden" }}>
-    <PageHeader difficultyGameId="president" tickerSrc={tickerPresident} tickerAlt="PRÉSIDENT" tickerFit="contain" tickerHeight={90} tickerEdgeFade="strong" tickerBottomGap={8} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour" />} right={<InfoDot title="Règles du Président" color={primary} glow={`${primary}77`} content={<Rules color={primary} />} />} />
+    <PageHeader tickerSrc={tickerPresident} tickerAlt="PRÉSIDENT" tickerFit="contain" tickerHeight={90} tickerEdgeFade="strong" tickerBottomGap={8} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour" />} right={<InfoDot title="Règles du Président" color={primary} glow={`${primary}77`} content={<Rules color={primary} />} />} />
     <div style={{ padding: "8px 8px 0", maxWidth: 920, margin: "0 auto" }}>
       <section style={{ ...card, border: `1px solid ${primary}68` }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>CONFIGURATION PRÉSIDENT</div><div style={{ color: muted, fontSize: 10.5, marginTop: 4 }}>Main virtuelle · plis · hiérarchie · taxes</div></div><div style={{ display: "flex", gap: 7 }}><PillButton label="Guidée" active={view === "guided"} onClick={() => { setView("guided"); try { localStorage.setItem("dc_president_config_view", "guided"); } catch {} }} primary={primary} primarySoft={soft} /><PillButton label="Complète" active={view === "complete"} onClick={() => { setView("complete"); try { localStorage.setItem("dc_president_config_view", "complete"); } catch {} }} primary={primary} primarySoft={soft} /></div></div></section>
 

@@ -65,3 +65,18 @@
   .mssAcademyQuizHeader button {width:100%;}
   .mssAcademyFilters select,.mssAcademyFilters input {font-size:11px;}
 }
+/* V168: short adaptive Awena revision sessions, following the existing Academy visual system. */
+.mssAcademyTabs {grid-template-columns:repeat(5,minmax(0,1fr));}
+.mssAcademyReviewDashboard {border:1px solid rgba(39,220,255,.28);border-radius:18px;background:linear-gradient(140deg,rgba(8,33,45,.95),rgba(23,22,43,.93));padding:clamp(12px,2vw,20px);margin-bottom:12px;}
+.mssAcademyReviewStats {margin:15px 0 12px;}
+.mssAcademyReviewAdvice {color:#b9d2db;font-size:12px;line-height:1.55;padding:10px 12px;background:rgba(39,220,255,.06);border-radius:10px;}
+.mssAcademyReviewFocus {display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;text-align:left;color:#ecfdff;border:1px solid rgba(114,235,182,.3);border-radius:13px;background:rgba(19,73,58,.20);margin-top:12px;padding:12px 14px;}
+.mssAcademyReviewFocus>span {display:flex;flex-direction:column;gap:4px;min-width:0;}
+.mssAcademyReviewFocus small {font-size:9px;font-weight:900;letter-spacing:.5px;color:#87f2c3;}
+.mssAcademyReviewFocus strong {font-size:14px;}
+.mssAcademyReviewFocus>span>span {color:#c1d6db;font-size:11px;}
+.mssAcademyReviewFocus b {font-size:25px;color:#87f2c3;}
+.mssAcademyReminder {color:#7df3c1!important;font-weight:900;}
+.mssAcademyQuizHeader button:disabled {opacity:.55;cursor:default;filter:grayscale(.6);}
+@media(max-width:700px) {.mssAcademyTabs {grid-template-columns:repeat(3,minmax(0,1fr));}.mssAcademyTabs button {min-height:39px;font-size:9px;}.mssAcademyReviewStats strong {font-size:20px;}}
+@media(max-width:420px) {.mssAcademyTabs {grid-template-columns:repeat(2,minmax(0,1fr));}.mssAcademyReviewStats small {font-size:8px;}}

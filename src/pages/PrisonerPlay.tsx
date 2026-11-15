@@ -20,9 +20,11 @@ import {
   emptyPrisonerStats,
   getPrisonerActivePlayerId,
   getPrisonerAvailableDarts,
+  getPrisonerPlayerRanks,
   getPrisonersOwnedCount,
   getPrisonerTarget,
   playPrisonerVisit,
+  planPrisonerBotVisit,
   prisonerDartLabel,
   type PrisonerConfigPayload,
   type PrisonerDart,
@@ -80,7 +82,7 @@ function normalizeConfig(props: any): PrisonerConfigPayload {
     botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
     startingDarts: Math.max(1, Math.min(9, Number(raw?.startingDarts || 3))),
     sequenceMode: raw?.sequenceMode === "numeric" ? "numeric" : "clockwise",
-    bullCaptureRule: "bull",
+    bullCaptureRule: raw?.bullCaptureRule === "any_bull" ? "any_bull" : "bull",
     missPenaltyEnabled: raw?.missPenaltyEnabled !== false,
     eliminationEnabled: raw?.eliminationEnabled !== false,
     randomOrder: Boolean(raw?.randomOrder),
@@ -175,44 +177,6 @@ function RulesContent({ config, primary }: { config: PrisonerConfigPayload; prim
   </div>;
 }
 
-function botChance(level: string) { const v = String(level || "").toLowerCase(); if (v.includes("hard") || v.includes("pro") || v.includes("diffic")) return .62; if (v.includes("easy") || v.includes("facile")) return .30; return .45; }
-function randomBotVisit(state: PrisonerState, playerId: string, level: string): PrisonerDart[] {
-  const budget = getPrisonerAvailableDarts(state, playerId);
-  const hitChance = botChance(level);
-  const out: PrisonerDart[] = [];
-  const captureTargets = state.prisoners.map((p) => p.location);
-  let predictedProgress = Number(state.progressIndexByPlayer[playerId] || 0);
-
-  const push = (dart: PrisonerDart) => {
-    out.push(dart);
-    const target = state.sequence[predictedProgress] ?? null;
-    const playable = dart.bed === "D" || dart.bed === "T" || (dart.bed === "S" && dart.singleRing !== "inner");
-    if (target !== null && playable && Number(dart.number) === target) predictedProgress = Math.min(state.sequence.length, predictedProgress + 1);
-  };
-
-  for (let i = 0; i < budget; i += 1) {
-    const target = state.sequence[predictedProgress] ?? 20;
-    const roll = Math.random();
-    if (captureTargets.length && roll < .12) {
-      const location = captureTargets[Math.floor(Math.random() * captureTargets.length)];
-      if (location === "BULL") push(Math.random() < .25 ? { bed: "IB" } : { bed: "OB" });
-      else push({ bed: Math.random() < .2 ? "D" : Math.random() < .35 ? "T" : "S", number: location, singleRing: "outer" });
-      continue;
-    }
-    if (roll < hitChance) {
-      const r = Math.random();
-      push({ bed: r < .18 ? "D" : r < .34 ? "T" : "S", number: target, singleRing: "outer" });
-      continue;
-    }
-    if (roll < hitChance + .14) { push({ bed: "S", number: target, singleRing: "inner" }); continue; }
-    if (roll < hitChance + .20) { push(Math.random() < .25 ? { bed: "IB" } : { bed: "OB" }); continue; }
-    if (roll < hitChance + .30) { push({ bed: "MISS" }); continue; }
-    let n = Math.max(1, Math.min(20, target + (Math.random() < .5 ? -1 : 1)));
-    if (n === target) n = target === 20 ? 19 : target + 1;
-    push({ bed: "S", number: n, singleRing: "outer" });
-  }
-  return out;
-}
 
 export default function PrisonerPlay(props: any) {
   const { theme } = useTheme();
@@ -287,7 +251,24 @@ export default function PrisonerPlay(props: any) {
   const activeStanding = state.standings.find((s) => String(s.id) === activeEntityId) || null;
   const activeProfileIndex = Math.max(0, profiles.findIndex((p: any) => String(p.id) === String(activePlayerId)));
   const activeAccent = activeTeam?.color || playerColor(activeProfileIndex);
-  const nextTargets = state.sequence.slice(activeProgress, activeProgress + 5);
+  // Source unique de vérité : l'aperçu utilise le même moteur que la
+  // validation. Une libération ou une capture pendant la volée met à jour
+  // immédiatement les indicateurs et les cibles suivantes.
+  const liveState = React.useMemo(() => throwDarts.length
+    ? playPrisonerVisit(state, throwDarts.map(toPrisonerDart))
+    : state, [state, throwDarts]);
+  const liveProgress = Number(liveState.progressIndexByPlayer[activePlayerId] || 0);
+  const liveTarget = getPrisonerTarget(liveState, activePlayerId);
+  const liveCaptureLocations = React.useMemo(() => Array.from(new Set(liveState.prisoners.map((p) => p.location === "BULL" && liveState.rules.bullCaptureRule === "bull" ? (p.bullBed === "IB" ? "DBULL" : "BULL") : p.location === "BULL" ? "25 / 50" : String(p.location)))), [liveState.prisoners]);
+  const liveCaptures = throwDarts.length ? Number(liveState.history[liveState.history.length - 1]?.captures || 0) : 0;
+  const livePrisoners = throwDarts.length ? Number(liveState.history[liveState.history.length - 1]?.prisonersCreated || 0) : 0;
+  const nextTargets = state.sequence.slice(liveProgress, liveProgress + 5);
+  // Aide contextuelle calculée sur la situation après les fléchettes déjà saisies.
+  const liveOwnRescues = liveState.prisoners.filter((p) => p.ownerId === activePlayerId);
+  const liveOpponentCaptures = liveState.prisoners.filter((p) => p.ownerId !== activePlayerId);
+  const describeRelease = (tokens: typeof liveState.prisoners) => Array.from(new Set(tokens.map((p) => p.location === "BULL"
+    ? (liveState.rules.bullCaptureRule === "any_bull" ? "BULL25 / DBULL50" : p.bullBed === "IB" ? "DBULL50" : "BULL25")
+    : `S${p.location} extérieur / D${p.location} / T${p.location}`))).join(" · ");
 
   function commitVisit(darts: UiDart[] | PrisonerDart[]) {
     if (state.finished) return;
@@ -299,7 +280,7 @@ export default function PrisonerPlay(props: any) {
     setMultiplier(1);
     setSingleRing("outer");
     const last = next.history[next.history.length - 1];
-    if (last?.skipped) setNotice("Tour passé : tes pénalités MISS sont maintenant effacées.");
+    if (last?.skipped) setNotice(Number(state.missPenaltyByPlayer[activePlayerId] || 0) > 0 ? "Tour passé : pénalité MISS effacée." : "Tour passé : toutes les fléchettes sont prisonnières.");
     else if (last?.captures) setNotice(`${last.captures} capture${last.captures > 1 ? "s" : ""} !`);
     else if (last?.prisonersCreated) setNotice(`${last.prisonersCreated} fléchette${last.prisonersCreated > 1 ? "s" : ""} prisonnière${last.prisonersCreated > 1 ? "s" : ""}.`);
     else if (last?.progressHits) setNotice(`+${last.progressHits} cible${last.progressHits > 1 ? "s" : ""} validée${last.progressHits > 1 ? "s" : ""}.`);
@@ -323,14 +304,14 @@ export default function PrisonerPlay(props: any) {
     });
   }
   function addDart(v: number, forcedMult?: 1 | 2 | 3, ring?: "inner" | "outer") {
-    if (state.finished || activeIsBot || throwDarts.length >= dartsBudget) return;
+    if (state.finished || activeIsBot || throwDarts.length >= dartsBudget || liveTarget === null) return;
     const mult = v === 25 ? (forcedMult === 2 ? 2 : 1) : (forcedMult || multiplier);
     const dart: UiDart = { v, mult, singleRing: mult === 1 && v >= 1 && v <= 20 ? (ring || singleRing) : undefined };
     setThrowDarts((prev) => [...prev, dart]);
     setMultiplier(1);
   }
   function onDetailedBoardHit(hit: any) {
-    if (throwDarts.length >= dartsBudget) return;
+    if (throwDarts.length >= dartsBudget || liveTarget === null) return;
     if (!hit || hit.ring === "miss" || hit.segment === 0) return addDart(0, 1);
     if (hit.segment === 25) return addDart(25, hit.mult === 2 ? 2 : 1);
     if (hit.ring === "inner_single") return addDart(hit.segment, 1, "inner");
@@ -339,10 +320,12 @@ export default function PrisonerPlay(props: any) {
   }
 
   React.useEffect(() => {
-    if (state.finished || !activeIsBot || botThinking) return;
+    if (state.finished || !activeIsBot) { setBotThinking(false); return; }
+    // Chaque changement de joueur relance le bot, même si le tour précédent
+    // avait laissé le témoin de réflexion actif (undo / enchaînement bots).
     setBotThinking(true);
     const timer = window.setTimeout(() => {
-      const darts = randomBotVisit(state, activePlayerId, String(activeProfile?.botLevel || config.botLevel));
+      const darts = planPrisonerBotVisit(state, activePlayerId, String(activeProfile?.botLevel || config.botLevel));
       commitVisit(darts);
       setBotThinking(false);
     }, 650);
@@ -366,11 +349,8 @@ export default function PrisonerPlay(props: any) {
 
   function buildHistoryRecord() {
     const now = state.finishedAt || Date.now();
-    const individualOrder = state.players.map((player: any) => {
-      const st = state.statsByPlayer[player.id] || emptyPrisonerStats(config.startingDarts);
-      return { id: player.id, completed: Boolean(state.completedByPlayer[player.id]), progress: Number(state.progressIndexByPlayer[player.id] || 0), dartsOwned: Number(state.dartsOwnedByPlayer[player.id] || 0), captures: st.captures };
-    }).sort((a, b) => Number(b.completed) - Number(a.completed) || b.progress - a.progress || b.dartsOwned - a.dartsOwned || b.captures - a.captures);
-    const rankById = new Map(individualOrder.map((r, i) => [String(r.id), i + 1]));
+    // Classement exporté : source unique dans le moteur, également utilisée par les tests.
+    const rankById = getPrisonerPlayerRanks(state);
     const playerRows = state.players.map((player: any) => {
       const profile: any = byId.get(String(player.id)) || player;
       const stats: PrisonerPlayerStats = state.statsByPlayer[player.id] || emptyPrisonerStats(config.startingDarts);
@@ -380,7 +360,7 @@ export default function PrisonerPlay(props: any) {
       const dartsOwned = Number(state.dartsOwnedByPlayer[player.id] || 0);
       return {
         id: String(player.id), playerId: String(player.id), name: playerName(profile), avatar: profile?.avatarDataUrl || profile?.avatarUrl || profile?.avatar || null,
-        teamId, rank: rankById.get(String(player.id)) || 99, win: winner, winner, completed: Boolean(state.completedByPlayer[player.id]), eliminated: Boolean(state.eliminatedByPlayer[player.id]),
+        teamId, rank: rankById[String(player.id)] || 99, win: winner, winner, completed: Boolean(state.completedByPlayer[player.id]), eliminated: Boolean(state.eliminatedByPlayer[player.id]),
         progress, targetsCompleted: progress, progressPct: progressPct(progress, state.sequence.length), currentTarget: getPrisonerTarget(state, player.id), dartsOwned, availableDarts: getPrisonerAvailableDarts(state, player.id), prisonersRemaining: getPrisonersOwnedCount(state, player.id),
         darts: stats.darts, dartsThrown: stats.darts, visits: stats.visits, turnsSkipped: stats.turnsSkipped, progressHits: stats.progressHits, bestProgressVisit: stats.bestProgressVisit, bestProgressStreak: stats.bestProgressStreak,
         captures: stats.captures, opponentCaptures: stats.opponentCaptures, ownRescues: stats.ownRescues, captureLosses: stats.captureLosses, prisonersCreated: stats.prisonersCreated,
@@ -391,8 +371,8 @@ export default function PrisonerPlay(props: any) {
       };
     });
     const teams = teamConfigs.map((team: any) => { const standing = state.standings.find((s) => s.id === team.id); return { ...team, ...(standing || {}), winner: state.winnerIds.includes(team.id), win: state.winnerIds.includes(team.id) }; });
-    const winnerStanding = state.standings.find((s) => state.winnerIds.includes(s.id)) || state.standings[0] || null;
-    const winnerId = state.tied ? null : state.winnerIds[0] || null;
+    const winnerStanding = state.standings.find((s) => state.winnerIds.includes(s.id)) || null;
+    const winnerId = state.tied || state.finishReason === "stalemate" ? null : state.winnerIds[0] || null;
     const totalDarts = playerRows.reduce((a, p) => a + p.darts, 0);
     const totalCaptures = playerRows.reduce((a, p) => a + p.captures, 0);
     const totalPrisonersCreated = playerRows.reduce((a, p) => a + p.prisonersCreated, 0);
@@ -404,7 +384,7 @@ export default function PrisonerPlay(props: any) {
     };
     const summary = {
       kind: "prisoner", mode: "prisoner", sport: "darts", finished: true, participantMode: config.participantMode,
-      winnerId, winnerIds: state.winnerIds, winnerName: state.tied ? "Égalité" : winnerStanding?.name || "—", tied: state.tied,
+      winnerId, winnerIds: state.winnerIds, winnerName: state.tied || state.finishReason === "stalemate" ? "Égalité" : winnerStanding?.name || "—", tied: state.tied || state.finishReason === "stalemate",
       finishReason: state.finishReason, duration: matchStats.durationMs, durationMs: matchStats.durationMs, sequence: state.sequence, sequenceMode: config.sequenceMode, startingDarts: config.startingDarts,
       standings: state.standings, rankings: state.standings, players: playerRows, perPlayer: playerRows, teams, matchStats,
       scoreLine: state.standings.map((row) => `${row.name} ${row.progress}/${state.sequence.length} · ${row.dartsOwned}🎯`).join(" • "), game: { mode: "prisoner", teams },
@@ -456,7 +436,7 @@ export default function PrisonerPlay(props: any) {
           <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 2, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "2px 9px 2px 5px" }}>
             {botThinking ? <div style={{ color: activeAccent, fontSize: 8.3, fontWeight: 1000, letterSpacing: .8 }}>BOT EN RÉFLEXION</div> : null}
             <div style={{ color: activeAccent, fontSize: 13.2, fontWeight: 1000, letterSpacing: .75, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
-            <div style={{ marginTop: 4, color: "#f5f7fb", fontSize: 46, fontWeight: 1000, lineHeight: .95, letterSpacing: -1.5, textShadow: "0 4px 18px rgba(0,0,0,.52)" }}>{activeProgress}<span style={{ fontSize: 17, color: "rgba(255,255,255,.55)", letterSpacing: 0 }}>/20</span></div>
+            <div style={{ marginTop: 4, color: "#f5f7fb", fontSize: 46, fontWeight: 1000, lineHeight: .95, letterSpacing: -1.5, textShadow: "0 4px 18px rgba(0,0,0,.52)" }}>{liveProgress}<span style={{ fontSize: 17, color: "rgba(255,255,255,.55)", letterSpacing: 0 }}>/{state.sequence.length}</span></div>
             <div style={{ marginTop: 4, color: "rgba(255,255,255,.48)", fontSize: 8.2, fontWeight: 950, letterSpacing: .42, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>#{Math.max(1, Number(activeStanding?.rank || 1))}/{Math.max(1, state.standings.length)}{activeTeam ? ` • ${activeTeam.name}` : ""} • {activeStats.captures} CAP.</div>
             <ActiveDartsTray playable={dartsBudget} prisoners={prisonersOwned} misses={missPenalty} owned={owned} color={activeAccent} />
           </div>
@@ -467,7 +447,7 @@ export default function PrisonerPlay(props: any) {
             <div style={{ position: "absolute", left: 0, top: 9, bottom: 9, width: 1, background: `linear-gradient(180deg, rgba(255,255,255,.02), ${activeAccent}, rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${activeAccent}44`, pointerEvents: "none" }} />
             <div style={{ position: "relative", width: "100%", padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
               <div style={{ color: "rgba(255,255,255,.62)", fontSize: 8.2, fontWeight: 950, letterSpacing: .75 }}>CIBLE</div>
-              <div style={{ marginTop: 1, color: activeAccent, fontSize: 46, lineHeight: .92, fontWeight: 1000, letterSpacing: -1.2, textShadow: `0 0 18px ${activeAccent}55` }}>{target ?? "✓"}</div>
+              <div style={{ marginTop: 1, color: activeAccent, fontSize: 46, lineHeight: .92, fontWeight: 1000, letterSpacing: -1.2, textShadow: `0 0 18px ${activeAccent}55` }}>{liveTarget ?? "✓"}</div>
               <div style={{ marginTop: 4, color: C.green, fontSize: 8.2, fontWeight: 1000 }}>SE / D / T = AVANCE</div>
               <div style={{ marginTop: 1, color: C.pink, fontSize: 7.9, fontWeight: 1000 }}>SI = PRISON</div>
             </div>
@@ -483,7 +463,7 @@ export default function PrisonerPlay(props: any) {
           const accent = team?.color || playerColor(i);
           const rColor = rankColor(Number(standing.rank || i + 1), accent);
           const active = String(standing.id) === activeEntityId && !state.finished;
-          const leader = state.finished && state.winnerIds.includes(String(standing.id));
+          const leader = state.finished && !state.tied && state.finishReason !== "stalemate" && state.winnerIds.includes(String(standing.id));
           return <button key={standing.id} type="button" onClick={() => setShowTable(true)} style={{ position: "relative", overflow: "hidden", flex: state.standings.length > 2 ? "0 0 min(46vw,205px)" : undefined, minWidth: state.standings.length > 2 ? 160 : 0, minHeight: 108, scrollSnapAlign: state.standings.length > 2 ? "start" : undefined, borderRadius: 17, padding: "6px 7px", border: `1px solid ${active || leader ? accent : `${accent}66`}`, background: `linear-gradient(150deg, ${accent}18, rgba(2,7,11,.74) 56%, rgba(0,0,0,.88))`, boxShadow: active ? `0 0 19px ${accent}20, inset 0 0 22px ${accent}0d` : "none", isolation: "isolate", color: "inherit", cursor: "pointer" }}>
             <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg, rgba(1,5,9,.18), rgba(1,5,9,.58)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .20, zIndex: 0 }} />
             <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minWidth: 0 }}>
@@ -491,7 +471,7 @@ export default function PrisonerPlay(props: any) {
               <div style={{ minWidth: 0, maxWidth: "calc(100% - 32px)", color: active ? accent : "rgba(255,255,255,.95)", fontSize: 10.5, lineHeight: 1, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{standing.name}{leader ? " 🏆" : ""}</div>
             </div>
             <div style={{ position: "relative", zIndex: 1, marginTop: 2, display: "flex", justifyContent: "center", filter: "drop-shadow(0 4px 12px rgba(0,0,0,.55))" }}>{team ? <TeamLogo team={team} size={48} /> : <ProfileAvatar profile={profile as any} size={48} showStars={false} />}</div>
-            <div style={{ position: "relative", zIndex: 1, marginTop: 1, textAlign: "center", color: accent, fontSize: 22, lineHeight: 1, fontWeight: 1000, letterSpacing: -.8, textShadow: `0 0 12px ${accent}2e, 0 2px 8px rgba(0,0,0,.72)` }}>{standing.progress}<span style={{ fontSize: 10, color: "rgba(255,255,255,.55)", letterSpacing: 0 }}>/20</span></div>
+            <div style={{ position: "relative", zIndex: 1, marginTop: 1, textAlign: "center", color: accent, fontSize: 22, lineHeight: 1, fontWeight: 1000, letterSpacing: -.8, textShadow: `0 0 12px ${accent}2e, 0 2px 8px rgba(0,0,0,.72)` }}>{standing.progress}<span style={{ fontSize: 10, color: "rgba(255,255,255,.55)", letterSpacing: 0 }}>/{state.sequence.length}</span></div>
             <div style={{ position: "relative", zIndex: 1, marginTop: 3, color: standing.eliminated ? C.red : "rgba(255,255,255,.58)", fontSize: 8.2, fontWeight: 900 }}>{standing.eliminated ? "ÉLIMINÉ" : `${standing.dartsOwned} fl. • ${standing.captures} cap. • ${standing.prisoners} prison.`}</div>
           </button>;
         })}
@@ -499,20 +479,30 @@ export default function PrisonerPlay(props: any) {
 
       {/* DÉTAILS DE PARTIE : remplace PROCHAINES CIBLES + PRISONNIERS */}
       <button type="button" onClick={() => setShowDetails(true)} style={{ width: "100%", minHeight: 40, marginTop: 6, padding: "5px 10px", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", gap: 8, borderRadius: 14, border: `1px solid ${primary}28`, background: `linear-gradient(90deg, ${primary}08, rgba(66,214,255,.035), ${primary}08)`, color: "inherit", cursor: "pointer", boxShadow: "inset 0 0 18px rgba(0,0,0,.18)" }}>
-        <div style={{ minWidth: 0, textAlign: "left" }}><div style={{ color: primary, fontSize: 10.5, fontWeight: 1100, letterSpacing: .8 }}>DÉTAILS DE PARTIE</div><div style={{ marginTop: 2, color: themeSoft, fontSize: 8.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Cible {target ?? "FIN"} • {state.prisoners.length} prisonnier{state.prisoners.length > 1 ? "s" : ""} • {activeStats.captures} capture{activeStats.captures > 1 ? "s" : ""} • prochaines : {nextTargets.join(" · ") || "—"}</div></div>
+        <div style={{ minWidth: 0, textAlign: "left" }}><div style={{ color: primary, fontSize: 10.5, fontWeight: 1100, letterSpacing: .8 }}>DÉTAILS DE PARTIE</div><div style={{ marginTop: 2, color: themeSoft, fontSize: 8.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Cible {liveTarget ?? "FIN"} • {liveState.prisoners.length} prisonnier{liveState.prisoners.length > 1 ? "s" : ""} • {activeStats.captures} capture{activeStats.captures > 1 ? "s" : ""} • prochaines : {nextTargets.join(" · ") || "—"}</div></div>
         <span style={{ width: 24, height: 24, borderRadius: "50%", display: "grid", placeItems: "center", border: `1px solid ${primary}66`, color: primary, fontSize: 15, fontWeight: 1000 }}>›</span>
       </button>
 
       {!state.finished ? <section style={{ marginTop: 6 }}>
         {notice ? <div style={{ marginBottom: 6, padding: "6px 9px", borderRadius: 11, background: `${primary}0d`, border: `1px solid ${primary}22`, color: primary, fontSize: 9.2, fontWeight: 900, textAlign: "center" }}>{notice}</div> : null}
 
-        {dartsBudget > 0 && !activeIsBot ? <VolleyStrip darts={throwDarts} budget={dartsBudget} primary={primary} soft={themeSoft} /> : null}
+        {dartsBudget > 0 && !activeIsBot ? <>
+          <VolleyStrip darts={throwDarts} budget={dartsBudget} primary={primary} soft={themeSoft} />
+          <div aria-live="polite" style={{ marginTop: 5, padding: "8px 10px", borderRadius: 13, background: `${activeAccent}0e`, border: `1px solid ${activeAccent}40`, display: "grid", gap: 5 }}>
+            <div style={{ fontWeight: 1000, color: activeAccent, fontSize: 11 }}>OBJECTIF EN DIRECT · {liveTarget === null ? "PARCOURS TERMINÉ" : `SE${liveTarget} / D${liveTarget} / T${liveTarget}`}</div>
+            <div style={{ color: themeSoft, fontSize: 10.5 }}>Progression : {liveProgress}/{state.sequence.length}{liveProgress > activeProgress ? ` · +${liveProgress - activeProgress} cible(s) sur cette volée` : ""} · {Math.max(0, dartsBudget - throwDarts.length)} fléchette(s) à saisir</div>
+            {liveOwnRescues.length > 0 ? <div style={{ color: C.green, fontSize: 10.5 }}><b>RÉCUPÉRER TES FLÉCHETTES :</b> {describeRelease(liveOwnRescues)}</div> : null}
+            {liveOpponentCaptures.length > 0 ? <div style={{ color: C.cyan, fontSize: 10.5 }}><b>CAPTURER UN ADVERSAIRE :</b> {describeRelease(liveOpponentCaptures)}</div> : null}
+            {!liveState.prisoners.length ? <div style={{ color: themeSoft, fontSize: 10 }}>Aucune fléchette à libérer pour le moment.</div> : null}
+            {liveTarget === null && <div style={{ color: C.green, fontSize: 11, fontWeight: 1000 }}>Objectif atteint ! Valide la volée pour terminer la partie.</div>}
+          </div>
+        </> : null}
 
         {dartsBudget <= 0 && !activeIsBot ? <button onClick={validateVisit} style={{ width: "100%", minHeight: 50, borderRadius: 999, border: `1px solid ${C.red}88`, background: `${C.red}14`, color: C.red, fontWeight: 1100 }}>PASSER LE TOUR · AUCUNE FLÉCHETTE DISPONIBLE</button> : null}
 
         {dartsBudget > 0 && !activeIsBot ? <>
           {config.scoreInputMethod === "dartboard" ? <div style={{ ...panelStyle(), padding: 8, opacity: botThinking ? .45 : 1, pointerEvents: botThinking ? "none" : "auto" }}>
-            <DartboardClickable onHit={() => {}} onDetailedHit={onDetailedBoardHit} multiplier={multiplier} size={305} disabled={throwDarts.length >= dartsBudget} />
+            <DartboardClickable onHit={() => {}} onDetailedHit={onDetailedBoardHit} multiplier={multiplier} size={305} disabled={throwDarts.length >= dartsBudget || liveTarget === null} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 7 }}><button onClick={cancelOrUndo} style={actionButton(primary)}>ANNULER</button><button onClick={() => addDart(0, 1)} style={actionButton(C.red)}>MISS</button><button onClick={validateVisit} style={actionButton(C.green)}>VALIDER</button></div>
           </div> : <Keypad
             currentThrow={throwDarts as any}
@@ -534,7 +524,7 @@ export default function PrisonerPlay(props: any) {
               outerLabel: "SIMPLE EXT.",
               innerLabel: "SIMPLE INT.",
             }}
-            validateAttention={throwDarts.length >= dartsBudget}
+            validateAttention={throwDarts.length >= dartsBudget || liveTarget === null}
             safeBottomPad
           />}
         </> : null}
@@ -576,7 +566,7 @@ function td(color = "#fff"): React.CSSProperties { return { padding: 7, textAlig
 function StandingsModal({ state, profilesById, teamById, participantMode, primary, onClose }: any) {
   return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 12 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(780px,100%)", maxHeight: "86vh", overflow: "auto", padding: 13 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}><div style={{ width: 34 }} /><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>CLASSEMENT PRISONER</div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
-    <div style={{ display: "grid", gap: 8 }}>{state.standings.map((standing: any) => <div key={standing.id} style={{ display: "grid", gridTemplateColumns: "34px 42px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.04)", border: `1px solid ${standing.rank === 1 ? primary + "66" : "rgba(255,255,255,.08)"}`, opacity: standing.eliminated ? .55 : 1 }}><div style={{ color: standing.rank === 1 ? C.gold : "#fff", fontWeight: 1000, textAlign: "center" }}>{standing.rank}.</div>{participantMode === "teams" ? <TeamLogo team={teamById.get(standing.id)} size={38} /> : <ProfileAvatar profile={profilesById.get(standing.id)} size={38} showStars={false} />}<div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{standing.name}{standing.rank === 1 ? " 🏆" : ""}</div><div style={{ color: "rgba(255,255,255,.58)", fontSize: 10 }}>{standing.progress}/20 · {standing.captures} captures · {standing.prisoners} prisonniers{standing.eliminated ? " · ÉLIMINÉ" : ""}</div></div><div style={{ color: primary, fontSize: 20, fontWeight: 1100 }}>{standing.dartsOwned} 🎯</div></div>)}</div>
+    <div style={{ display: "grid", gap: 8 }}>{state.standings.map((standing: any) => <div key={standing.id} style={{ display: "grid", gridTemplateColumns: "34px 42px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.04)", border: `1px solid ${state.finished && !state.tied && state.finishReason !== "stalemate" && state.winnerIds.includes(standing.id) ? primary + "66" : "rgba(255,255,255,.08)"}`, opacity: standing.eliminated ? .55 : 1 }}><div style={{ color: standing.rank === 1 ? C.gold : "#fff", fontWeight: 1000, textAlign: "center" }}>{standing.rank}.</div>{participantMode === "teams" ? <TeamLogo team={teamById.get(standing.id)} size={38} /> : <ProfileAvatar profile={profilesById.get(standing.id)} size={38} showStars={false} />}<div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{standing.name}{state.finished && !state.tied && state.finishReason !== "stalemate" && state.winnerIds.includes(standing.id) ? " 🏆" : ""}</div><div style={{ color: "rgba(255,255,255,.58)", fontSize: 10 }}>{standing.progress}/{state.sequence.length} · {standing.captures} captures · {standing.prisoners} prisonniers{standing.eliminated ? " · ÉLIMINÉ" : ""}</div></div><div style={{ color: primary, fontSize: 20, fontWeight: 1100 }}>{standing.dartsOwned} 🎯</div></div>)}</div>
   </div></div>;
 }
 
@@ -605,19 +595,19 @@ function DetailsModal({ state, config, profilesById, teamById, activePlayerId, p
 
       <div className="dc-scroll-thin" style={{ padding: 11, overflowY: "auto", maxHeight: "calc(90vh - 118px)" }}>
         {tab === "route" ? <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 10 }}>{[["PROGRESSION",`${progress}/20`,primary],["CIBLE",currentTarget ?? "✓",secondary],["JOUABLES",getPrisonerAvailableDarts(state,activePlayerId),C.green],["PRISON",getPrisonersOwnedCount(state,activePlayerId),C.pink]].map(([label,value,color]: any) => <Kpi key={label} label={label} value={value} color={color} />)}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 10 }}>{[["PROGRESSION",`${progress}/${state.sequence.length}`,primary],["CIBLE",currentTarget ?? "✓",secondary],["JOUABLES",getPrisonerAvailableDarts(state,activePlayerId),C.green],["PRISON",getPrisonersOwnedCount(state,activePlayerId),C.pink]].map(([label,value,color]: any) => <Kpi key={label} label={label} value={value} color={color} />)}</div>
           <div style={{ color: "rgba(255,255,255,.56)", fontSize: 9.5, marginBottom: 8 }}>{config.sequenceMode === "clockwise" ? "Ordre physique du cadran" : "Ordre numérique 1 → 20"}. Les cases validées sont assombries, la cible actuelle est mise en évidence.</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 6 }}>{state.sequence.map((n: number, i: number) => { const done = i < progress; const current = i === progress; return <div key={`${n}-${i}`} style={{ minHeight: 38, borderRadius: 12, display: "grid", placeItems: "center", border: `1px solid ${current ? primary : done ? `${C.green}44` : "rgba(255,255,255,.08)"}`, background: current ? `${primary}1d` : done ? `${C.green}0b` : "rgba(255,255,255,.025)", color: current ? primary : done ? C.green : "rgba(255,255,255,.56)", fontWeight: 1100, fontSize: current ? 16 : 11 }}>{done ? "✓ " : ""}{n}</div>; })}</div>
         </div> : null}
 
         {tab === "prison" ? <div>
-          <div style={{ padding: 9, borderRadius: 13, background: `${C.pink}0b`, border: `1px solid ${C.pink}24`, color: "rgba(255,255,255,.70)", fontSize: 9.5, lineHeight: 1.45 }}>Chaque carte représente une <b style={{ color: C.pink }}>fléchette emprisonnée</b>. L'avatar derrière les barreaux indique son propriétaire actuel. Touche le même numéro en SE / Double / Triple pour la libérer ou la capturer ; au Bull, touche Bull ou DBull.</div>
+          <div style={{ padding: 9, borderRadius: 13, background: `${C.pink}0b`, border: `1px solid ${C.pink}24`, color: "rgba(255,255,255,.70)", fontSize: 9.5, lineHeight: 1.45 }}>Chaque carte représente une <b style={{ color: C.pink }}>fléchette emprisonnée</b>. L'avatar derrière les barreaux indique son propriétaire actuel. Touche le même numéro en SE / Double / Triple pour la libérer ou la capturer ; au Bull, respecte la variante de capture choisie dans la configuration.</div>
           <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8 }}>{state.prisoners.map((token: any, index: number) => { const profile = profilesById.get(String(token.ownerId)); const pIndex = state.players.findIndex((p: any) => String(p.id) === String(token.ownerId)); const col = playerColor(pIndex < 0 ? index : pIndex); return <div key={token.id} style={{ position: "relative", minHeight: 82, display: "grid", gridTemplateColumns: "60px minmax(0,1fr)", gap: 8, alignItems: "center", padding: 8, borderRadius: 14, background: `${C.pink}0a`, border: `1px solid ${C.pink}2a` }}><PrisonAvatar profile={profile} color={col} /><div style={{ minWidth: 0 }}><div style={{ color: C.pink, fontSize: 19, lineHeight: 1, fontWeight: 1100 }}>{token.location === "BULL" ? "BULL" : token.location}</div><div style={{ marginTop: 4, color: "#fff", fontSize: 10, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(profile)}</div><div style={{ marginTop: 3, color: "rgba(255,255,255,.48)", fontSize: 8.2 }}>Prisonnier depuis la volée #{token.createdVisit}</div></div></div>; })}{!state.prisoners.length ? <div style={{ gridColumn: "1/-1", padding: 24, borderRadius: 14, textAlign: "center", color: "rgba(255,255,255,.48)", border: "1px dashed rgba(255,255,255,.10)" }}>Aucune fléchette en prison.</div> : null}</div>
         </div> : null}
 
         {tab === "stats" ? <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 9 }}>{[["VOLÉES",state.history.length,primary],["CAPTURES",state.players.reduce((a:any,p:any)=>a+Number(state.statsByPlayer[p.id]?.captures||0),0),C.green],["PRISONNIERS",state.players.reduce((a:any,p:any)=>a+Number(state.statsByPlayer[p.id]?.prisonersCreated||0),0),C.pink],["MISS",state.players.reduce((a:any,p:any)=>a+Number(state.statsByPlayer[p.id]?.offboardMisses||0),0),C.red]].map(([label,value,color]: any) => <Kpi key={label} label={label} value={value} color={color} />)}</div>
-          <div style={{ display: "grid", gap: 7 }}>{state.players.map((p: any, i: number) => { const st = state.statsByPlayer[p.id] || emptyPrisonerStats(state.rules.startingDarts); const profile = profilesById.get(p.id) || p; const col = playerColor(i); return <div key={p.id} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.035)", border: `1px solid ${col}35` }}><ProfileAvatar profile={profile} size={38} showStars={false} /><div style={{ minWidth: 0 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ color: col, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(profile)}</b><b>{Number(state.progressIndexByPlayer[p.id]||0)}/20</b></div><div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4, color: "rgba(255,255,255,.56)", fontSize: 8.2 }}><span>{st.captures} cap.</span><span>{st.prisonersCreated} prison.</span><span>{st.offboardMisses} miss</span><span>{Number(state.dartsOwnedByPlayer[p.id]||0)} fl.</span></div></div></div>; })}</div>
+          <div style={{ display: "grid", gap: 7 }}>{state.players.map((p: any, i: number) => { const st = state.statsByPlayer[p.id] || emptyPrisonerStats(state.rules.startingDarts); const profile = profilesById.get(p.id) || p; const col = playerColor(i); return <div key={p.id} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.035)", border: `1px solid ${col}35` }}><ProfileAvatar profile={profile} size={38} showStars={false} /><div style={{ minWidth: 0 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ color: col, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(profile)}</b><b>{Number(state.progressIndexByPlayer[p.id]||0)}/{state.sequence.length}</b></div><div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4, color: "rgba(255,255,255,.56)", fontSize: 8.2 }}><span>{st.captures} cap.</span><span>{st.prisonersCreated} prison.</span><span>{st.offboardMisses} miss</span><span>{Number(state.dartsOwnedByPlayer[p.id]||0)} fl.</span></div></div></div>; })}</div>
         </div> : null}
 
         {tab === "visits" ? <div style={{ display: "grid", gap: 7 }}>{state.history.slice().reverse().slice(0, 30).map((visit: any) => { const profile = profilesById.get(String(visit.playerId)); return <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 8, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}><ProfileAvatar profile={profile} size={34} showStars={false} /><div style={{ minWidth: 0 }}><div style={{ fontSize: 9.5, fontWeight: 1000 }}>{playerName(profile)} • Volée #{visit.visitNo}</div><div style={{ marginTop: 3, color: "rgba(255,255,255,.55)", fontSize: 8.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{visit.skipped ? "TOUR PASSÉ" : (visit.labels || []).join(" · ") || "—"}</div></div><div style={{ textAlign: "right", fontSize: 8.2, lineHeight: 1.35 }}><div style={{ color: C.green }}>+{visit.progressHits || 0} cible</div><div style={{ color: C.cyan }}>{visit.captures || 0} cap.</div><div style={{ color: C.pink }}>{visit.prisonersCreated || 0} prison.</div></div></div>; })}{!state.history.length ? <div style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,.48)" }}>Aucune volée jouée pour le moment.</div> : null}</div> : null}
@@ -632,13 +622,24 @@ function Kpi({ label, value, color }: any) {
 
 function EndModal({ state, profilesById, teamById, participantMode, primary, onClose, onReplay, onHistory }: any) {
   const rows = state.players.map((player: any) => ({ player, profile: profilesById.get(player.id) || player, stats: state.statsByPlayer[player.id] || emptyPrisonerStats(state.rules.startingDarts), progress: Number(state.progressIndexByPlayer[player.id] || 0), dartsOwned: Number(state.dartsOwnedByPlayer[player.id] || 0), prisoners: getPrisonersOwnedCount(state, player.id), completed: Boolean(state.completedByPlayer[player.id]), eliminated: Boolean(state.eliminatedByPlayer[player.id]), teamId: state.teamByPlayer[player.id] || null })).sort((a: any, b: any) => Number(b.completed) - Number(a.completed) || b.progress - a.progress || b.dartsOwned - a.dartsOwned || b.stats.captures - a.stats.captures);
-  const winner = state.standings.find((s: any) => state.winnerIds.includes(s.id)) || state.standings[0];
+  const hasWinner = !state.tied && state.finishReason !== "stalemate" && state.winnerIds.length > 0;
+  const winner = hasWinner ? state.standings.find((s: any) => state.winnerIds.includes(s.id)) : null;
+  const isTeamMatch = participantMode === "teams" && state.teams.length > 0;
   return <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.80)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}><div style={{ ...panelStyle(), width: "min(940px,100%)", maxHeight: "94vh", overflow: "auto", borderColor: `${primary}77`, padding: 13 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ width: 34 }} /><div style={{ textAlign: "center" }}><div style={{ color: primary, fontSize: 11, fontWeight: 1000, letterSpacing: 1.2 }}>FIN DE PARTIE</div><div style={{ fontSize: 20, fontWeight: 1100 }}>PRISONER</div></div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
-    <div style={{ marginTop: 11, padding: 12, borderRadius: 16, background: `${primary}10`, border: `1px solid ${primary}44`, textAlign: "center" }}><div style={{ color: C.gold, fontSize: 10, fontWeight: 1000 }}>VAINQUEUR</div><div style={{ marginTop: 4, fontSize: 22, fontWeight: 1100 }}>{state.tied ? "ÉGALITÉ" : winner?.name || "—"}</div><div style={{ color: primary, fontSize: 12, fontWeight: 900, marginTop: 4 }}>{state.finishReason === "course_completed" ? "Parcours terminé" : state.finishReason === "last_team" ? "Dernière équipe encore en jeu" : "Dernier joueur encore en jeu"}</div></div>
+    <div style={{ marginTop: 11, padding: 12, borderRadius: 16, background: `${primary}10`, border: `1px solid ${primary}44`, textAlign: "center" }}><div style={{ color: C.gold, fontSize: 10, fontWeight: 1000 }}>{state.tied || state.finishReason === "stalemate" ? "RÉSULTAT" : "VAINQUEUR"}</div><div style={{ marginTop: 4, fontSize: 22, fontWeight: 1100 }}>{state.tied || state.finishReason === "stalemate" ? "ÉGALITÉ" : winner?.name || "—"}</div><div style={{ color: primary, fontSize: 12, fontWeight: 900, marginTop: 4 }}>{state.finishReason === "stalemate" ? "Aucune fléchette encore jouable" : state.finishReason === "course_completed" ? "Parcours terminé" : state.finishReason === "last_team" ? "Dernière équipe encore en jeu" : "Dernier joueur encore en jeu"}</div></div>
+    {isTeamMatch ? <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+      <div style={{ color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .8 }}>CLASSEMENT DES ÉQUIPES</div>
+      {state.standings.map((standing: any) => <div key={standing.id} style={{ display: "grid", gridTemplateColumns: "28px 38px minmax(0,1fr) auto", alignItems: "center", gap: 8, padding: 8, borderRadius: 12, background: hasWinner && state.winnerIds.includes(standing.id) ? `${primary}20` : "rgba(255,255,255,.04)", border: `1px solid ${hasWinner && state.winnerIds.includes(standing.id) ? primary + "77" : "rgba(255,255,255,.08)"}` }}>
+        <span style={{ color: C.gold, fontWeight: 1000 }}>{standing.rank}.</span>
+        <TeamLogo team={teamById.get(standing.id)} size={36} />
+        <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{standing.name}{hasWinner && state.winnerIds.includes(standing.id) ? " 🏆" : ""}</div><div style={{ fontSize: 9, color: C.soft }}>{standing.progress}/{state.sequence.length} cibles · {standing.captures} captures · {standing.prisoners} prisonniers</div></div>
+        <span style={{ color: primary, fontWeight: 1000 }}>{standing.dartsOwned} 🎯</span>
+      </div>)}
+    </div> : null}
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>{[["Durée", fmtDuration((state.finishedAt || Date.now()) - state.startedAt)], ["Flèches", rows.reduce((a: number, r: any) => a + r.stats.darts, 0)], ["Captures", rows.reduce((a: number, r: any) => a + r.stats.captures, 0)], ["Prisonniers", rows.reduce((a: number, r: any) => a + r.stats.prisonersCreated, 0)]].map(([label, value]: any) => <div key={label} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.04)", textAlign: "center" }}><div style={{ color: "rgba(255,255,255,.55)", fontSize: 9 }}>{label}</div><div style={{ fontWeight: 1100, fontSize: 18, color: primary }}>{value}</div></div>)}</div>
-    <div style={{ marginTop: 10, overflowX: "auto", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980, fontSize: 10.5 }}><thead><tr style={{ background: "rgba(255,255,255,.05)" }}>{["Joueur","Prog.","🎯 fin","Capt.","Perdues","Prison.","Rescues","MISS","SE","SI","D","T","Bull","Darts","Best +"].map((h) => <th key={h} style={{ padding: "8px 6px", textAlign: h === "Joueur" ? "left" : "center", color: "rgba(255,255,255,.68)" }}>{h}</th>)}</tr></thead><tbody>{rows.map((row: any) => <tr key={row.player.id} style={{ borderTop: "1px solid rgba(255,255,255,.06)" }}><td style={{ padding: 7, fontWeight: 1000 }}>{playerName(row.profile)}{row.completed ? <span style={{ color: C.green }}> · FINI</span> : row.eliminated ? <span style={{ color: C.red }}> · OUT</span> : ""}</td><td style={td(primary)}>{row.progress}/20</td><td style={td(C.gold)}>{row.dartsOwned}</td><td style={td(C.green)}>{row.stats.captures}</td><td style={td(C.red)}>{row.stats.captureLosses}</td><td style={td(C.pink)}>{row.stats.prisonersCreated}</td><td style={td(C.cyan)}>{row.stats.ownRescues}</td><td style={td(C.red)}>{row.stats.offboardMisses}</td><td style={td()}>{row.stats.outerSingles}</td><td style={td(C.pink)}>{row.stats.innerSingles}</td><td style={td()}>{row.stats.doubles}</td><td style={td()}>{row.stats.triples}</td><td style={td()}>{row.stats.bulls + row.stats.dbulls}</td><td style={td()}>{row.stats.darts}</td><td style={td(C.green)}>{row.stats.bestProgressVisit}</td></tr>)}</tbody></table></div>
-    <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{rows.map((row: any) => <details key={row.player.id} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><summary style={{ cursor: "pointer", fontWeight: 1000, color: primary }}>{playerName(row.profile)} — stats complètes</summary><div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 6 }}>{[["Progression", `${row.progress}/20 (${progressPct(row.progress)}%)`], ["Captures adverses", row.stats.opponentCaptures], ["Sauvetages propres", row.stats.ownRescues], ["Flèches perdues", row.stats.captureLosses], ["Prisonniers créés", row.stats.prisonersCreated], ["Prisonniers restants", row.prisoners], ["Max flèches possédées", row.stats.maxDartsOwned], ["Min flèches possédées", row.stats.minDartsOwned], ["Tours passés", row.stats.turnsSkipped], ["MISS hors cible", row.stats.offboardMisses], ["Précision progression", `${pct(row.stats.progressHits,row.stats.darts)}%`], ["Série progression", row.stats.bestProgressStreak]].map(([k,v]: any) => <div key={k} style={{ padding: 8, borderRadius: 11, background: "rgba(0,0,0,.23)" }}><div style={{ color: "rgba(255,255,255,.52)", fontSize: 8.8 }}>{k}</div><div style={{ color: primary, fontWeight: 1100, marginTop: 2 }}>{v}</div></div>)}</div></details>)}</div>
+    <div style={{ marginTop: 10, overflowX: "auto", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980, fontSize: 10.5 }}><thead><tr style={{ background: "rgba(255,255,255,.05)" }}>{["Joueur","Prog.","🎯 fin","Capt.","Perdues","Prison.","Rescues","MISS","SE","SI","D","T","Bull","Darts","Best +"].map((h) => <th key={h} style={{ padding: "8px 6px", textAlign: h === "Joueur" ? "left" : "center", color: "rgba(255,255,255,.68)" }}>{h}</th>)}</tr></thead><tbody>{rows.map((row: any) => <tr key={row.player.id} style={{ borderTop: "1px solid rgba(255,255,255,.06)" }}><td style={{ padding: 7, fontWeight: 1000 }}>{playerName(row.profile)}{row.completed ? <span style={{ color: C.green }}> · FINI</span> : row.eliminated ? <span style={{ color: C.red }}> · OUT</span> : ""}</td><td style={td(primary)}>{row.progress}/{state.sequence.length}</td><td style={td(C.gold)}>{row.dartsOwned}</td><td style={td(C.green)}>{row.stats.captures}</td><td style={td(C.red)}>{row.stats.captureLosses}</td><td style={td(C.pink)}>{row.stats.prisonersCreated}</td><td style={td(C.cyan)}>{row.stats.ownRescues}</td><td style={td(C.red)}>{row.stats.offboardMisses}</td><td style={td()}>{row.stats.outerSingles}</td><td style={td(C.pink)}>{row.stats.innerSingles}</td><td style={td()}>{row.stats.doubles}</td><td style={td()}>{row.stats.triples}</td><td style={td()}>{row.stats.bulls + row.stats.dbulls}</td><td style={td()}>{row.stats.darts}</td><td style={td(C.green)}>{row.stats.bestProgressVisit}</td></tr>)}</tbody></table></div>
+    <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{rows.map((row: any) => <details key={row.player.id} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><summary style={{ cursor: "pointer", fontWeight: 1000, color: primary }}>{playerName(row.profile)} — stats complètes</summary><div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 6 }}>{[["Progression", `${row.progress}/${state.sequence.length} (${progressPct(row.progress, state.sequence.length)}%)`], ["Captures adverses", row.stats.opponentCaptures], ["Sauvetages propres", row.stats.ownRescues], ["Flèches perdues", row.stats.captureLosses], ["Prisonniers créés", row.stats.prisonersCreated], ["Prisonniers restants", row.prisoners], ["Max flèches possédées", row.stats.maxDartsOwned], ["Min flèches possédées", row.stats.minDartsOwned], ["Tours passés", row.stats.turnsSkipped], ["MISS hors cible", row.stats.offboardMisses], ["Précision progression", `${pct(row.stats.progressHits,row.stats.darts)}%`], ["Série progression", row.stats.bestProgressStreak]].map(([k,v]: any) => <div key={k} style={{ padding: 8, borderRadius: 11, background: "rgba(0,0,0,.23)" }}><div style={{ color: "rgba(255,255,255,.52)", fontSize: 8.8 }}>{k}</div><div style={{ color: primary, fontWeight: 1100, marginTop: 2 }}>{v}</div></div>)}</div></details>)}</div>
     <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}><button onClick={onReplay} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `${primary}16`, color: primary, fontWeight: 1100 }}>REJOUER</button><button onClick={onHistory} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `linear-gradient(90deg,${primary},#ffd76a)`, color: "#14120b", fontWeight: 1100 }}>HISTORIQUE & STATS</button></div>
   </div></div>;
 }

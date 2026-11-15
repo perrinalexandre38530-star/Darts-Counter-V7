@@ -252,13 +252,22 @@ function recalcStandings(state: Bobs27State) {
   const rows = entityRows(state).sort((a, b) =>
     b.score - a.score || b.hits - a.hits || b.visits - a.visits || a.name.localeCompare(b.name, "fr")
   );
-  state.standings = rows.map((row, index) => ({
-    ...row,
-    rank: index + 1,
-    tied: index > 0 && row.score === rows[index - 1].score && row.hits === rows[index - 1].hits,
-  }));
+  // Le podium et les gagnants doivent appliquer exactement les mêmes départages.
+  // En cas d'égalité complète, on partage la place (1, 1, 3), et non 1, 2, 3.
+  let previousRank = 0;
+  state.standings = rows.map((row, index) => {
+    const previous = rows[index - 1];
+    const sharedRank = Boolean(previous && row.score === previous.score && row.hits === previous.hits && row.visits === previous.visits);
+    const rank = sharedRank ? previousRank : index + 1;
+    previousRank = rank;
+    return { ...row, rank, tied: sharedRank };
+  });
+  // Une partie où tout le monde est éliminé n'a aucun vainqueur.
+  // Ne jamais attribuer de victoire fictive à des participants à zéro.
   const best = rows[0];
-  state.winnerIds = best ? rows.filter((row) => row.score === best.score && row.hits === best.hits).map((row) => row.id) : [];
+  state.winnerIds = best && !(state.finished && state.finishReason === "all_eliminated")
+    ? rows.filter((row) => row.score === best.score && row.hits === best.hits && row.visits === best.visits).map((row) => row.id)
+    : [];
   state.tied = state.winnerIds.length > 1;
 }
 

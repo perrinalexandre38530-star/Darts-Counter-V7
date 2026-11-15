@@ -97,6 +97,8 @@ export type PrisonerToken = {
   ownerId: string;
   originalOwnerId: string;
   location: number | "BULL";
+  /** Anneau Bull exact, conservé pour les deux règles de capture. */
+  bullBed?: "OB" | "IB";
   createdAt: number;
   createdVisit: number;
 };
@@ -175,7 +177,7 @@ export type PrisonerState = {
   winnerIds: string[];
   tied: boolean;
   finished: boolean;
-  finishReason: "course_completed" | "last_player" | "last_team" | null;
+  finishReason: "course_completed" | "last_player" | "last_team" | "stalemate" | null;
   startedAt: number;
   finishedAt?: number;
 };
@@ -347,11 +349,46 @@ function entityRows(state: PrisonerState): Omit<PrisonerStanding, "rank" | "tied
   }));
 }
 
+/** Classement individuel exporté : mêmes critères et mêmes ex æquo que le podium. */
+export function getPrisonerPlayerRanks(state: PrisonerState): Record<string, number> {
+  const rows = state.players.map((player) => {
+    const id = String(player.id);
+    return {
+      id, name: String(player.name || id),
+      completed: Boolean(state.completedByPlayer[id]),
+      progress: Number(state.progressIndexByPlayer[id] || 0),
+      dartsOwned: Number(state.dartsOwnedByPlayer[id] || 0),
+      captures: Number(state.statsByPlayer[id]?.captures || 0),
+    };
+  }).sort((a, b) =>
+    Number(b.completed) - Number(a.completed) || b.progress - a.progress || b.dartsOwned - a.dartsOwned || b.captures - a.captures || a.name.localeCompare(b.name, "fr")
+  );
+  const ranks: Record<string, number> = {};
+  let rank = 0;
+  rows.forEach((row, index) => {
+    const previous = rows[index - 1];
+    if (!previous || row.completed !== previous.completed || row.progress !== previous.progress || row.dartsOwned !== previous.dartsOwned || row.captures !== previous.captures) {
+      rank = index + 1;
+    }
+    ranks[row.id] = rank;
+  });
+  return ranks;
+}
+
 function recalcStandings(state: PrisonerState) {
   const rows = entityRows(state).sort((a, b) =>
     Number(b.completed) - Number(a.completed) || b.progress - a.progress || b.dartsOwned - a.dartsOwned || b.captures - a.captures || a.name.localeCompare(b.name, "fr")
   );
-  state.standings = rows.map((row, index) => ({ ...row, rank: index + 1, tied: index > 0 && row.completed === rows[index - 1].completed && row.progress === rows[index - 1].progress && row.dartsOwned === rows[index - 1].dartsOwned && row.captures === rows[index - 1].captures }));
+  // Même performance = même rang, y compris pour 3 concurrents ou plus.
+  // Le classement utilise des rangs de compétition (1, 1, 3) et non
+  // un numéro de ligne trompeur (1, 2, 3).
+  let currentRank = 0;
+  state.standings = rows.map((row, index) => {
+    const prev = rows[index - 1];
+    const sameScore = Boolean(prev && row.completed === prev.completed && row.progress === prev.progress && row.dartsOwned === prev.dartsOwned && row.captures === prev.captures);
+    if (!sameScore) currentRank = index + 1;
+    return { ...row, rank: currentRank, tied: sameScore || Boolean(rows[index + 1] && row.completed === rows[index + 1].completed && row.progress === rows[index + 1].progress && row.dartsOwned === rows[index + 1].dartsOwned && row.captures === rows[index + 1].captures) };
+  });
 }
 
 function finish(state: PrisonerState, winnerIds: string[], reason: PrisonerState["finishReason"]) {
@@ -372,7 +409,15 @@ function maybeFinish(state: PrisonerState, completingPlayerId?: string) {
     }
     return finish(state, [completingPlayerId], "course_completed");
   }
+  // Même sans éliminations, une table sans aucune fléchette libre est bloquée.
+  if (state.players.every((p) => permanentPlayableDarts(state, p.id) <= 0)) return finish(state, [], "stalemate");
   if (!state.rules.eliminationEnabled) return state;
+  // Lorsque tous les concurrents ont perdu leurs fléchettes, aucune reprise
+  // n’est possible : clôturer en égalité plutôt que bloquer le moteur.
+  const survivors = state.rules.participantMode === "teams" && state.teams.length
+    ? state.teams.filter((team) => team.playerIds.some((id) => !state.eliminatedByPlayer[id]))
+    : state.players.filter((p) => !state.eliminatedByPlayer[p.id]);
+  if (survivors.length === 0) return finish(state, [], "stalemate");
   if (state.rules.participantMode === "teams" && state.teams.length) {
     const aliveTeams = state.teams.filter((team) => team.playerIds.some((id) => !state.eliminatedByPlayer[id] && !state.completedByPlayer[id]));
     if (aliveTeams.length === 1 && state.teams.length > 1) return finish(state, [aliveTeams[0].id], "last_team");
@@ -441,16 +486,17 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
 
   if (dartsBudget <= 0) {
     const hasTemporary = permanentPlayableDarts(state, playerId) > 0 && Number(state.missPenaltyByPlayer[playerId] || 0) > 0;
-    if (hasTemporary) {
-      stat.turnsSkipped += 1;
-      state.missPenaltyByPlayer[playerId] = 0;
-      state.history.push({
+    // Un joueur sans fléchette libre passe son tour, y compris lorsque
+    // ses fléchettes sont toutes prisonnières (élimination désactivée).
+    // Le journal reste alors exact et les statistiques ne perdent pas de tours.
+    stat.turnsSkipped += 1;
+    if (hasTemporary) state.missPenaltyByPlayer[playerId] = 0;
+    state.history.push({
         id: `prisoner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), visitNo: state.visitNo,
         playerId, teamId: state.teamByPlayer[playerId] || null, targetBefore, targetAfter: targetBefore, dartsBudget: 0, darts: [], labels: [], events: [],
         progressHits: 0, captures: 0, prisonersCreated: 0, offboardMisses: 0, dartsOwnedBefore: ownedBefore, dartsOwnedAfter: ownedBefore,
-        prisonersOwnedAfter: getPrisonersOwnedCount(state, playerId), nextTurnMissPenalty: 0, completed: false, eliminated: false, skipped: true,
+        prisonersOwnedAfter: getPrisonersOwnedCount(state, playerId), nextTurnMissPenalty: Number(state.missPenaltyByPlayer[playerId] || 0), completed: false, eliminated: false, skipped: true,
       });
-    }
   } else {
     // Le malus MISS du tour précédent expire dès que ce tour est joué.
     state.missPenaltyByPlayer[playerId] = 0;
@@ -462,6 +508,9 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
     let progressInVisit = 0;
 
     darts.forEach((dart, index) => {
+      // Une victoire met fin à la volée immédiatement : ne jamais compter
+      // des tirs postérieurs au dernier numéro validé.
+      if (state.completedByPlayer[playerId]) return;
       const currentTarget = getPrisonerTarget(state, playerId);
       if (currentTarget !== null) targetStat(stat, currentTarget).dartsAimed += 1;
       stat.darts += 1;
@@ -470,11 +519,12 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
       let capturedTokenId: string | undefined;
       let capturedFromPlayerId: string | undefined;
       let prisonerTokenId: string | undefined;
+      let advancedTarget = false;
 
       if (dart.bed === "MISS") {
         stat.misses += 1;
         stat.offboardMisses += 1;
-        stat.temporaryLostDarts += 1;
+        if (state.rules.missPenaltyEnabled) stat.temporaryLostDarts += 1;
         offboardMisses += 1;
         kind = "miss";
       } else if (dart.bed === "S" && dart.singleRing === "inner") {
@@ -487,7 +537,9 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
       } else if (dart.bed === "OB" || dart.bed === "IB") {
         if (dart.bed === "OB") stat.bulls += 1; else stat.dbulls += 1;
         // Un bull libère d'abord un prisonnier déjà présent au Bull.
-        const bullTokenIndex = state.prisoners.findIndex((token) => token.location === "BULL");
+        const bullTokenIndex = state.prisoners.findIndex((token) => token.location === "BULL" && (
+          state.rules.bullCaptureRule === "any_bull" || !token.bullBed || token.bullBed === dart.bed
+        ));
         if (bullTokenIndex >= 0) {
           const token = state.prisoners[bullTokenIndex];
           state.prisoners.splice(bullTokenIndex, 1);
@@ -506,7 +558,7 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
           }
         } else {
           stat.bullPrisoners += 1; stat.prisonersCreated += 1;
-          const token: PrisonerToken = { id: `pd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ownerId: playerId, originalOwnerId: playerId, location: "BULL", createdAt: Date.now(), createdVisit: state.visitNo };
+          const token: PrisonerToken = { id: `pd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ownerId: playerId, originalOwnerId: playerId, location: "BULL", bullBed: dart.bed, createdAt: Date.now(), createdVisit: state.visitNo };
           state.prisoners.push(token); prisonerTokenId = token.id; prisonersCreated += 1; kind = "prisoner";
         }
       } else if (isPlayableOuterZone(dart)) {
@@ -537,6 +589,7 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
         const targetNow = getPrisonerTarget(state, playerId);
         if (targetNow !== null && Number(dart.number) === targetNow) {
           state.progressIndexByPlayer[playerId] = Math.min(state.sequence.length, Number(state.progressIndexByPlayer[playerId] || 0) + 1);
+          advancedTarget = true;
           stat.progressHits += 1; stat.targetsCompleted = state.progressIndexByPlayer[playerId]; progressHits += 1; progressInVisit += 1;
           stat.currentProgressStreak += 1; stat.bestProgressStreak = Math.max(stat.bestProgressStreak, stat.currentProgressStreak);
           const ts = targetStat(stat, targetNow); ts.progressHits += 1;
@@ -550,9 +603,13 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
         }
       }
 
+      // Toute fléchette sans progression rompt la série, même si elle
+      // manque la cible, crée un prisonnier ou réalise une capture.
+      if (!advancedTarget) stat.currentProgressStreak = 0;
       events.push({ index, label, kind, targetBefore: currentTarget, targetAfter: getPrisonerTarget(state, playerId), capturedTokenId, capturedFromPlayerId, prisonerTokenId });
     });
 
+    const playedDarts = darts.slice(0, events.length);
     stat.bestProgressVisit = Math.max(stat.bestProgressVisit, progressInVisit);
     if (state.rules.missPenaltyEnabled) state.missPenaltyByPlayer[playerId] = Math.min(offboardMisses, Number(state.dartsOwnedByPlayer[playerId] || 0));
     stat.finalDartsOwned = Number(state.dartsOwnedByPlayer[playerId] || 0);
@@ -573,7 +630,7 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
     state.history.push({
       id: `prisoner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), visitNo: state.visitNo,
       playerId, teamId: state.teamByPlayer[playerId] || null, targetBefore, targetAfter: getPrisonerTarget(state, playerId), dartsBudget,
-      darts, labels: darts.map(prisonerDartLabel), events, progressHits, captures, prisonersCreated, offboardMisses,
+      darts: playedDarts, labels: playedDarts.map(prisonerDartLabel), events, progressHits, captures, prisonersCreated, offboardMisses,
       dartsOwnedBefore: ownedBefore, dartsOwnedAfter: Number(state.dartsOwnedByPlayer[playerId] || 0), prisonersOwnedAfter: getPrisonersOwnedCount(state, playerId),
       nextTurnMissPenalty: Number(state.missPenaltyByPlayer[playerId] || 0), completed: Boolean(state.completedByPlayer[playerId]), eliminated: Boolean(state.eliminatedByPlayer[playerId]),
     });
@@ -586,4 +643,59 @@ export function playPrisonerVisit(input: PrisonerState, inputDarts: PrisonerDart
   const next = nextPlayableIndex(state, state.activePlayerIndex);
   if (next >= 0) state.activePlayerIndex = next;
   return state;
+}
+
+/**
+ * Prépare une volée automatique sur la base du véritable moteur PRISONER.
+ * Une capture (y compris au Bull) et une progression modifient donc la cible
+ * et les prisonniers disponibles avant le choix de la fléchette suivante.
+ */
+export function planPrisonerBotVisit(
+  state: PrisonerState,
+  playerId: string,
+  level: string,
+  random: () => number = Math.random,
+): PrisonerDart[] {
+  const difficulty = String(level || "normal").toLowerCase();
+  const hitChance = difficulty.includes("hard") || difficulty.includes("pro") || difficulty.includes("diffic") ? .62
+    : difficulty.includes("easy") || difficulty.includes("facile") ? .30 : .45;
+  const budget = getPrisonerAvailableDarts(state, playerId);
+  const selected: PrisonerDart[] = [];
+  const pick = <T,>(items: T[]): T => items[Math.min(items.length - 1, Math.floor(random() * items.length))];
+
+  for (let index = 0; index < budget; index += 1) {
+    const projected = selected.length ? playPrisonerVisit(state, selected) : state;
+    if (projected.finished || projected.completedByPlayer[playerId]) break;
+    const target = getPrisonerTarget(projected, playerId);
+    if (target === null) break;
+    const roll = random();
+    let dart: PrisonerDart;
+    if (projected.prisoners.length && roll < .12) {
+      // Priorité aux zones réellement capturables à cet instant. En règle
+      // classique, un Bull doit correspondre à l'anneau du prisonnier.
+      const token = pick(projected.prisoners);
+      if (token.location === "BULL") {
+        dart = { bed: projected.rules.bullCaptureRule === "any_bull"
+          ? (random() < .5 ? "OB" : "IB")
+          : (token.bullBed === "IB" ? "IB" : "OB") };
+      } else {
+        const variant = random();
+        dart = { bed: variant < .2 ? "D" : variant < .4 ? "T" : "S", number: token.location, singleRing: "outer" };
+      }
+    } else if (roll < hitChance) {
+      const variant = random();
+      dart = { bed: variant < .18 ? "D" : variant < .34 ? "T" : "S", number: target, singleRing: "outer" };
+    } else if (roll < hitChance + .14) {
+      dart = { bed: "S", number: target, singleRing: "inner" };
+    } else if (roll < hitChance + .20) {
+      dart = { bed: random() < .25 ? "IB" : "OB" };
+    } else if (roll < hitChance + .30) {
+      dart = { bed: "MISS" };
+    } else {
+      const neighbor = Math.max(1, Math.min(20, target + (random() < .5 ? -1 : 1)));
+      dart = { bed: "S", number: neighbor === target ? (target === 20 ? 19 : target + 1) : neighbor, singleRing: "outer" };
+    }
+    selected.push(dart);
+  }
+  return selected;
 }

@@ -1,6 +1,7 @@
 import React from "react";
 import type { TrainingStats } from "../engine/trainingStats";
-import "./trainingResponsive.css";
+import { useAwenaOptional } from "../../awena/AwenaProvider";
+import { buildTrainingTechnicalAdvice } from "../profile/trainingTechnicalCoaching";
 
 export type TrainingResultMetric = {
   label: string;
@@ -17,6 +18,10 @@ export default function TrainingResultModal({
   onClose,
   actionLabel = "RETOUR AU TRAINING",
   note = null,
+  coachFocus,
+  precisionAvailable = false,
+  correctiveRoute,
+  onStartCorrection,
 }: {
   open: boolean;
   success: boolean;
@@ -27,13 +32,13 @@ export default function TrainingResultModal({
   onClose: () => void;
   actionLabel?: string;
   note?: React.ReactNode;
+  coachFocus?: string;
+  /** True only for individual hit data, never for aggregated visit scores. */
+  precisionAvailable?: boolean;
+  correctiveRoute?: { exerciseId: string; exerciseTitle: string; reason: string; actionLabel: string } | null;
+  onStartCorrection?: (exerciseId: string) => void;
 }) {
-  React.useEffect(() => {
-    if (!open) return;
-    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onEscape);
-    return () => window.removeEventListener("keydown", onEscape);
-  }, [open, onClose]);
+  const awena = useAwenaOptional();
   if (!open) return null;
 
   const accent = success ? "#27dcff" : "#ff5f9e";
@@ -41,10 +46,12 @@ export default function TrainingResultModal({
   const safeHits = Math.max(0, Number((stats as any)?.hits || 0));
   const hitRate = Math.max(0, Number((stats as any)?.hitRate || 0));
   const score = Math.max(0, Number((stats as any)?.score || 0));
+  const advice = buildTrainingTechnicalAdvice({
+    focus: coachFocus || title, success, darts: safeDarts, hits: safeHits, score, precisionAvailable,
+  });
 
   return (
     <div
-      className="mssTrainingResultBackdrop"
       onClick={onClose}
       style={{
         position: "fixed",
@@ -52,26 +59,24 @@ export default function TrainingResultModal({
         zIndex: 700,
         display: "grid",
         placeItems: "center",
-        padding: 16,
+        padding: "max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))",
+        boxSizing: "border-box",
         background: "rgba(0,0,0,.82)",
         backdropFilter: "blur(7px)",
       }}
     >
       <div
-        className="mssTrainingResultSheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title || "Bilan de fin de séance"}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(560px,100%)",
-          maxHeight: "86vh",
+          boxSizing: "border-box",
+          maxHeight: "min(88dvh,calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))",
           overflowY: "auto",
           borderRadius: 24,
           border: `1px solid ${accent}88`,
           background: "linear-gradient(160deg,rgba(7,27,41,.99),rgba(2,9,17,.99))",
           color: "#fff",
-          padding: 18,
+          padding: "clamp(10px,3vw,18px)",
           boxShadow: `0 28px 80px rgba(0,0,0,.78), 0 0 28px ${accent}22`,
         }}
       >
@@ -88,7 +93,7 @@ export default function TrainingResultModal({
         </div>
 
         <div
-          className="mssTrainingResultSummary"
+          className="mssTrainingResultKpis"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4,minmax(0,1fr))",
@@ -134,7 +139,6 @@ export default function TrainingResultModal({
 
         {metrics.length ? (
           <div
-            className="mssTrainingResultMetrics"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(2,minmax(0,1fr))",
@@ -163,8 +167,25 @@ export default function TrainingResultModal({
 
         {note ? <div style={{ marginTop: 10 }}>{note}</div> : null}
 
+        <section className="mssTrainingCoachCorrection" aria-label="Correction technique Awena">
+          <div className="mssTrainingCoachCorrectionTitle">
+            <div><small>AWENA · CORRECTION TECHNIQUE</small><strong>{advice.title}</strong></div>
+            <button type="button" onClick={() => { void awena?.say(`${advice.observation} ${advice.correction} ${advice.nextStep}`); }} disabled={!awena}
+              aria-label="Écouter la correction technique" title="Écouter avec la voix Awena">🔊</button>
+          </div>
+          <p>{advice.observation}</p>
+          <p><b>À travailler :</b> {advice.correction}</p>
+          <div className="mssTrainingCoachNext">↻ {advice.nextStep}</div>
+          {correctiveRoute && onStartCorrection && <div className="mssTrainingCorrectiveAction">
+            <div><small>EXERCICE CONSEILLÉ</small><strong>{correctiveRoute.exerciseTitle}</strong><span>{correctiveRoute.reason}</span></div>
+            <button type="button" onClick={() => onStartCorrection(correctiveRoute.exerciseId)}
+              aria-label={`${correctiveRoute.actionLabel} : ${correctiveRoute.exerciseTitle}`}>
+              ◎ {correctiveRoute.actionLabel}
+            </button>
+          </div>}
+        </section>
+
         <button
-          className="mssTrainingResultAction"
           type="button"
           onClick={onClose}
           style={{

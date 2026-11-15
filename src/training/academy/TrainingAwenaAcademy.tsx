@@ -7,6 +7,7 @@ import type { AcademyLesson } from "./academyLessons";
 import { MSS_ACADEMY_CATALOGUE } from "./academyCatalogue";
 import { getAcademyQuestions } from "./academyQuizBank";
 import { makeAcademyQuizRound, quizCorrectCount, type AcademyQuizItem } from "./academyQuizMode";
+import { getAcademyReviewInsights, loadAcademyReviews, makeAcademyReviewRound, saveAcademyAnswer, type AcademyAnswerOrigin, type AcademyReviewJournal } from "./academyRevision";
 import { academyResultScore, applyAcademyVisit, newAcademyRun, type AcademyRun } from "./academyCore";
 import {
   loadAcademyProgress, saveAcademyAttempt, type AcademyProgress,
@@ -14,7 +15,7 @@ import {
 } from "./academyStore";
 import "./trainingAwenaAcademy.css";
 
-type AcademyScreen = "learn" | "practice" | "quiz" | "progress";
+type AcademyScreen = "learn" | "practice" | "quiz" | "review" | "progress";
 type LessonPhase = "intro" | "quiz" | "practice" | "result";
 const LETTERS = ["A", "B", "C"];
 const LEVELS = ["", "DÉCOUVERTE", "FONDATIONS", "MAÎTRISE", "EXPERT"];
@@ -36,6 +37,8 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const [voiceNotice, setVoiceNotice] = React.useState("");
   const [progress, setProgress] = React.useState<AcademyProgress>(() => loadAcademyProgress(participantId));
   const [quizStats, setQuizStats] = React.useState<AcademyQuizStats>(() => loadAcademyQuizStats(participantId));
+  const [reviewJournal, setReviewJournal] = React.useState<AcademyReviewJournal>(() => loadAcademyReviews(participantId));
+  const [roundMode, setRoundMode] = React.useState<"express" | "review">("express");
   const [run, setRun] = React.useState<AcademyRun>(() => newAcademyRun(CATALOGUE[0]!.practice));
   const [savedScore, setSavedScore] = React.useState<number | null>(null);
   const [levelFilter, setLevelFilter] = React.useState("all");
@@ -53,6 +56,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   React.useEffect(() => {
     setProgress(loadAcademyProgress(participantId));
     setQuizStats(loadAcademyQuizStats(participantId));
+    setReviewJournal(loadAcademyReviews(participantId));
     setLesson(null);
     setPhase("intro");
     setRound([]);
@@ -75,8 +79,11 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     });
   }, [voiceEnabled]);
 
+  const reviewInsights = React.useMemo(() => getAcademyReviewInsights(CATALOGUE, reviewJournal), [reviewJournal, screen]);
   const recommended = React.useMemo(() =>
-    CATALOGUE.find(item => !progress[item.id] || progress[item.id].best < 80) || CATALOGUE[0]!, [progress]);
+    CATALOGUE.find(item => item.id === reviewInsights.focusLessonId) ||
+    CATALOGUE.find(item => !progress[item.id] || progress[item.id].best < 80) || CATALOGUE[0]!,
+    [progress, reviewInsights.focusLessonId]);
   const mastered = CATALOGUE.filter(item => (progress[item.id]?.best || 0) >= 80).length;
   const attempted = CATALOGUE.filter(item => (progress[item.id]?.attempts || 0) > 0).length;
   const attempts = CATALOGUE.reduce((total, item) => total + (progress[item.id]?.attempts || 0), 0);
@@ -88,6 +95,9 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     (familyFilter === "all" || item.family === familyFilter) &&
     (!search.trim() || `${item.title} ${item.intro} ${item.mission}`.toLocaleLowerCase("fr").includes(search.toLocaleLowerCase("fr").trim())));
 
+  const noteAnswer = (questionId: string, isCorrect: boolean, origin: AcademyAnswerOrigin) => {
+    setReviewJournal(saveAcademyAnswer(participantId, questionId, isCorrect, origin));
+  };
   const beginLesson = (next: AcademyLesson, skipTheory = false) => {
     void awenaVoice.stop(); voiceSeq.current += 1;
     const fresh = newAcademyRun(next.practice);
@@ -105,6 +115,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const submitLessonAnswer = () => {
     if (!activeQuestion || choice === null || checked) return;
     setQuizAnswers(prev => [...prev.slice(0, quizIndex), choice]);
+    noteAnswer(`${lesson!.id}:${quizIndex}`, choice === activeQuestion.correct, "lesson");
     setChecked(true);
     speak(`${choice === activeQuestion.correct ? "Bonne réponse !" : "On corrige ensemble."} ${activeQuestion.explanation}`);
   };
@@ -141,18 +152,30 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const switchScreen = (next: AcademyScreen) => {
     void awenaVoice.stop(); voiceSeq.current += 1;
     setScreen(next); setLesson(null); setPhase("intro");
+    setRound([]); setRoundIndex(0); setRoundAnswers([]); setRoundChoice(null);
+    setRoundChecked(false); setRoundFinished(false);
+    setRoundMode(next === "review" ? "review" : "express");
   };
   const newQuizRound = () => {
     const items = makeAcademyQuizRound(CATALOGUE, 10, quizStats.rounds + 1);
+    setRoundMode("express");
     setRound(items); setRoundIndex(0); setRoundAnswers([]);
     setRoundChoice(null); setRoundChecked(false); setRoundFinished(false);
     setScreen("quiz"); setLesson(null);
     if (items[0]) speak(`Quiz express MSS ! Dix questions pour entraîner tes réflexes. Première question. ${items[0].question}`);
   };
+  const newReviewRound = () => {
+    const items = makeAcademyReviewRound(CATALOGUE, reviewJournal, 10);
+    setRoundMode("review"); setRound(items); setRoundIndex(0); setRoundAnswers([]);
+    setRoundChoice(null); setRoundChecked(false); setRoundFinished(false);
+    setScreen("review"); setLesson(null);
+    if (items[0]) speak(`Révisions personnalisées. ${items.length} questions choisies à partir de tes erreurs. Première question : ${items[0].question}`);
+  };
   const verifyRoundAnswer = () => {
     const item = round[roundIndex];
     if (!item || roundChoice === null || roundChecked) return;
     setRoundAnswers(prev => [...prev.slice(0, roundIndex), roundChoice]);
+    noteAnswer(item.id, roundChoice === item.correct, roundMode === "review" ? "review" : "express");
     setRoundChecked(true);
     speak(`${roundChoice === item.correct ? "Bravo !" : "Voici l'explication."} ${item.explanation}`);
   };
@@ -160,9 +183,9 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     if (!roundChecked) return;
     if (roundIndex === round.length - 1) {
       const count = quizCorrectCount(round, roundAnswers);
-      setQuizStats(saveAcademyQuizRound(participantId, count, round.length));
+      if (roundMode === "express") setQuizStats(saveAcademyQuizRound(participantId, count, round.length));
       setRoundFinished(true);
-      speak(`Quiz terminé ! Tu as ${count} bonnes réponses sur ${round.length}.`);
+      speak(`${roundMode === "review" ? "Révision terminée" : "Quiz terminé"} ! Tu as ${count} bonnes réponses sur ${round.length}. ${roundMode === "review" ? "Les points à revoir ont été actualisés." : ""}`);
       return;
     }
     const next = roundIndex + 1;
@@ -216,14 +239,15 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     </div>
     {voiceNotice && <div className="mssAcademyVoiceNotice" role="status">{voiceNotice}</div>}
     <div className="mssAcademyTabs" role="group" aria-label="Parcours Académie Awena">
-      {([ ["learn", "APPRENDRE"], ["practice", "S’EXERCER"], ["quiz", "QUIZZ EXPRESS"], ["progress", "MES PROGRÈS"] ] as const).map(([id, label]) =>
+      {([ ["learn", "APPRENDRE"], ["practice", "S’EXERCER"], ["quiz", "QUIZZ EXPRESS"], ["review", "MES RÉVISIONS"], ["progress", "MES PROGRÈS"] ] as const).map(([id, label]) =>
         <button key={id} type="button" aria-pressed={screen === id} className={screen === id ? "active" : ""} onClick={() => switchScreen(id)}>{label}</button>)}
     </div>
 
     {!lesson && (screen === "learn" || screen === "practice") && <>
       <div className="mssAcademyBanner">
         <div><small>PARCOURS PERSONNALISÉ</small><strong>{attempted} / {CATALOGUE.length} leçons explorées</strong>
-          <span>Prochaine étape : {recommended.title}</span></div>
+          <span>Prochaine étape : {recommended.title}</span>
+          {reviewInsights.due > 0 && <span className="mssAcademyReminder">{reviewInsights.due} question{reviewInsights.due > 1 ? "s" : ""} à revoir avec Awena</span>}</div>
         <button type="button" onClick={() => beginLesson(recommended, screen === "practice")}>COMMENCER ›</button>
       </div>
       {renderList(screen === "practice")}
@@ -288,11 +312,31 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
       </div>}
     </div>}
 
-    {screen === "quiz" && !lesson && <div className="mssAcademyQuizPanel">
+    {screen === "review" && !lesson && <div className="mssAcademyReviewDashboard">
       <div className="mssAcademyQuizHeader">
-        <div><small>AWENA TE MET AU DÉFI</small><h3>QUIZZ EXPRESS · 10 QUESTIONS</h3>
-          <p>Questions sur les valeurs, doubles, finishs et décisions tactiques. Aucun lancer nécessaire.</p></div>
-        <button type="button" onClick={newQuizRound}>{round.length ? "NOUVEAU QUIZ" : "COMMENCER ›"}</button>
+        <div><small>AWENA SE SOUVIENT DE TES DIFFICULTÉS</small><h3>MES RÉVISIONS PERSONNALISÉES</h3>
+          <p>Les erreurs aux leçons et aux Quiz express deviennent de petites séances de rattrapage. Chaque réussite espace la prochaine révision : 1, 3 puis 7 jours.</p></div>
+        {!round.length && <button type="button" disabled={reviewInsights.due === 0} onClick={newReviewRound}>{reviewInsights.due ? `RÉVISER ${Math.min(10, reviewInsights.due)} QUESTION${Math.min(10, reviewInsights.due) > 1 ? "S" : ""} ›` : "AUCUNE RÉVISION DUE"}</button>}
+      </div>
+      <div className="mssAcademyStats mssAcademyReviewStats">
+        <div><small>À REVOIR MAINTENANT</small><strong>{reviewInsights.due}</strong></div>
+        <div><small>EN CONSOLIDATION</small><strong>{reviewInsights.toConsolidate}</strong></div>
+        <div><small>MAÎTRISÉES APRÈS ERREUR</small><strong>{reviewInsights.mastered}</strong></div>
+      </div>
+      {!round.length && <div className="mssAcademyReviewAdvice">
+        {reviewInsights.due ? <>Awena a repéré les notions à renforcer. Lance une session courte, puis essaie les exercices réels pour consolider ta précision.</> :
+          reviewInsights.toConsolidate ? <>Toutes tes révisions sont à jour. Prochain rappel à partir du {new Date(reviewInsights.nextDueAt!).toLocaleDateString("fr-FR", { day:"numeric", month:"long" })}. Tu peux continuer les leçons et Quiz express.</> :
+          <>Aucune erreur enregistrée pour ce profil. Fais quelques leçons ou un Quiz express : Awena repérera automatiquement les réponses à travailler.</>}
+      </div>}
+      {!!reviewInsights.focusLessonId && !round.length && <button type="button" className="mssAcademyReviewFocus" onClick={() => beginLesson(CATALOGUE.find(item => item.id === reviewInsights.focusLessonId)!)}>
+        <span><small>LEÇON RECOMMANDÉE PAR AWENA</small><strong>{CATALOGUE.find(item => item.id === reviewInsights.focusLessonId)?.title}</strong><span>Revoir l'explication et s'entraîner sur la cible MSS</span></span><b>›</b>
+      </button>}
+    </div>}
+    {(screen === "quiz" || screen === "review") && !lesson && (screen === "quiz" || !!round.length) && <div className="mssAcademyQuizPanel">
+      <div className="mssAcademyQuizHeader">
+        <div><small>{roundMode === "review" ? "AWENA ADAPTE TON PARCOURS" : "AWENA TE MET AU DÉFI"}</small><h3>{roundMode === "review" ? `RÉVISION CIBLÉE · ${round.length} QUESTIONS` : "QUIZZ EXPRESS · 10 QUESTIONS"}</h3>
+          <p>{roundMode === "review" ? "Questions sélectionnées parmi tes erreurs précédentes. Trois bonnes réponses consécutives permettent de consolider chaque notion." : "Questions sur les valeurs, doubles, finishs et décisions tactiques. Aucun lancer nécessaire."}</p></div>
+        <button type="button" onClick={roundMode === "review" ? newReviewRound : newQuizRound}>{round.length ? (roundMode === "review" ? "ACTUALISER LA RÉVISION" : "NOUVEAU QUIZ") : "COMMENCER ›"}</button>
       </div>
       {!round.length && <div className="mssAcademyEmpty">40 leçons, 120 questions : Awena compose un nouveau quiz à partir de plusieurs niveaux. Les résultats sont enregistrés pour ton profil.</div>}
       {!!round.length && !roundFinished && currentRoundQuestion && <div className="mssAcademyStory">
@@ -314,17 +358,25 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
         <div className="mssAcademyMiniScore">{quizCorrectCount(round, roundAnswers)} / {roundAnswers.length} réponses correctes</div>
       </div>}
       {roundFinished && <div className="mssAcademyResult">
-        <small>QUIZ TERMINÉ</small><h3>{quizCorrectCount(round, roundAnswers)} / {round.length}</h3>
-        <p>{quizCorrectCount(round, roundAnswers) >= 8 ? "Excellent ! Awena te propose de garder ces bons réflexes." : "Bien joué pour cet entraînement. Recommence pour consolider les réponses difficiles."}</p>
+        <small>{roundMode === "review" ? "RÉVISION TERMINÉE" : "QUIZ TERMINÉ"}</small><h3>{quizCorrectCount(round, roundAnswers)} / {round.length}</h3>
+        <p>{roundMode === "review" ? `Awena a mis à jour tes rappels. ${reviewInsights.due ? `${reviewInsights.due} question${reviewInsights.due > 1 ? "s" : ""} encore à revoir.` : "Toutes les questions dues sont révisées !"}` : quizCorrectCount(round, roundAnswers) >= 8 ? "Excellent ! Awena te propose de garder ces bons réflexes." : "Bien joué pour cet entraînement. Recommence pour consolider les réponses difficiles."}</p>
         <div className="mssAcademyActions"><button type="button" onClick={() => speak(`Tu as ${quizCorrectCount(round, roundAnswers)} bonnes réponses sur ${round.length}.`)}>🔊 AWENA</button>
-          <button type="button" className="primary" onClick={newQuizRound}>NOUVEAU QUIZ ›</button></div>
+          {roundMode === "review" && reviewInsights.focusLessonId && <button type="button" onClick={() => {
+            const target = CATALOGUE.find(item => item.id === reviewInsights.focusLessonId);
+            if (target) beginLesson(target, true);
+          }}>🎯 EXERCICE SUR LA CIBLE</button>}
+          {roundMode === "express" && reviewInsights.due > 0 && <button type="button" onClick={() => switchScreen("review")}>RÉVISER MES ERREURS ({reviewInsights.due})</button>}
+          <button type="button" className="primary" disabled={roundMode === "review" && reviewInsights.due === 0} onClick={roundMode === "review" ? newReviewRound : newQuizRound}>{roundMode === "review" ? "RÉVISION SUIVANTE ›" : "NOUVEAU QUIZ ›"}</button></div>
       </div>}
-      <div className="mssAcademyMiniScore">Quiz joués : {quizStats.rounds} · Meilleur score : {quizStats.best} % · Dernier : {quizStats.latest} %</div>
+      <div className="mssAcademyMiniScore">{roundMode === "review" ? `Réponses travaillées : ${reviewInsights.reviewed} · Questions encore dues : ${reviewInsights.due}` : `Quiz joués : ${quizStats.rounds} · Meilleur score : ${quizStats.best} % · Dernier : ${quizStats.latest} %`}</div>
     </div>}
 
     {screen === "progress" && !lesson && <div className="mssAcademyProgress">
       <div className="mssAcademyStats"><div><small>LEÇONS EXPLORÉES</small><strong>{attempted}/{CATALOGUE.length}</strong></div><div><small>MAÎTRISÉES (80+)</small><strong>{mastered}</strong></div><div><small>EXERCICES</small><strong>{attempts}</strong></div></div>
       <div className="mssAcademyStats mssAcademyQuizStats"><div><small>QUIZ EXPRESS</small><strong>{quizStats.rounds}</strong></div><div><small>MEILLEUR QUIZ</small><strong>{quizStats.best}%</strong></div><div><small>RÉPONSES JUSTES</small><strong>{quizStats.correct}/{quizStats.questions}</strong></div></div>
+      <button type="button" className="mssAcademyReviewFocus" onClick={() => switchScreen("review")}>
+        <span><small>RÉVISIONS ADAPTATIVES</small><strong>{reviewInsights.due} question{reviewInsights.due > 1 ? "s" : ""} à revoir maintenant</strong><span>{reviewInsights.mastered} question{reviewInsights.mastered > 1 ? "s" : ""} consolidée{reviewInsights.mastered > 1 ? "s" : ""} après trois réussites</span></span><b>›</b>
+      </button>
       <p>Les résultats restent associés à ce profil sur cet appareil. L'Historique V4 des parties n'est pas modifié. La synchronisation cloud n'est pas encore activée pour l'Académie.</p>
       {CATALOGUE.map(item => {
         const row = progress[item.id];
