@@ -11,6 +11,7 @@ import InfoDot from "../components/InfoDot";
 import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import tickerPresident from "../assets/tickers/ticker_president.png";
+import { mssPresidentCardUrl } from "../lib/mssLegendsDeck";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
@@ -96,20 +97,22 @@ function PlayingCard({ value, mini = false, ghost = false, suitIndex = 0 }: {
     suitIndex?: number;
 }) {
     const suit = cardSuit(value, suitIndex);
-    const red = cardIsRed(value, suitIndex);
     const rank = presidentCardRank(value);
     const w = mini ? 43 : 58;
     const h = mini ? 61 : 82;
+    const imageUrl = mssPresidentCardUrl(suitIndex, value);
+    // The suit index comes from the President engine's actual dealt card.
+    // No substitution of suits or hidden cards: this is presentation only.
     return <div aria-label={`Carte ${rank} ${suit}`} style={{
-            width: w, height: h, borderRadius: mini ? 6 : 8, boxSizing: "border-box", position: "relative", flex: "0 0 auto", overflow: "hidden",
-            background: ghost ? "linear-gradient(155deg,rgba(255,252,242,.92),rgba(220,213,196,.86))" : "linear-gradient(155deg,#fffdf5,#e9e1cf)",
-            border: "1px solid rgba(36,29,19,.72)", boxShadow: ghost ? "none" : "0 4px 10px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.72)",
-            color: red ? "#c92e38" : "#13161d", fontFamily: "Georgia,Times New Roman,serif",
-        }}>
-    <div style={{ position: "absolute", left: mini ? 4 : 5, top: mini ? 3 : 4, fontSize: mini ? 10 : 13, fontWeight: 900, lineHeight: .92, textAlign: "center" }}><div>{rank}</div><div style={{ fontSize: mini ? 9 : 12 }}>{suit}</div></div>
-    <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: mini ? 24 : 34, opacity: .9 }}>{suit}</div>
-    <div style={{ position: "absolute", right: mini ? 4 : 5, bottom: mini ? 3 : 4, fontSize: mini ? 10 : 13, fontWeight: 900, lineHeight: .92, textAlign: "center", transform: "rotate(180deg)" }}><div>{rank}</div><div style={{ fontSize: mini ? 9 : 12 }}>{suit}</div></div>
-  </div>;
+      width:w,height:h,position:"relative",flex:"0 0 auto",borderRadius:mini?6:8,
+      overflow:"hidden",boxSizing:"border-box",opacity:ghost?.72:1,
+      boxShadow:ghost?"none":"0 4px 10px rgba(0,0,0,.48)",
+      background:"#fff8e9",
+    }}>
+      {imageUrl ? <img src={imageUrl} alt="" loading="lazy" decoding="async" draggable={false}
+         style={{display:"block",width:"100%",height:"100%",objectFit:"fill"}} /> :
+       <div style={{width:"100%",height:"100%",color:cardIsRed(value,suitIndex)?"#c92e38":"#13161d",display:"grid",placeItems:"center",fontFamily:"Georgia,serif",fontSize:22}}>{rank}{suit}</div>}
+    </div>;
 }
 function HandCardStack({ value, count, suits = [] }: {
     value: number;

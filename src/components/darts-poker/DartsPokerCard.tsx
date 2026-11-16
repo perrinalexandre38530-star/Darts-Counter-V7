@@ -2,6 +2,7 @@ import React from "react";
 import type { PokerCard } from "../../lib/gameEngines/dartsPokerEngine";
 import { pokerRankLabel, pokerSuitSymbol } from "../../lib/gameEngines/dartsPokerEngine";
 import { contentPackAssetUrl } from "../../lib/contentPacks";
+import { mssLegendCardUrl } from "../../lib/mssLegendsDeck";
 
 type CardSize = "mini" | "small" | "medium" | "large" | "hero";
 
@@ -127,6 +128,26 @@ export default function DartsPokerCard({ card, size = "medium", hidden = false, 
   if (hidden) return cardBack(size);
   if (!card) return <div style={{ width: spec.w, height: spec.h, borderRadius: spec.radius, boxSizing: "border-box", border: "1px dashed rgba(255,255,255,.22)", background: "rgba(255,255,255,.018)" }} />;
 
+  // Every non-joker rank (2..A) uses its completed MSS LEGENDS illustration.
+  // The card's artwork already contains both corner indices and its nickname;
+  // never superimpose the old poker face, rank, or suit on it.
+  const mssArtwork = !card.joker ? mssLegendCardUrl(card.suit, card.rank) : null;
+  if (mssArtwork) {
+    const cardView = <div style={{
+      width: spec.w, height: spec.h, position: "relative", flexShrink: 0,
+      borderRadius: spec.radius, overflow: "hidden", boxSizing: "border-box",
+      border: selected ? `2px solid ${GREEN}` : "1px solid rgba(246,194,86,.22)",
+      boxShadow: selected ? `0 0 16px ${GREEN}99,0 5px 13px rgba(0,0,0,.42)` : "0 5px 13px rgba(0,0,0,.38)",
+      background: "transparent", userSelect: "none",
+    }}>
+      <img src={mssArtwork} loading="lazy" decoding="async" draggable={false}
+        alt={`${pokerRankLabel(card.rank)} ${pokerSuitSymbol(card.suit)}`}
+        style={{display:"block",width:"100%",height:"100%",objectFit:"fill"}} />
+      {badge ? <div style={{position:"absolute",right:0,bottom:0,zIndex:2,borderRadius:"8px 0 0 0",padding:size === "mini" ? "1px 2px" : "2px 4px",background:"#090a0e",borderTop:`1px solid ${GOLD}`,borderLeft:`1px solid ${GOLD}`,color:GOLD,fontSize:size === "mini" ? 5 : 6.5,fontWeight:1100}}>{badge}</div> : null}
+    </div>;
+    return onClick ? <button type="button" onClick={onClick} style={{appearance:"none",border:0,padding:0,margin:0,background:"transparent",cursor:"pointer",borderRadius:spec.radius,lineHeight:0}}>{cardView}</button> : cardView;
+  }
+
   const red = card.suit === "H" || card.suit === "D";
   const color = card.joker ? GOLD : red ? "#c3172b" : "#111116";
   const suit = pokerSuitSymbol(card.suit);
@@ -205,7 +226,7 @@ export function DartsPokerDeckGallery({ compact = false, showLegend = true }: { 
   const cardSize: CardSize = compact ? "mini" : "small";
   return <div style={{ display: "grid", gap: compact ? 7 : 10 }}>
     {showLegend ? <div style={{ padding: compact ? "7px 8px" : "9px 10px", borderRadius: 12, background: "linear-gradient(135deg,rgba(246,194,86,.08),rgba(232,58,67,.07))", border: "1px solid rgba(246,194,86,.24)", color: "#d8dce6", fontSize: compact ? 7.5 : 9, lineHeight: 1.45 }}>
-      <b style={{ color: GOLD }}>DECK MSS SIGNATURE</b> · 52 cartes + Joker Awena. Les figures J / Q / K utilisent les personnages MULTISPORTS SCORING ; les valeurs et couleurs restent celles d’un vrai jeu de poker.
+      <b style={{ color: GOLD }}>DECK MSS SIGNATURE</b> · 52 cartes illustrées MSS LEGENDS. Chaque valeur, du 2 à l’As, utilise la légende de sa famille. Le Joker spécial Darts Poker conserve provisoirement son visuel existant.
     </div> : null}
     {suits.map((suit) => {
       const cards = deck.filter((card) => card.suit === suit.key);
