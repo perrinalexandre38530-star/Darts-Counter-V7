@@ -16,3 +16,11 @@ export function mssPresidentCardUrl(suitIndex: number, rank: number): string | n
   if (!Number.isInteger(suitIndex) || suitIndex < 0 || suitIndex > 3) return null;
   return mssLegendCardUrl(suits[suitIndex], rank);
 }
+
+/** Both original MSS Legends Jokers. These illustrations include their own corner typography. */
+export type MSSJokerVariant = "hawaii-501" | "king-of-bling";
+export function mssJokerCardUrl(variant: MSSJokerVariant | string = "hawaii-501"): string {
+  const name = variant === "king-of-bling" || variant === "JOKER_BLING" ? "king-of-bling" : "hawaii-501";
+  const base = String(import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
+  return `${base}images/mss-legends/jokers/${name}.webp`;
+}

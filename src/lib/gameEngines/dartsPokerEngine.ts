@@ -616,7 +616,9 @@ export function playDartsPokerVisit(stateInput: DartsPokerState, dartsInput: Gam
     if (dart.bed === "IB") {
       const hasJoker = hand.cards.some((card) => card.joker);
       if (state.config.jokerEnabled && !hasJoker) {
-        const joker: PokerCard = { id: "JOKER", rank: 15, suit: null, joker: true };
+        const playerOrder = state.players.findIndex((row) => row.id === player.id);
+        const jokerId = (Math.max(0, playerOrder) + stats.jokers) % 2 === 0 ? "JOKER_HAWAII" : "JOKER_BLING";
+        const joker: PokerCard = { id: jokerId, rank: 15, suit: null, joker: true };
         hand.cards.push(joker); addCardStats(stats, joker, "joker");
         events.push({ type: "joker", label: "DBULL · JOKER obtenu", card: joker });
       } else if (state.config.powersEnabled) {
