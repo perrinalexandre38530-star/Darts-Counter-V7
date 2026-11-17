@@ -20,7 +20,7 @@ export const DARTS_GAME_FAMILIES: readonly DartsGameFamily[] = [
   },
   {
     id: "five_lives", mainId: "five_lives", variantIds: ["chase"],
-    note: "Même mécanique de cinq vies, avec une poursuite des scores différente.",
+    note: "Jeux de vies et de poursuite de scores ; parenté de survie avec la famille Killer (règles indépendantes).",
   },
   {
     id: "halve_it", mainId: "halve_it", variantIds: ["split_score", "double_down"],
@@ -32,7 +32,7 @@ export const DARTS_GAME_FAMILIES: readonly DartsGameFamily[] = [
   },
   {
     id: "killer", mainId: "killer", variantIds: ["killer_progressive", "mexicain"],
-    note: "Famille des jeux de survie et d’élimination : Killer traditionnel, Killer Progressif et Mexicain à cible commune. Chaque mode conserve ses propres règles.",
+    note: "Famille de survie/élimination apparentée à 5 VIES et CHASE. Les règles, moteurs, vies et historiques restent propres à chaque mode.",
   },
   {
     id: "x01", mainId: "x01", variantIds: ["happy_mille", "v170", "training_x01"],
@@ -84,11 +84,26 @@ export function dartsGameFamily(gameId: string | null | undefined): DartsGameFam
   return familyByGameId.get(String(gameId || "")) || null;
 }
 
+/** Parenté de découverte croisée ; un mode garde toujours UNE SEULE famille principale. */
+export const DARTS_ALLIED_FAMILIES: Readonly<Record<string, readonly string[]>> = {
+  killer: ["five_lives"],
+  five_lives: ["killer"],
+};
+
 export function dartsGameRelatedIds(gameId: string | null | undefined): string[] {
   const family = dartsGameFamily(gameId);
   if (!family) return [];
-  const ids = [family.mainId, ...family.variantIds];
-  return ids.filter(id => id !== gameId && DARTS_GAMES.some(g => g.id === id));
+  const relatedFamilies = [family.id, ...(DARTS_ALLIED_FAMILIES[family.id] || [])]
+    .map(id => DARTS_GAME_FAMILIES.find(item => item.id === id))
+    .filter((item): item is DartsGameFamily => !!item);
+  const related = new Set(relatedFamilies.flatMap(item => [item.mainId, ...item.variantIds]));
+  related.delete(String(gameId || ""));
+  return [...related].filter(id => DARTS_GAMES.some(g => g.id === id));
+}
+
+export function dartsGameHasAlliedFamilies(gameId: string | null | undefined): boolean {
+  const family = dartsGameFamily(gameId);
+  return !!family && !!DARTS_ALLIED_FAMILIES[family.id]?.length;
 }
 
 export function dartsFamilyMainId(gameId: string | null | undefined): string | null {

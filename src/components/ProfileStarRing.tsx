@@ -170,9 +170,13 @@ export default function ProfileStarRing({
   // IMPORTANT : la couronne possède maintenant son propre repère SVG fixe.
   // Elle ne dépend plus de la largeur/hauteur des wrappers des pages, ce qui
   // supprimait le décentrage et les étoiles masquées sur certains layouts.
+  // La taille de l'étoile doit suivre celle du médaillon (grilles 22–40px incluses).
+  // Au-delà de 70px, on conserve les dimensions premium historiques.
+  const effectiveStarSize = Math.max(4, Math.min(Number(starSize) || 14, resolvedAnchorSize * .19));
+  const effectiveGap = Math.min(Number(gapPx) || 0, resolvedAnchorSize * .05);
   const requestedStep = Math.max(1, Number(stepDeg) || 10);
-  const minCenterDistance = Math.max(4, starSize * 0.62);
-  const baseRadius = resolvedAnchorSize / 2 + Number(gapPx || 0) + starSize * 0.46;
+  const minCenterDistance = Math.max(2.5, effectiveStarSize * 0.62);
+  const baseRadius = resolvedAnchorSize / 2 + effectiveGap + effectiveStarSize * 0.46;
 
   const minStepForRadius = (radius: number) => {
     const ratio = Math.min(0.999, minCenterDistance / Math.max(2, 2 * radius));
@@ -190,8 +194,8 @@ export default function ProfileStarRing({
   }
 
   const halfSpread = ((count - 1) * effectiveStep) / 2;
-  const pad = Math.max(starSize * 1.8, 12);
-  const boxSize = Math.ceil(Math.max(resolvedAnchorSize + pad * 2, radius * 2 + starSize * 1.7));
+  const pad = Math.max(effectiveStarSize * 1.8, resolvedAnchorSize * .14);
+  const boxSize = Math.ceil(Math.max(resolvedAnchorSize + pad * 2, radius * 2 + effectiveStarSize * 1.7));
   const center = boxSize / 2;
   const animate = animateGlow || !!glow;
 
@@ -225,20 +229,20 @@ export default function ProfileStarRing({
           const angle = (angleDeg * Math.PI) / 180;
           const cx = center + Math.sin(angle) * radius;
           const cy = center - Math.cos(angle) * radius;
-          const x = cx - starSize / 2;
-          const y = cy - starSize / 2;
+          const x = cx - effectiveStarSize / 2;
+          const y = cy - effectiveStarSize / 2;
           const clipId = `psr-half-${uid}-${index}`;
           return (
             <svg
               key={`${index}-${entry.half ? "h" : "f"}`}
               x={x}
               y={y}
-              width={starSize}
-              height={starSize}
+              width={effectiveStarSize}
+              height={effectiveStarSize}
               viewBox="0 0 100 100"
               overflow="visible"
               style={{
-                filter: `drop-shadow(0 0 ${Math.max(1.5, starSize * 0.16)}px ${entry.color})`,
+                filter: `drop-shadow(0 0 ${Math.max(0.75, effectiveStarSize * 0.16)}px ${entry.color})`,
                 transformBox: "fill-box",
                 transformOrigin: "center",
                 animation: animate ? "psr-star-pulse 2.6s ease-in-out infinite" : undefined,

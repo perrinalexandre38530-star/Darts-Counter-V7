@@ -288,7 +288,7 @@
 .mex-fiesta-play .mex-active-score-summary>span{display:flex;flex-direction:column;gap:2px}.mex-fiesta-play .mex-active-score-summary b{font-size:12px;letter-spacing:.5px}.mex-fiesta-play .mex-active-score-summary small{font-size:9px;color:#f4d7a1}.mex-fiesta-play .mex-active-score-summary strong{font-size:22px;white-space:nowrap}.mex-fiesta-play .mex-active-score-summary strong small{font-size:10px}
 .mex-fiesta-play .mex-active-score-summary:focus-visible{outline:2px solid #ffe3a8;outline-offset:2px}
 .mex-fiesta-play .mex-target-stage.mex-target-art .mex-target-objective-label{position:absolute;top:7px;left:10px;z-index:4;color:#fff1c6;font-size:10px;font-weight:1000;letter-spacing:1px;text-shadow:0 2px 5px #000}
-.mex-score-detail{display:grid;gap:12px}.mex-score-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.mex-score-tabs button{display:grid;justify-items:center;gap:4px;padding:9px 3px;color:#ffe9c7;border:1px solid #cfa66366;border-radius:11px;background:#152321;font-size:10px;font-weight:950;cursor:pointer}.mex-score-tabs button.selected{background:linear-gradient(130deg,#185c40,#80362c);border-color:#f6c672}
+.mex-score-detail{display:grid;gap:12px}.mex-score-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.mex-score-tabs button{display:grid;justify-items:center;gap:4px;padding:9px 3px;color:#ffe9c7;border:1px solid #cfa66366;border-radius:11px;background:#152321;font-size:10px;font-weight:950;cursor:pointer}.mex-score-tabs button.selected{background:linear-gradient(130deg,#185c40,#80362c);border-color:#f6c672}
 .mex-score-rows,.mex-score-history,.mex-score-evolution{display:grid;gap:8px}.mex-score-detail h4{margin:5px 0;font-size:12px;color:#ffe2a5}.mex-score-rows>div,.mex-score-history section,.mex-rank-evolution{border:1px solid #e6bb6d4a;border-radius:10px;padding:10px;background:#13181cee}.mex-score-rows>div{display:flex;justify-content:space-between}.mex-score-rows strong,.mex-score-history strong{color:#ffe2a5}.mex-score-history section>div{display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:11px}.mex-score-evolution svg{width:100%;height:auto;max-height:260px;background:#101920;border-radius:10px}.mex-chart-legend{display:flex;gap:10px;flex-wrap:wrap}.mex-chart-legend span{display:flex;align-items:center;gap:5px;font-size:10px}.mex-chart-legend i{width:9px;height:9px;border-radius:50%}.mex-rank-evolution{display:flex;flex-wrap:wrap;gap:8px;font-size:10px}.mex-rank-evolution b{color:#ffe0a0}
 .mex-fiesta-play .mex-target-keys button small{display:none!important}
 @media(max-width:540px){.mex-fiesta-play .mex-active-player-premium .mex-active-identity{grid-template-columns:60px minmax(0,1fr) 63px 30px!important}.mex-fiesta-play .mex-active-goal{padding:5px 2px}.mex-fiesta-play .mex-active-goal strong{font-size:25px}.mex-fiesta-play .mex-active-score-summary{min-height:40px;margin-top:6px}}
@@ -349,3 +349,24 @@
 .mex-fiesta-play .mex-target-keys button.mex-hit-triple{background:var(--mss-hit-t-bg)!important;border-color:var(--mss-hit-t-border)!important;color:var(--mss-hit-t-text)!important}
 .mex-fiesta-play .mex-target-keys button.mex-hit-miss{background:var(--mss-hit-miss-bg)!important;border-color:var(--mss-hit-miss-border)!important;color:var(--mss-hit-miss-text)!important;text-shadow:none!important}
 .mex-fiesta-play .mex-dart-slot.mex-dart-miss.is-filled{color:var(--mss-hit-miss-tone)!important;border-color:var(--mss-hit-miss-border)!important}
+
+/* V174 — les deux BULL utilisent les tokens officiels, jamais S ou T. */
+.mex-fiesta-play .mex-target-keys button.mex-hit-bull25{
+  background:var(--mss-hit-bull25-bg)!important;
+  border-color:var(--mss-hit-bull25-border)!important;
+  color:var(--mss-hit-bull25-text)!important;
+  text-shadow:none!important;
+}
+.mex-fiesta-play .mex-target-keys button.mex-hit-bull50{
+  background:var(--mss-hit-bull50-bg)!important;
+  border-color:var(--mss-hit-bull50-border)!important;
+  color:var(--mss-hit-bull50-text)!important;
+  text-shadow:none!important;
+}
+.mex-fiesta-play .mex-target-keys button.mex-hit-bull25:disabled,
+.mex-fiesta-play .mex-target-keys button.mex-hit-bull50:disabled{opacity:.35!important}
+
+/* Le classement suit les vies, puis les points — légende explicite. */
+.mex-fiesta-play .mex-ranking-rule{margin:0;color:#e4d3b5;font-size:11px;line-height:1.35}
+.mex-fiesta-play .mex-rank-evolution{align-items:center}
+.mex-fiesta-play .mex-rank-evolution>span{padding:4px 7px;border:1px solid #e6bb6d24;border-radius:7px;background:#ffffff08;white-space:normal}

@@ -2,6 +2,7 @@ import "./wave61/MexicainFiesta.css";
 // @ts-nocheck
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
+import { buildMexicainRoundStandings } from "../lib/gameEngines/mexicainStandings";
 import { resolveBotGameDifficulty, resolveBotStars } from "../lib/botSkillLevel";
 import { createPortal } from "react-dom";
 import BackDot from "../components/BackDot";
@@ -1246,7 +1247,7 @@ function MexicainTargetInput({ state, currentThrow, setCurrentThrow, onValidate,
       {[0,1,2].map(i => <div key={i} className={`mex-dart-slot ${currentThrow[i] ? "is-filled" : ""} mex-dart-${dartTone(currentThrow[i])}`} aria-label={`Fléchette ${i+1} : ${dartText(currentThrow[i]) || "à jouer"}`}><MexDart/><span>{dartText(currentThrow[i]) || `D${i+1}`}</span></div>)}
     </div>
     <div className="mex-target-keys">
-      {bull ? <><button type="button" className="mex-hit-single" disabled={locked} onClick={()=>append(1)}>BULL 25</button><button type="button" className="mex-hit-triple" disabled={locked} onClick={()=>append(2)}>BULL 50</button></> : <><button type="button" className="mex-hit-single" disabled={locked} onClick={()=>append(1)}>S{targetNumber}</button><button type="button" className="mex-hit-double" disabled={locked} onClick={()=>append(2)}>D{targetNumber}</button><button type="button" className="mex-hit-triple" disabled={locked} onClick={()=>append(3)}>T{targetNumber}</button></>}
+      {bull ? <><button type="button" className="mex-hit-bull25" disabled={locked} onClick={()=>append(1)}>BULL 25</button><button type="button" className="mex-hit-bull50" disabled={locked} onClick={()=>append(2)}>BULL 50</button></> : <><button type="button" className="mex-hit-single" disabled={locked} onClick={()=>append(1)}>S{targetNumber}</button><button type="button" className="mex-hit-double" disabled={locked} onClick={()=>append(2)}>D{targetNumber}</button><button type="button" className="mex-hit-triple" disabled={locked} onClick={()=>append(3)}>T{targetNumber}</button></>}
       <button type="button" className="mex-hit-miss" disabled={locked} onClick={()=>append(1,true)}><MexIcon name="miss" size={17}/> MISS</button>
       <button type="button" className="mex-hit-undo" disabled={!currentThrow.length} onClick={()=>setCurrentThrow((previous:UIDart[])=>previous.slice(0,-1))}><MexIcon name="undo" size={17}/> ANNULER</button>
       <button type="button" className="mex-hit-validate" disabled={currentThrow.length !== 3 || state.phase!=="playing"} onClick={onValidate}><MexIcon name="check" size={18}/> VALIDER</button>
@@ -1289,24 +1290,57 @@ function MexicainActivePlayer({player,profile,state,currentThrow,onOpenScore}:an
   </section>;
 }
 
-function MexicainScoreDetail({ state, tab, onTabChange }: any) {
+function MexicainScoreDetail({ state, currentThrow, tab, onTabChange }: any) {
   const history:any[]=state?.special?.mexicainHistory || [];
   const players:any[]=state?.players || [];
   const activeScores=state?.special?.mexicainRoundScores || {};
   const round=Number(state?.roundIndex||0)+1;
-  const tabs=[{id:"round",label:"MANCHE",icon:"objective"},{id:"recap",label:"RÉCAP",icon:"history"},{id:"evolution",label:"ÉVOLUTION",icon:"ranking"}];
+  const roundTarget=Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20);
+  const activeId=state?.players?.[state?.activePlayerIndex]?.id;
+  const pendingScore=(currentThrow||[]).reduce((total:number,dart:any)=>{
+    const value=Number(dart?.v||0), mult=Number(dart?.mult||1);
+    if (!value) return total;
+    return roundTarget===21 ? (value===25 ? total+25*mult : total) : (value===roundTarget ? total+value*mult : total);
+  },0);
+  const tabs=[{id:"round",label:"MANCHE",icon:"objective"},{id:"recap",label:"RÉCAP",icon:"history"},{id:"evolution",label:"ÉVOLUTION",icon:"ranking"},{id:"survival",label:"VIES",icon:"players"}];
   const lines=players.map((p:any,i:number)=>({
     player:p,
     values:history.map((h:any)=>Number((h.scores||[]).find((x:any)=>String(x.id)===String(p.id))?.score||0)),
     color:["#e9c77a","#64dcb1","#f56d68","#74c5f5","#cda3f4","#ffa65a"][i%6],
   }));
+  // Reconstitution des vies à la fin de chaque manche : utilise uniquement le journal moteur.
+  // Valeur initiale définie par la variante, jamais à partir des scores d'une volée.
+  const initialLives=state?.config?.modeOptions?.progressive === "survival" ? 5 : 3;
+  const livesByPlayer=players.map((p:any,i:number)=>{
+    let remaining=initialLives;
+    const values=[remaining];
+    for(const h of history){
+      if ((h.losers||[]).some((id:any)=>String(id)===String(p.id)))
+        remaining=Math.max(0,remaining-Number(h.lifeLoss||1));
+      values.push(remaining);
+    }
+    return {player:p,values,color:lines[i]?.color||"#f0cb83"};
+  });
+  const roundStandings=buildMexicainRoundStandings(players,history,initialLives);
   const maxRound=Math.max(1,history.length);
   const maxValue=Math.max(1,...lines.flatMap((l:any)=>l.values));
   return <div className="mex-score-detail">
     <nav className="mex-score-tabs" aria-label="Détails des scores">{tabs.map(t=><button type="button" key={t.id} className={tab===t.id?"selected":""} onClick={()=>onTabChange(t.id)}><MexIcon name={t.icon} size={17}/><span>{t.label}</span></button>)}</nav>
-    {tab==="round"?<div className="mex-score-rows"><h4>RONDA {round} · CIBLE {Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20)===21?"BULL":state?.special?.mexicainTargets?.[state?.roundIndex]}</h4>{players.map(p=><div key={p.id}><b>{p.name}</b><strong>{activeScores[p.id]==null?"EN ATTENTE":`${Number(activeScores[p.id])} PTS`}</strong></div>)}</div>:null}
+    {tab==="round"?<div className="mex-score-rows"><h4>RONDA {round} · CIBLE {Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20)===21?"BULL":state?.special?.mexicainTargets?.[state?.roundIndex]}</h4>{players.map(p=><div key={p.id}><b>{p.name}</b><strong>{activeScores[p.id]==null?(String(p.id)===String(activeId)&&currentThrow?.length?`${pendingScore} PTS · SAISIE EN COURS`:"EN ATTENTE"):`${Number(activeScores[p.id])} PTS VALIDÉS`}</strong></div>)}</div>:null}
     {tab==="recap"?<div className="mex-score-history">{history.length?history.slice().reverse().map((h:any,i:number)=><section key={i}><h4>RONDA {h.round} · CIBLE {h.target===21?"BULL":h.target}</h4>{(h.scores||[]).map((sc:any)=><div key={sc.id}><span>{players.find((p:any)=>String(p.id)===String(sc.id))?.name||sc.id}</span><strong>{sc.score} PTS {h.losers?.includes(sc.id)?`· −${h.lifeLoss} ♥`:""}</strong></div>)}</section>):<p>Aucune manche terminée pour le moment.</p>}</div>:null}
-    {tab==="evolution"?<div className="mex-score-evolution"><h4>ÉVOLUTION DES POINTS PAR MANCHE</h4>{history.length?<><svg viewBox="0 0 320 178" role="img" aria-label="Graphique des scores par manche" preserveAspectRatio="xMidYMid meet"><path d="M28 12V151H310" stroke="#d0b987" strokeWidth="1" fill="none" opacity=".65"/>{[0,1,2,3,4].map(k=><line key={k} x1="28" y1={12+k*34.75} x2="310" y2={12+k*34.75} stroke="#ffffff" strokeOpacity=".10"/>)}{lines.map((l:any)=><polyline key={l.player.id} fill="none" stroke={l.color} strokeWidth="2.8" strokeLinejoin="round" strokeLinecap="round" points={l.values.map((v:number,i:number)=>`${28+((i+.5)/maxRound)*282},${151-(v/maxValue)*139}`).join(" ")}/>)}<text x="7" y="14" fill="#d9cba4" fontSize="9">{maxValue}</text><text x="16" y="154" fill="#d9cba4" fontSize="9">0</text></svg><div className="mex-chart-legend">{lines.map((l:any)=><span key={l.player.id}><i style={{background:l.color}}/>{l.player.name}</span>)}</div></>:<p>Le graphique apparaîtra après la première manche terminée.</p>}<h4>CLASSEMENT PAR MANCHE</h4>{history.map((h:any)=><div className="mex-rank-evolution" key={h.round}><b>R{h.round}</b>{[...(h.scores||[])].sort((a:any,b:any)=>b.score-a.score).map((sc:any,i:number)=><span key={sc.id}>#{i+1} {players.find((p:any)=>p.id===sc.id)?.name} ({sc.score})</span>)}</div>)}</div>:null}
+    {tab==="survival"?<div className="mex-score-evolution">
+      <h4>ÉVOLUTION DES VIES · SURVIE</h4>
+      {history.length ? <>
+        <svg viewBox="0 0 320 178" role="img" aria-label="Évolution des vies restantes par manche" preserveAspectRatio="xMidYMid meet">
+          <path d="M28 12V151H310" stroke="#d0b987" strokeWidth="1" fill="none" opacity=".65" />
+          {Array.from({length:initialLives+1},(_,i)=> <g key={i}><line x1="28" y1={151-(i/initialLives)*139} x2="310" y2={151-(i/initialLives)*139} stroke="#ffffff" strokeOpacity=".10"/><text x="13" y={154-(i/initialLives)*139} fill="#d9cba4" fontSize="9">{i}</text></g>)}
+          {livesByPlayer.map((l:any)=><polyline key={l.player.id} fill="none" stroke={l.color} strokeWidth="2.8" strokeLinejoin="round" strokeLinecap="round" points={l.values.map((v:number,i:number)=>`${28+(i/Math.max(1,history.length))*282},${151-(v/initialLives)*139}`).join(" ")}/>)}
+        </svg>
+        <div className="mex-chart-legend">{livesByPlayer.map((l:any)=><span key={l.player.id}><i style={{background:l.color}}/>{l.player.name} · {l.values[l.values.length-1]} ♥</span>)}</div>
+        <div className="mex-score-history">{history.map((h:any,i:number)=><section key={i}><h4>RONDA {h.round}</h4>{livesByPlayer.map((l:any)=><div key={l.player.id}><span>{l.player.name}</span><strong>{l.values[i+1]} ♥</strong></div>)}</section>)}</div>
+      </> : <p>Les vies évolueront après la première manche terminée.</p>}
+    </div>:null}
+    {tab==="evolution"?<div className="mex-score-evolution"><h4>ÉVOLUTION DES POINTS PAR MANCHE</h4>{history.length?<><svg viewBox="0 0 320 178" role="img" aria-label="Graphique des scores par manche" preserveAspectRatio="xMidYMid meet"><path d="M28 12V151H310" stroke="#d0b987" strokeWidth="1" fill="none" opacity=".65"/>{[0,1,2,3,4].map(k=><line key={k} x1="28" y1={12+k*34.75} x2="310" y2={12+k*34.75} stroke="#ffffff" strokeOpacity=".10"/>)}{lines.map((l:any)=><polyline key={l.player.id} fill="none" stroke={l.color} strokeWidth="2.8" strokeLinejoin="round" strokeLinecap="round" points={l.values.map((v:number,i:number)=>`${28+((i+.5)/maxRound)*282},${151-(v/maxValue)*139}`).join(" ")}/>)}<text x="7" y="14" fill="#d9cba4" fontSize="9">{maxValue}</text><text x="16" y="154" fill="#d9cba4" fontSize="9">0</text></svg><div className="mex-chart-legend">{lines.map((l:any)=><span key={l.player.id}><i style={{background:l.color}}/>{l.player.name}</span>)}</div></>:<p>Le graphique apparaîtra après la première manche terminée.</p>}<h4>CLASSEMENT DE SURVIE PAR MANCHE</h4><p className="mex-ranking-rule">Priorité aux vies restantes, puis aux points cumulés.</p>{roundStandings.map((entry:any)=><div className="mex-rank-evolution" key={entry.round}><b>RONDA {entry.round}</b>{entry.standings.map((standing:any)=><span key={standing.playerId}>#{standing.rank} {players.find((p:any)=>String(p.id)===standing.playerId)?.name || standing.playerId} · {standing.lives} ♥ · {standing.totalPoints} pts{standing.eliminated ? " · ÉLIMINÉ" : ""}</span>)}</div>)}</div>:null}
   </div>;
 }
 
@@ -2245,7 +2279,7 @@ export default function Wave61SharedPlay(props: any) {
       </header>
       <h3>{({ objective:"MANCHE EN COURS", stats:"SCORES ET ÉVOLUTION", players:"JOUEURS ET VIES", ranking:"CLASSEMENT", history:"HISTORIQUE DES VOLÉES", settings:"CONFIGURATION", rules:"RÈGLES DU MEXICAIN" } as Record<string,string>)[quickPanel] || "INFORMATIONS"}</h3>
       <div className="mex-floating-content">
-        {quickPanel === "stats" ? <MexicainScoreDetail state={state} tab={mexScoreTab} onTabChange={setMexScoreTab}/> : null}
+        {quickPanel === "stats" ? <MexicainScoreDetail state={state} currentThrow={currentThrow} tab={mexScoreTab} onTabChange={setMexScoreTab}/> : null}
         {quickPanel === "objective" ? <MexicainPanel state={state} accent={accent} detailed avatarFor={mexAvatarFor} /> : null}
         {quickPanel === "players" ? <div className="mex-floating-list">{state.players.map((player:any,index:number) => { const lives = Number(state.lives?.[player.id]||0); const total = Number(state.scores?.[player.id]||0); const round = Number(state.special?.mexicainRoundScores?.[player.id]||0); const avatar = mexAvatarFor(player.id); return <div key={player.id} className={`mex-player-list-card ${state.eliminated?.[player.id] ? "mex-list-out" : ""}`}>{avatar ? <div className="mex-list-avatar-bg" style={{backgroundImage:`url(${avatar})`}} aria-hidden="true"/> : null}<div className="mex-list-shade" aria-hidden="true"/><div className="mex-list-main"><span><b>{index+1}. {player.name}</b><small>{state.activePlayerIndex===index ? "JOUEUR ACTIF" : state.eliminated?.[player.id] ? "ÉLIMINÉ" : "EN JEU"}</small></span><em>{total} PTS AU TOTAL</em></div><div className="mex-list-side"><strong>{round} <small>PTS MANCHE</small></strong><MexHeartLives lives={lives} /></div></div>})}</div> : null}
         {quickPanel === "ranking" ? <div className="mex-floating-list">{[...state.players].sort((a:any,b:any) => Number(state.lives?.[b.id]||0)-Number(state.lives?.[a.id]||0) || Number(state.scores?.[b.id]||0)-Number(state.scores?.[a.id]||0)).map((player:any,index:number) => { const avatar = mexAvatarFor(player.id); const lives = Number(state.lives?.[player.id]||0); const score = Number(state.scores?.[player.id]||0); return <div key={player.id} className="mex-player-list-card mex-ranking-card">{avatar ? <div className="mex-list-avatar-bg" style={{backgroundImage:`url(${avatar})`}} aria-hidden="true"/> : null}<div className="mex-list-shade" aria-hidden="true"/><div className="mex-list-main"><span><b>#{index+1} · {player.name}</b><small>{score} points validés</small></span><em>{state.eliminated?.[player.id] ? "ÉLIMINÉ" : lives > 0 ? "EN COURSE" : "OUT"}</em></div><div className="mex-list-side"><strong>{lives} <small>VIES</small></strong><MexHeartLives lives={lives} /></div></div>})}</div> : null}

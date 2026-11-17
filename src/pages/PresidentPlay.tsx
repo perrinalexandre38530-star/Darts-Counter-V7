@@ -30,8 +30,10 @@ import {
   presidentLegalTargets,
   presidentRoleForRank,
   presidentCardRank,
+  presidentCardKilos,
   presidentTargetDescription,
   presidentTargetLabel,
+  presidentCardsPerPlayer,
   type PresidentComboSize,
   type PresidentConfigPayload,
   type PresidentState,
@@ -51,6 +53,8 @@ function toGameDart(d: UiDart): GameDart {
 }
 function dartMatchesUi(config: PresidentConfigPayload, target: PresidentTarget, d: UiDart) {
   if (config.variant === "chaos" && config.coupEtat && d.v === 25 && d.mult === 2) return true;
+  if (target.value === 25) return d.v === 25 && d.mult === 1;
+  if (target.value === 50) return d.v === 25 && d.mult === 2;
   if (config.variant === "chaos" && config.bullJoker && target.size === 1 && d.v === 25 && d.mult === 1) return true;
   const expected = target.size;
   return d.v === target.value && d.mult === expected;
@@ -70,8 +74,11 @@ function normalizeConfig(props: any): PresidentConfigPayload & {
         botsEnabled: Boolean(raw?.botsEnabled),
         botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
         rounds: ([1, 3, 5, 7, 10].includes(Number(raw?.rounds)) ? Number(raw.rounds) : 5) as any,
-        handSize: Math.max(5, Math.min(16, Number(raw?.handSize || 10))),
-        deckCopies: ([3, 4, 5].includes(Number(raw?.deckCopies)) ? Number(raw.deckCopies) : 4) as any,
+        handSize: presidentCardsPerPlayer(
+          Math.max(3, Math.min(8, Number(raw?.selectedIds?.length || raw?.players || 3))),
+          Math.max(5, Math.min(16, Number(raw?.handSize || 10)))
+        ),
+        deckCopies: 1,
         variant: raw?.variant === "chaos" ? "chaos" : "classic",
         randomOrder: Boolean(raw?.randomOrder),
         bullJoker: raw?.variant === "chaos" && raw?.bullJoker !== false,
@@ -101,7 +108,9 @@ function PlayingCard({ value, mini = false, ghost = false, suitIndex = 0 }: {
     const rank = presidentCardRank(value);
     const w = mini ? 43 : 58;
     const h = mini ? 61 : 82;
-    const imageUrl = mssPresidentCardUrl(suitIndex, value);
+    const imageUrl = value === 25 ? mssJokerCardUrl("hawaii-501")
+      : value === 50 ? mssJokerCardUrl("king-of-bling")
+      : mssPresidentCardUrl(suitIndex, value);
     // The suit index comes from the President engine's actual dealt card.
     // No substitution of suits or hidden cards: this is presentation only.
     return <div aria-label={`Carte ${rank} ${suit}`} style={{
@@ -209,7 +218,7 @@ function AdviceTabsContent({
       <div style={{ ...panel(), borderColor:"#f0cf7666" }}>
         <div style={{ color:"#ffd789", fontWeight:1100 }}>COUP SÉLECTIONNÉ</div>
         <div style={{ marginTop:5 }}><b>{targetLabel}</b>{selectedTarget ? ` · ${selectedTarget.size===1?"1 carte":selectedTarget.size===2?"2 cartes identiques":"3 cartes identiques"}` : ""}</div>
-        <div style={{ marginTop:5, color:"rgba(255,255,255,.76)" }}>{selectedTarget ? `Si tu confirmes ce choix, ouvre SAISIE puis tente exactement ${selectedTarget.size===1?"le simple":selectedTarget.size===2?"le double":"le triple"} ${selectedTarget.value}.` : "Choisis une carte de ta main pour voir la consigne exacte."}</div>
+        <div style={{ marginTop:5, color:"rgba(255,255,255,.76)" }}>{selectedTarget ? `Si tu confirmes ce choix, ouvre SAISIE puis tente exactement ${selectedTarget.value===25?"BULL25":selectedTarget.value===50?"DBULL50":`${selectedTarget.size===1?"le simple":selectedTarget.size===2?"le double":"le triple"} ${selectedTarget.value}`}.` : "Choisis une carte de ta main pour voir la consigne exacte."}</div>
       </div>
       <div style={{ ...panel(), borderColor:`${primary}66` }}>
         <div style={{ color:primary, fontWeight:1100 }}>COUP RECOMMANDÉ PAR AWENA</div>
@@ -220,18 +229,18 @@ function AdviceTabsContent({
     </div> : null}
     {tab === "strategie" ? <div style={{ display:"grid", gap:10, fontSize:12, lineHeight:1.55 }}>
       <div style={{ ...panel(), borderColor:"#6ce7ff55" }}><div style={{ color:"#6ce7ff", fontWeight:1100 }}>L'IDÉE GÉNÉRALE</div><div style={{ marginTop:5 }}>Au Président, ton but est de <b>vider ta main avant les autres</b>. En début de pli, il est souvent judicieux de jouer des <b>petites cartes</b> pour t'alléger, tout en gardant quelques cartes fortes pour reprendre la main plus tard.</div></div>
-      <div style={{ ...panel(), borderColor:"#d6b06055" }}><div style={{ color:"#ffd789", fontWeight:1100 }}>QUAND GARDER TES GROSSES CARTES ?</div><div style={{ marginTop:5 }}>Les <b>As</b> et surtout les <b>2</b> sont puissants. Les conserver peut t'aider à battre un pli important ou à reprendre l'initiative quand les autres montent en valeur.</div></div>
+      <div style={{ ...panel(), borderColor:"#d6b06055" }}><div style={{ color:"#ffd789", fontWeight:1100 }}>QUAND GARDER TES GROSSES CARTES ?</div><div style={{ marginTop:5 }}>Les <b>As</b>, les <b>2</b> et les Jokers uniques sont puissants. Les conserver peut t'aider à battre un pli important ou à reprendre l'initiative quand les autres montent en valeur.</div></div>
       <div style={{ ...panel(), borderColor:"#8ff6d255" }}><div style={{ color:"#8ff6d2", fontWeight:1100 }}>QUAND JOUER UNE PAIRE OU UN BRELAN ?</div><div style={{ marginTop:5 }}>Si la table est libre et que tu veux évacuer plusieurs cartes d'un coup, une <b>paire</b> ou un <b>brelan</b> peut être excellent. Mais si cela te fait brûler une combinaison très forte trop tôt, une petite carte simple peut rester plus prudente.</div></div>
       <div style={{ ...panel(), borderColor:`${primary}66` }}><div style={{ color:primary, fontWeight:1100 }}>DANS TA SITUATION</div><div style={{ marginTop:5 }}>{recommendationReason}</div></div>
     </div> : null}
     {tab === "viser" ? <div style={{ display:"grid", gap:10, fontSize:12, lineHeight:1.55 }}>
       <div style={{ ...panel(), borderColor:"#8ff6d255" }}><div style={{ color:"#8ff6d2", fontWeight:1100 }}>TRADUCTION DES COUPS</div><div style={{ marginTop:5 }}><b>S</b> = Simple = 1 carte. <b>D</b> = Double = 2 cartes identiques. <b>T</b> = Triple = 3 cartes identiques.</div><div style={{ marginTop:5 }}>Exemples : <b>S3</b> = vise le simple 3 pour poser un 3. <b>D7</b> = vise le double 7 pour poser une paire de 7. <b>T9</b> = vise le triple 9 pour poser un brelan de 9.</div></div>
       <div style={{ ...panel(), borderColor:"#ffb17f55" }}><div style={{ color:"#ffb17f", fontWeight:1100 }}>TES 3 FLÉCHETTES</div><div style={{ marginTop:5 }}>Tu disposes de <b>3 fléchettes maximum</b>. Un seul impact exact suffit pour réussir le coup et poser les cartes choisies. Si aucun impact n'est bon, tu ne poses rien.</div></div>
-      <div style={{ ...panel(), borderColor:"#6ce7ff55" }}><div style={{ color:"#6ce7ff", fontWeight:1100 }}>EN PRATIQUE</div><div style={{ marginTop:5 }}>{selectedTarget ? `Ton choix actuel est ${presidentTargetLabel(selectedTarget)}. Il faut donc viser exactement ${selectedTarget.size===1?"le simple":selectedTarget.size===2?"le double":"le triple"} ${selectedTarget.value}.` : "Choisis d'abord une carte dans ta main, puis ouvre SAISIE pour voir la cible à viser."}</div></div>
+      <div style={{ ...panel(), borderColor:"#6ce7ff55" }}><div style={{ color:"#6ce7ff", fontWeight:1100 }}>EN PRATIQUE</div><div style={{ marginTop:5 }}>{selectedTarget ? `Ton choix actuel est ${presidentTargetLabel(selectedTarget)}. Il faut donc viser exactement ${selectedTarget.value===25?"BULL25":selectedTarget.value===50?"DBULL50":`${selectedTarget.size===1?"le simple":selectedTarget.size===2?"le double":"le triple"} ${selectedTarget.value}`}.` : "Choisis d'abord une carte dans ta main, puis ouvre SAISIE pour voir la cible à viser."}</div></div>
     </div> : null}
     {tab === "regles" ? <div style={{ display:"grid", gap:10, fontSize:12, lineHeight:1.58 }}>
       <div style={{ ...panel(), borderColor:"#8ff6d255" }}><div style={{ color:"#8ff6d2", fontWeight:1100 }}>BUT DU JEU</div><div style={{ marginTop:5 }}>Être le <b>premier joueur à vider sa main</b>. Le premier devient <b>Président</b>. Le dernier devient <b>Trou du cul</b>.</div></div>
-      <div style={{ ...panel(), borderColor:"#f0cf7666" }}><div style={{ color:"#ffd789", fontWeight:1100 }}>ORDRE DES CARTES</div><div style={{ marginTop:5 }}>De la plus petite à la plus forte : <b>3, 4, 5, 6, 7, 8, 9, 10, Valet, Dame, Roi, As, 2</b>. Donc le <b>2</b> est la carte la plus forte.</div></div>
+      <div style={{ ...panel(), borderColor:"#f0cf7666" }}><div style={{ color:"#ffd789", fontWeight:1100 }}>ORDRE DES CARTES</div><div style={{ marginTop:5 }}>De la plus petite à la plus forte : <b>3, 4, 5, 6, 7, 8, 9, 10, Valet, Dame, Roi, As, 2, Joker BULL, Joker DBULL</b>. Les deux Jokers sont uniques ; ils se jouent sur BULL25 et DBULL50.</div></div>
       <div style={{ ...panel(), borderColor:"#6ce7ff55" }}><div style={{ color:"#6ce7ff", fontWeight:1100 }}>COMMENT JOUER UN PLI</div><div style={{ marginTop:5 }}>Si la table est libre, tu peux ouvrir avec <b>une carte</b>, <b>une paire</b> ou <b>un brelan</b>. Si une combinaison est déjà sur la table, tu dois jouer <b>le même type</b> (simple, paire ou brelan) avec une valeur <b>plus forte</b>{currentTarget ? " que celle affichée" : ""}.</div></div>
       <div style={{ ...panel(), borderColor:"#ffb17f55" }}><div style={{ color:"#ffb17f", fontWeight:1100 }}>PASSER / GAGNER LE PLI</div><div style={{ marginTop:5 }}>Si tu ne peux pas jouer ou si tu préfères attendre, tu peux <b>passer</b>. Quand tous les autres ont passé, le dernier joueur ayant posé une combinaison gagne le pli et ouvre le pli suivant.</div></div>
       <div style={{ ...panel(), borderColor:`${primary}66` }}><div style={{ color:primary, fontWeight:1100 }}>RAPPEL IMPORTANT</div><div style={{ marginTop:5 }}>Sur cette version fléchettes, choisir une combinaison ne suffit pas : il faut aussi <b>réussir la cible correspondante</b> sur le board. Sans impact exact, la combinaison n'est pas posée.</div></div>
@@ -260,42 +269,103 @@ function roleMiniMeta(role: string) {
   return null;
 }
 
-function FeltTableCards({ target, suits = [], primary }: { target: PresidentTarget | null; suits?: number[]; primary: string }) {
-  const rotations = [-11, -5, 3, 10];
-  if (!target) {
+function FeltTableCards({ target, history = [], roundNo, trickNo, primary }: {
+  target: PresidentTarget | null;
+  history?: any[];
+  roundNo: number;
+  trickNo: number;
+  primary: string;
+}) {
+  // Pile de cartes VRAIMENT posées pendant le pli courant, pas seulement le dernier coup.
+  // Le positionnement est stable par carte : rotations et décalages dépendent de l'ordre
+  // des coups, pas d'un tirage à chaque render (qui ferait scintiller le tapis).
+  const cards: Array<{value:number; suit:number; key:string; playerId:string}> = [];
+  for (const event of history || []) {
+    if (event.roundNo !== roundNo || event.trickNo !== trickNo || !event.success || !event.target) continue;
+    for (let index = 0; index < event.target.size; index += 1) {
+      cards.push({value:event.target.value, suit:event.playedSuits?.[index] ?? (index % 4), key:`${event.id}-${index}`, playerId:event.playerId});
+    }
+  }
+  if (!target || cards.length === 0) {
     return <div style={{ minHeight: 118, display:"grid", placeItems:"center", opacity:.95 }}>
       <div style={{ display:"grid", justifyItems:"center", gap:8 }}>
-        <div style={{ width:96, height:96, borderRadius:999, display:"grid", placeItems:"center", background:"radial-gradient(circle at 50% 50%, rgba(255,215,106,.18), rgba(255,215,106,.03) 55%, transparent 72%)", color:"rgba(255,221,150,.92)", fontSize:42, textShadow:"0 0 18px rgba(255,215,106,.25)" }}>♛</div>
+        <div style={{ width:88, height:86, borderRadius:999, display:"grid", placeItems:"center", background:"radial-gradient(circle at 50% 50%, rgba(255,215,106,.18), rgba(255,215,106,.03) 55%, transparent 72%)", color:"rgba(255,221,150,.92)", fontSize:41, textShadow:"0 0 18px rgba(255,215,106,.25)" }}>♛</div>
         <div style={{ padding:"6px 12px", borderRadius:999, border:"1px solid rgba(255,215,106,.32)", background:"rgba(0,0,0,.18)", color:"#f8dc9d", fontWeight:1000, fontSize:10, letterSpacing:.8 }}>OUVERTURE LIBRE</div>
       </div>
     </div>;
   }
-  return <div style={{ minHeight: 138, display:"grid", placeItems:"center" }}>
-    <div style={{ position:"relative", width:Math.max(120, 78 + target.size * 34), height:120 }}>
-      {Array.from({ length: target.size }, (_, i) => {
-        const left = 16 + i * 24;
-        const top = 12 + (i % 2) * 5;
-        const rot = rotations[i % rotations.length];
-        return <div key={i} style={{ position:"absolute", left, top, transform:`rotate(${rot}deg)`, transformOrigin:"50% 90%", filter:"drop-shadow(0 8px 14px rgba(0,0,0,.42))" }}>
-          {suits[i] !== undefined ? <PlayingCard value={target.value} suitIndex={suits[i]} /> : <PlayingCard value={target.value} suitIndex={i} />}
-        </div>;
-      })}
-      <div style={{ position:"absolute", left:"50%", bottom:-2, transform:"translateX(-50%)", padding:"5px 12px", borderRadius:999, background:"rgba(0,0,0,.30)", border:`1px solid ${primary}55`, color:"#ffe3aa", fontWeight:1100, fontSize:10, letterSpacing:.5 }}>{presidentTargetLabel(target)}</div>
+  const total = cards.length;
+  const position = (index: number) => {
+    // Spirale légèrement chaotique : chaque nouvelle carte découvre les coins
+    // et bordures des précédentes, avec des angles variés mais toujours lisibles.
+    const angle = index * 2.399963229728653; // angle d'or
+    const distance = total === 1 ? 0 : Math.min(70, 13 + Math.sqrt(index) * 11);
+    const x = Math.cos(angle) * distance + ((index % 3) - 1) * 2;
+    const y = Math.sin(angle) * distance * .48 + ((index % 4) - 1.5) * 4;
+    const tilt = [-14, 8, -6, 17, -10, 5, 13, -17, 2, 11][index % 10];
+    return { x, y, tilt };
+  };
+  return <div style={{ width:"min(100%,290px)", height:"clamp(110px, 18dvh, 166px)", position:"relative", margin:"0 auto", isolation:"isolate" }} aria-label={`${total} carte${total>1?"s":""} posée${total>1?"s":""} dans le pli`}>
+    {cards.map((card, index) => {
+      const pos = position(index);
+      return <div key={card.key} title={`Carte ${presidentCardRank(card.value)} · joueur ${card.playerId}`} style={{ position:"absolute", left:`calc(50% + ${pos.x}px)`, top:`calc(45% + ${pos.y}px)`, transform:`translate(-50%,-50%) rotate(${pos.tilt}deg)`, transformOrigin:"50% 50%", zIndex:index+1, filter:"drop-shadow(0 5px 8px rgba(0,0,0,.40))", pointerEvents:"none" }}>
+        <PlayingCard value={card.value} suitIndex={card.suit} />
+      </div>;
+    })}
+    <div style={{ position:"absolute", zIndex:total+2, bottom:0, left:"50%", transform:"translateX(-50%)", display:"flex", alignItems:"center", gap:7, whiteSpace:"nowrap", padding:"5px 10px", borderRadius:999, background:"rgba(3,24,19,.87)", border:`1px solid ${primary}70`, color:"#ffe3aa", fontWeight:1100, fontSize:10 }}>
+      <span>{presidentTargetLabel(target)}</span>
+      <span style={{color:"#a8ddc4",fontSize:9}}>· {total} carte{total>1?"s":""}</span>
+    </div>
+  </div>;
+}
+
+/** A completed trick is frozen in this snapshot while the engine has already advanced. */
+function PresidentTrickTransition({ data, profilesById, onContinue, primary }: any) {
+  const cards: Array<{ value:number; suit:number; key:string }> = [];
+  (data.events || []).forEach((event:any) => {
+    if (!event.success || !event.target) return;
+    for (let i = 0; i < event.target.size; i++) {
+      cards.push({ value:event.target.value, suit:event.playedSuits?.[i] ?? (i%4), key:`${event.id}-${i}` });
+    }
+  });
+  const winner = profilesById.get(data.winnerId);
+  return <div role="dialog" aria-modal="true" aria-label="Fin du pli — annonce du gagnant" style={{ position:"fixed", inset:0, zIndex:9999, display:"grid", placeItems:"center", padding:12, background:"rgba(0,0,0,.77)", backdropFilter:"blur(6px)" }}>
+    <style>{`@keyframes presidentCollectCards { 0%,54% { opacity:1; scale:1; } 90% { opacity:.4; scale:.35; } 100% { opacity:0; scale:.1; } } @media (prefers-reduced-motion: reduce) { .president-collect-card { animation:none !important; } }`}</style>
+    <div style={{width:"min(440px,100%)",maxHeight:"min(90dvh,650px)",overflow:"auto",padding:"18px 14px",borderRadius:24,border:"2px solid #d9b760",background:"radial-gradient(ellipse at 50% 40%,#15523e,#05251f 70%,#071614)",boxShadow:"0 0 40px rgba(242,199,93,.24),0 15px 60px #000c",textAlign:"center",display:"grid",gap:12,justifyItems:"center"}}>
+      <div style={{fontSize:10,fontWeight:1000,letterSpacing:1.4,color:"#d3ecd9"}}>MANCHE {data.roundNo} · FIN DU PLI {data.trickNo}</div>
+      <div style={{display:"grid",placeItems:"center",gap:5}}><span style={{fontSize:36,color:"#f8d77e",filter:"drop-shadow(0 0 15px #ffd76a55)"}}>♛</span><div style={{fontSize:24,fontWeight:1100,color:"#ffe3a0"}}>PLI REMPORTÉ !</div></div>
+      <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:"center"}}><ProfileAvatar profile={winner} size={52}/><div style={{fontSize:17,fontWeight:1000,color:"#fff5d6"}}>{playerName(winner).toUpperCase()}</div></div>
+      <div style={{fontSize:11,color:"#b9e4cc",lineHeight:1.55}}>Tous les adversaires ont passé : le dernier joueur à avoir posé des cartes remporte ce pli.</div>
+      <div style={{width:"100%",minHeight:135,position:"relative",display:"grid",placeItems:"center",overflow:"hidden",borderRadius:16,background:"radial-gradient(ellipse at center,#185f49,#0a3228 74%)"}}>
+        {cards.length ? <div style={{width:220,height:122,position:"relative"}}>{cards.map((card,index)=>{
+          const angle = index*2.39996, dist = Math.min(65,11+Math.sqrt(index)*11);
+          const x=Math.cos(angle)*dist, y=Math.sin(angle)*dist*.46;
+          const tilt=[-13,8,-5,16,-11,4,12,-16][index%8];
+          return <div key={card.key} className="president-collect-card" style={{position:"absolute",left:`calc(50% + ${x}px)`,top:`calc(50% + ${y}px)`,transform:`translate(-50%,-50%) rotate(${tilt}deg)`,zIndex:index+1,filter:"drop-shadow(0 4px 7px #0009)",animation:"presidentCollectCards 3.5s ease-in-out forwards"}}><PlayingCard mini value={card.value} suitIndex={card.suit}/></div>;
+        })}</div> : <div style={{fontSize:12,color:"#b9e4cc"}}>Pile ramassée</div>}
+      </div>
+      <div style={{color:"#f4dfa7",fontSize:12,fontWeight:1000}}>{cards.length} carte{cards.length>1?"s":""} sur la table · pli {data.trickNo} terminé</div>
+      <div style={{fontSize:12,color:"#dcf4e7",lineHeight:1.55}}>Les cartes posées quittent définitivement les mains.<br/><b style={{color:"#ffdd86"}}>Aucune nouvelle distribution.</b></div>
+      <div style={{width:"100%",padding:"10px 12px",borderRadius:12,background:"#0005",border:"1px solid #d9b76055",color:"#b8f4d9",fontWeight:1000,fontSize:12}}>PLI {data.nextTrick} · TABLE LIBRE<br/><span style={{fontWeight:500,fontSize:11,color:"#d7e6db"}}>{playerName(winner)} ouvre le prochain pli.</span></div>
+      <button type="button" onClick={onContinue} style={{width:"100%",minHeight:44,borderRadius:13,border:"1px solid #ffe4a3",background:"linear-gradient(90deg,#b98a2f,#ffdf8a)",color:"#181409",fontWeight:1100,fontSize:13,cursor:"pointer"}}>CONTINUER · PLI {data.nextTrick}</button>
+      <div style={{fontSize:10,color:"#a9c7b8"}}>Un pli gagné compte dans les statistiques, mais ne rapporte pas directement de points.</div>
     </div>
   </div>;
 }
 
 function RulesContent({ config, primary }: any) {
     return <div style={{ display: "grid", gap: 12 }}>
-    <div style={{ padding: 10, borderRadius: 14, border: `1px solid ${primary}45`, background: `${primary}0d`, fontSize: 11.5, lineHeight: 1.5 }}><b style={{ color: primary }}>LE PRINCIPE EN UNE PHRASE :</b><br />Tu possèdes une main de cartes avec les rangs 3, 4, …, 10, Valet, Dame, Roi, As et 2 (la plus forte). Pour poser une carte, une paire ou un brelan, tu dois toucher au dartboard le <b>Simple</b>, le <b>Double</b> ou le <b>Triple</b> correspondant.</div>
+    <div style={{ padding: 10, borderRadius: 14, border: `1px solid ${primary}45`, background: `${primary}0d`, fontSize: 11.5, lineHeight: 1.5 }}><b style={{ color: primary }}>LE PRINCIPE EN UNE PHRASE :</b><br />Tu possèdes une main de cartes avec les rangs 3, 4, …, 10, Valet, Dame, Roi, As et 2, puis les deux Jokers spéciaux. Pour poser une carte, une paire ou un brelan, tu dois toucher au dartboard le <b>Simple</b>, le <b>Double</b> ou le <b>Triple</b> correspondant.</div>
+    <div style={{padding:9,borderRadius:12,border:"1px solid rgba(255,215,106,.32)",background:"rgba(255,215,106,.06)",color:"#f2dfab",fontSize:11,lineHeight:1.5}}><b>PAQUET UNIQUE · 54 CARTES</b> — 52 cartes avec 4 enseignes uniques + 2 Jokers MSS. HAWAII 501 se pose en visant BULL25 et KING OF BLING en visant DBULL50. Les Jokers sont uniques et plus forts que le 2. Les mains diminuent automatiquement à 8 joueurs (6 cartes chacun).</div>
     <RuleStep n="1" title="OBJECTIF" color={primary}>Sois le premier à vider ta main. Le premier sans carte devient <b>Président</b>. Le dernier devient <b>Trou du cul</b>.</RuleStep>
     <RuleStep n="2" title="COMMENT LIRE S / D / T ?" color="#43d8ff"><b>S7</b> = jouer 1 carte 7 → toucher Simple 7. <b>D7</b> = jouer 2 cartes 7 → toucher Double 7. <b>T7</b> = jouer 3 cartes 7 → toucher Triple 7.</RuleStep>
     <div style={{ ...panel(), padding: 9, borderColor: "rgba(67,216,255,.28)" }}><div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "center" }}><div style={{ position: "relative", width: 77, height: 66 }}><div style={{ position: "absolute", left: 0, top: 2, transform: "rotate(-7deg) scale(.72)", transformOrigin: "top left" }}><PlayingCard value={2}/></div><div style={{ position: "absolute", left: 26, top: 2, transform: "rotate(7deg) scale(.72)", transformOrigin: "top left" }}><PlayingCard value={2}/></div></div><div style={{ fontSize: 11.5, lineHeight: 1.45 }}><b style={{ color: "#43d8ff" }}>EXEMPLE — D2</b><br />Ta combinaison est une <b>paire de 2</b>. Tu as jusqu’à 3 fléchettes pour toucher <b>Double 2</b>. Dès que D2 est touché, les 2 cartes « 2 » quittent ta main.</div></div></div>
     <RuleStep n="3" title="OUVERTURE DU PLI" color="#ffd45c">Quand « OUVERTURE LIBRE » est affiché, choisis n’importe quelle combinaison autorisée par ta main : simple, paire ou brelan.</RuleStep>
-    <RuleStep n="4" title="RÉPONDRE AU COUP PRÉCÉDENT" color="#72efad">Tu dois garder le <b>même type de combinaison</b> et jouer une valeur supérieure. Exemple : après D7, tu peux jouer D8, D9, D14 (As) ou D2, mais pas S8 ni T8. Le 2 est le plus fort.</RuleStep>
+    <RuleStep n="4" title="RÉPONDRE AU COUP PRÉCÉDENT" color="#72efad">Tu dois garder le <b>même type de combinaison</b> et jouer une valeur supérieure. Exemple : après D7, tu peux jouer D8, D9, D14 (As) ou D2, mais pas S8 ni T8. Parmi les cartes classiques, le 2 est le plus fort ; les Jokers BULL et DBULL sont au-dessus.</RuleStep>
     <RuleStep n="5" title="3 FLÉCHETTES MAX" color="#c45cff">Le premier impact exact valide immédiatement le coup. Après 3 fléchettes sans réussite, ton tour devient un <b>PASS</b>. Tu peux aussi passer volontairement.</RuleStep>
-    <RuleStep n="6" title="FIN DU PLI" color="#ff9b67">Quand tous les autres joueurs ont passé, le dernier joueur ayant réussi un coup gagne le pli et ouvre le suivant librement.</RuleStep>
+    <RuleStep n="6" title="FIN DU PLI" color="#ff9b67">Quand tous les autres joueurs ont passé, le dernier joueur ayant réussi un coup gagne le pli et ouvre le suivant librement. <b>Un pli gagné ne donne pas de points</b> : il compte dans tes statistiques et te redonne l’ouverture.</RuleStep>
     <RuleStep n="7" title="FIN DE MANCHE & TAXES" color="#ffcf57">Le classement fixe les rôles. À la manche suivante, le Trou du cul donne ses 2 meilleures cartes au Président, qui lui rend ses 2 plus faibles. À partir de 4 joueurs, Vice-Président et Vice-Trou du cul échangent aussi 1 carte.</RuleStep>
+    <div style={{padding:10,borderRadius:12,border:"1px solid #d5ad6355",background:"rgba(12,28,26,.8)",fontSize:11,lineHeight:1.55,color:"#e2ecd9"}}><b style={{color:"#ffde98"}}>KILOS DE MERDE · BARÈME MSS</b><div style={{marginTop:5}}>Gagner un pli ne rapporte <b>aucun point</b>. À la fin de chaque manche, les <b>cartes restant dans chaque main</b> sont additionnées : 3 à 10 = valeur de la carte ; Valet = 11, Dame = 12, Roi = 13, As = 14, 2 = 15, Joker BULL = 20, Joker DBULL = 25 kilos. Un joueur qui a vidé sa main prend <b>0 kilo</b>. Les kilos se cumulent sur toutes les manches : <b>le plus petit total gagne</b>. En cas d'égalité, l'ancien score de placement départage les joueurs. Ce barème est propre à MSS.</div></div>
     {config.variant === "chaos" && config.bullJoker ? <div style={{display:"flex",gap:9,alignItems:"center",justifyContent:"center"}}><PresidentJokerCard mini variant="hawaii-501"/><PresidentJokerCard mini variant="king-of-bling"/><span style={{fontSize:10,color:"#e8d8b6",maxWidth:190}}>Jokers MSS : BULL permet de valider une carte simple sélectionnée, sans ajouter de carte fictive à la main.</span></div> : null}
     {config.variant === "chaos" ? <RuleStep n="★" title="VARIANTE CHAOS" color="#ffcf66">BULL = joker simple (illustré par HAWAII 501 ou KING OF BLING) · DBULL = Coup d’État · T14 (As) = Révolution. La Révolution inverse le sens des valeurs pour la manche.</RuleStep> : null}
   </div>;
@@ -585,21 +655,26 @@ function RoundOverlay({ result, state, profilesById, primary, onClose }: any) {
       <div style={{textAlign:"center",padding:"5px 0 10px"}}>
         <div style={{color:primary,fontWeight:1100,fontSize:11,letterSpacing:1.5}}>FIN DE MANCHE {result.roundNo}</div>
         <div style={{fontSize:21,fontWeight:1100,marginTop:4}}>♛ NOUVELLE HIÉRARCHIE</div>
-        <div style={{color:"#c5d9d4",fontSize:10,marginTop:4}}>L'ordre d'arrivée détermine les rôles et les échanges.</div>
+        <div style={{color:"#c5d9d4",fontSize:10,marginTop:4}}>Les rôles suivent l'arrivée. Les cartes non posées donnent des kilos de pénalité.</div>
       </div>
       {leader ? <div style={{border:`1px solid ${primary}88`,background:`linear-gradient(145deg,${primary}22,rgba(15,44,38,.94))`,borderRadius:17,padding:13,display:"flex",alignItems:"center",gap:12}}>
         <RoleMedal role="Président" primary={primary}/><ProfileAvatar profile={leaderProfile} size={48}/>
         <div style={{flex:1,minWidth:0}}><div style={{color:primary,fontSize:9,fontWeight:1000,letterSpacing:1}}>PRÉSIDENT DE LA MANCHE</div><div style={{fontSize:18,fontWeight:1100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{playerName(leaderProfile)}</div></div>
-        <div style={{fontWeight:1100,color:"#ffe7a1",whiteSpace:"nowrap"}}>+{result.powerPoints?.[leader] ?? 0} pts</div>
+        <div style={{fontWeight:1100,color:"#ffe7a1",whiteSpace:"nowrap"}}>+{result.kilos?.[leader] ?? 0} kg</div>
       </div> : null}
       <div style={{display:"grid",gap:7,marginTop:10}}>{ranks.slice(1).map((id:string,i:number)=>{
         const role = result.roles?.[id] || "Citoyen"; const profile = profilesById.get(id);
         return <div key={id} style={{display:"grid",gridTemplateColumns:"22px 46px 35px minmax(0,1fr) auto",alignItems:"center",gap:7,padding:"7px 8px",borderRadius:12,background:"rgba(255,255,255,.045)",border:"1px solid rgba(255,255,255,.10)"}}>
           <b style={{color:"#adbab5",fontSize:12}}>{i+2}.</b><RoleMedal role={role} primary={primary}/><ProfileAvatar profile={profile} size={34}/>
           <div style={{minWidth:0}}><div style={{fontWeight:1000,fontSize:12,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{playerName(profile)}</div><div style={{color:roleColor(role,primary),fontSize:10,fontWeight:900}}>{role}</div></div>
-          <b style={{color:primary,fontSize:11,whiteSpace:"nowrap"}}>+{result.powerPoints?.[id] ?? 0} pts</b>
+          <b style={{color:primary,fontSize:11,whiteSpace:"nowrap"}}>+{result.kilos?.[id] ?? 0} kg</b>
         </div>;
       })}</div>
+      <div style={{marginTop:10,padding:10,borderRadius:12,border:"1px solid rgba(255,173,119,.42)",background:"rgba(57,29,17,.38)",fontSize:11,lineHeight:1.6}}>
+        <b style={{color:"#ffd5a2"}}>BILAN DES KILOS · MANCHE {result.roundNo}</b>
+        <div style={{color:"#c9d8d1",margin:"3px 0 7px"}}>Les cartes restantes sont comptées une seule fois, à la fin de la manche.</div>
+        {ranks.map((id:string)=><div key={id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"4px 0",borderBottom:"1px solid rgba(255,255,255,.06)"}}><span>{playerName(profilesById.get(id))} · {(result.remainingCards?.[id]||[]).length} carte(s)</span><b style={{color:(result.kilos?.[id]||0)===0?"#8ef7bf":"#ffbc8e"}}>+{result.kilos?.[id]??0} kg</b></div>)}
+      </div>
       <div style={{marginTop:11,padding:10,borderRadius:12,border:`1px solid ${primary}45`,background:`${primary}10`,fontSize:11,lineHeight:1.55}}>
         <b style={{color:primary}}>PROCHAINE MANCHE · ÉCHANGES DE CARTES</b>
         <div style={{marginTop:4}}>Le Trou du cul donne ses 2 meilleures cartes au Président ; celui-ci choisit 2 cartes à lui rendre. À partir de 4 joueurs, le Vice-Trou du cul donne sa meilleure carte au Vice-Président, qui choisit une carte en retour.</div>
@@ -621,8 +696,8 @@ function EndOverlay({ state, profilesById, primary, onReplay, onHistory, onClose
   const standings = getPresidentStandings(state);
   return <div style={{ position: "fixed", inset: 0, zIndex: 10000, display: "grid", placeItems: "center", padding: 10, background: "rgba(0,0,0,.82)", backdropFilter: "blur(9px)" }}><div style={{ ...panel(), width: "min(880px,100%)", maxHeight: "94vh", overflow: "auto", borderColor: `${primary}88` }}>
     <div style={{ display: "grid", gridTemplateColumns: "34px 1fr 34px", alignItems: "center" }}><div /><div style={{ textAlign: "center" }}><div style={{ color: primary, fontWeight: 1100, letterSpacing: 1.2 }}>FIN DU RÈGNE</div><div style={{ fontSize: 23, fontWeight: 1100 }}>♛ PRÉSIDENT SUPRÊME</div></div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
-    <div style={{ marginTop: 12, padding: 14, borderRadius: 16, textAlign: "center", background: `${primary}10`, border: `1px solid ${primary}48` }}><ProfileAvatar profile={profilesById.get(state.winnerId)} size={70} /><div style={{ marginTop: 7, fontSize: 24, fontWeight: 1100 }}>{playerName(profilesById.get(state.winnerId))}</div><div style={{ color: primary, fontSize: 34, fontWeight: 1100 }}>{standings[0]?.powerPoints || 0} pts</div></div>
-    <div style={{ display: "grid", gap: 7, marginTop: 11 }}>{standings.map((row: any, i: number) => { const s = state.statsByPlayer[row.id]; return <div key={row.id} style={{ display: "grid", gridTemplateColumns: "30px 40px minmax(0,1fr) repeat(3,auto)", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.04)", border: `1px solid ${i===0?primary+"66":"rgba(255,255,255,.08)"}` }}><div style={{ fontWeight: 1100, color: i===0?"#ffd76a":"#fff" }}>{i+1}.</div><ProfileAvatar profile={profilesById.get(row.id)} size={36} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{row.name}</div><div style={{ fontSize: 9.5, color: "rgba(255,255,255,.58)" }}>rang moy. {row.avgRank ? row.avgRank.toFixed(2) : "—"} · réussite {formatPct(s.successfulPlays,s.visits)}%</div></div><div style={{ textAlign: "center" }}><div style={{ color: primary, fontWeight: 1100 }}>{row.powerPoints}</div><div style={{ fontSize: 8.5, opacity: .6 }}>PTS</div></div><div style={{ textAlign: "center" }}><div style={{ color: "#ffd76a", fontWeight: 1100 }}>{s.president}</div><div style={{ fontSize: 8.5, opacity: .6 }}>PRÉS.</div></div><div style={{ textAlign: "center" }}><div style={{ color: "#ff8b9e", fontWeight: 1100 }}>{s.trouDuCul}</div><div style={{ fontSize: 8.5, opacity: .6 }}>TDC</div></div></div>; })}</div>
+    <div style={{ marginTop: 12, padding: 14, borderRadius: 16, textAlign: "center", background: `${primary}10`, border: `1px solid ${primary}48` }}><ProfileAvatar profile={profilesById.get(state.winnerId)} size={70} /><div style={{ marginTop: 7, fontSize: 24, fontWeight: 1100 }}>{playerName(profilesById.get(state.winnerId))}</div><div style={{ color: primary, fontSize: 34, fontWeight: 1100 }}>{standings[0]?.kilos || 0} kg de pénalité</div></div>
+    <div style={{ display: "grid", gap: 7, marginTop: 11 }}>{standings.map((row: any, i: number) => { const s = state.statsByPlayer[row.id]; return <div key={row.id} style={{ display: "grid", gridTemplateColumns: "30px 40px minmax(0,1fr) repeat(3,auto)", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.04)", border: `1px solid ${i===0?primary+"66":"rgba(255,255,255,.08)"}` }}><div style={{ fontWeight: 1100, color: i===0?"#ffd76a":"#fff" }}>{i+1}.</div><ProfileAvatar profile={profilesById.get(row.id)} size={36} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{row.name}</div><div style={{ fontSize: 9.5, color: "rgba(255,255,255,.58)" }}>rang moy. {row.avgRank ? row.avgRank.toFixed(2) : "—"} · réussite {formatPct(s.successfulPlays,s.visits)}%</div></div><div style={{ textAlign: "center" }}><div style={{ color: primary, fontWeight: 1100 }}>{row.kilos}</div><div style={{ fontSize: 8.5, opacity: .6 }}>KG</div></div><div style={{ textAlign: "center" }}><div style={{ color: "#ffd76a", fontWeight: 1100 }}>{s.president}</div><div style={{ fontSize: 8.5, opacity: .6 }}>PRÉS.</div></div><div style={{ textAlign: "center" }}><div style={{ color: "#ff8b9e", fontWeight: 1100 }}>{s.trouDuCul}</div><div style={{ fontSize: 8.5, opacity: .6 }}>TDC</div></div></div>; })}</div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 11 }}>{[["Durée",fmtTime((state.finishedAt||Date.now())-state.startedAt)],["Manches",state.roundResults.length],["Plis",Object.values(state.statsByPlayer).reduce((a:any,s:any)=>a+s.tricksWon,0)],["Coups d’État",Object.values(state.statsByPlayer).reduce((a:any,s:any)=>a+s.coupEtats,0)]].map(([l,v]:any)=><div key={l} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.04)", textAlign: "center" }}><div style={{ fontSize: 8.5, opacity: .6 }}>{l}</div><div style={{ color: primary, fontWeight: 1100, fontSize: 18 }}>{v}</div></div>)}</div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 12 }}><button onClick={onReplay} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `${primary}14`, color: primary, fontWeight: 1100 }}>REJOUER</button><button onClick={onHistory} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `linear-gradient(90deg,#b68b31,${primary},#fff0b2)`, color: "#100d06", fontWeight: 1100 }}>HISTORIQUE & STATS</button></div>
   </div></div>;
@@ -740,23 +815,19 @@ export default function PresidentPlay(props: any) {
   const [showObjective, setShowObjective] = React.useState(false);
   const [adviceTab, setAdviceTab] = React.useState<"conseil"|"strategie"|"viser"|"regles">("conseil");
   const [revealedTurnKey, setRevealedTurnKey] = React.useState<string | null>(null);
-  const [wonTrick, setWonTrick] = React.useState<{ round: number; nextTrick: number; winnerId: string; target: PresidentTarget | null } | null>(null);
-  const previousTrickRef = React.useRef<{ round: number; trick: number; winnerId: string | null; target: PresidentTarget | null }>({round:state.roundNo,trick:state.trickNo,winnerId:state.lastSuccessfulPlayerId,target:state.currentTarget});
-  const trickBannerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [trickTransition, setTrickTransition] = React.useState<any>(null);
+  const previousTrickRef = React.useRef({round:state.roundNo,trick:state.trickNo,winnerId:state.lastSuccessfulPlayerId,target:state.currentTarget,history:state.history});
   React.useEffect(() => {
     const prev = previousTrickRef.current;
-    // Only an actual forward transition of a trick can announce a winner. Undo,
-    // a new round and restoring a previous state must not trigger a false win.
     if (state.roundNo === prev.round && state.trickNo === prev.trick + 1 && prev.winnerId && prev.target) {
-      setWonTrick({round:state.roundNo,nextTrick:state.trickNo,winnerId:prev.winnerId,target:prev.target});
-      if (trickBannerTimerRef.current) clearTimeout(trickBannerTimerRef.current);
-      trickBannerTimerRef.current = setTimeout(() => setWonTrick(null), 3500);
+      const events = (prev.history || []).filter((event:any)=>event.roundNo===prev.round && event.trickNo===prev.trick);
+      setTrickTransition({roundNo:prev.round,trickNo:prev.trick,nextTrick:state.trickNo,winnerId:prev.winnerId,events});
+      setShowInput(false);
     } else if (state.roundNo !== prev.round || state.trickNo < prev.trick) {
-      setWonTrick(null);
+      setTrickTransition(null);
     }
-    previousTrickRef.current = {round:state.roundNo,trick:state.trickNo,winnerId:state.lastSuccessfulPlayerId,target:state.currentTarget};
-  }, [state.roundNo,state.trickNo,state.lastSuccessfulPlayerId,state.currentTarget]);
-  React.useEffect(() => () => { if (trickBannerTimerRef.current) clearTimeout(trickBannerTimerRef.current); }, []);
+    previousTrickRef.current = {round:state.roundNo,trick:state.trickNo,winnerId:state.lastSuccessfulPlayerId,target:state.currentTarget,history:state.history};
+  }, [state.roundNo,state.trickNo,state.lastSuccessfulPlayerId,state.currentTarget,state.history]);
 
   const matchIdRef = React.useRef(`president-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
   const savedRef = React.useRef("");
@@ -809,13 +880,13 @@ export default function PresidentPlay(props: any) {
   }, [state.roundResults.length, state.finished]);
 
   function commitAttempt(darts: UiDart[], target = selectedTarget) {
-    if (!target || state.finished || botThinking || needsHandoff) return;
+    if (!target || state.finished || botThinking || needsHandoff || trickTransition) return;
     setUndo((u) => [...u.slice(-49), clonePresidentState(state)]);
     setState((prev) => playPresidentTurn(prev, target, darts.map(toGameDart)));
     setThrowDarts([]); setMultiplier(1); setNotice("");
   }
   function addDart(value: number, direct?: 1|2|3) {
-    if (!selectedTarget || state.finished || botThinking || needsHandoff || throwDarts.length >= 3) return;
+    if (!selectedTarget || state.finished || botThinking || needsHandoff || trickTransition || throwDarts.length >= 3) return;
     const mult = direct || multiplier;
     const d: UiDart = value === 25 ? { v:25, mult: mult === 2 ? 2 : 1 } : { v: Math.max(0,Math.min(20,Number(value)||0)), mult };
     const next = [...throwDarts,d]; setThrowDarts(next); if (mult>1) setMultiplier(1);
@@ -824,7 +895,7 @@ export default function PresidentPlay(props: any) {
   }
   function validateAttempt() { if (!selectedTarget) return; if (!throwDarts.length) { setNotice("Joue au moins une fléchette ou utilise PASSER."); return; } commitAttempt(throwDarts); }
   function passTurn() {
-    if (!state.currentTarget || state.finished || botThinking || needsHandoff) return;
+    if (!state.currentTarget || state.finished || botThinking || needsHandoff || trickTransition) return;
     setUndo((u) => [...u.slice(-49), clonePresidentState(state)]);
     setState((prev) => passPresidentTurn(prev, false));
     setThrowDarts([]); setMultiplier(1); setNotice("PASSÉ");
@@ -839,13 +910,13 @@ export default function PresidentPlay(props: any) {
     if (typeof go === "function") go("president_config", { ...config, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
   }
   function replay() {
-    setState(createInitial()); setUndo([]); setThrowDarts([]); setSelectedTarget(null); setNotice(""); setShowEnd(false); setShowRound(false); setRevealedTurnKey(null); setWonTrick(null);
+    setState(createInitial()); setUndo([]); setThrowDarts([]); setSelectedTarget(null); setNotice(""); setShowEnd(false); setShowRound(false); setRevealedTurnKey(null); setTrickTransition(null);
     matchIdRef.current = `president-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; savedRef.current = ""; roundCountRef.current = 0;
   }
 
   React.useEffect(() => {
     const p = profilesById.get(activeId);
-    if (!p || !isBotProfile(p, botIds) || state.finished || state.pendingTaxes?.length || showRound || showEnd) { setBotThinking(false); return; }
+    if (!p || !isBotProfile(p, botIds) || state.finished || state.pendingTaxes?.length || showRound || showEnd || trickTransition) { setBotThinking(false); return; }
     let cancelled = false; setBotThinking(true);
     const timer = window.setTimeout(() => {
       if (cancelled) return;
@@ -858,7 +929,7 @@ export default function PresidentPlay(props: any) {
       const darts: UiDart[] = [];
       let hit = false;
       for (let i=0;i<3 && !hit;i+=1) {
-        if (Math.random() < chance) { darts.push({ v: target.value, mult: target.size as any }); hit = true; }
+        if (Math.random() < chance) { darts.push({ v: target.value >= 25 ? 25 : target.value, mult: target.value === 50 ? 2 : target.size as any }); hit = true; }
         else if (config.variant === "chaos" && config.coupEtat && Math.random() < .035) { darts.push({ v:25,mult:2 }); hit = true; }
         else { const miss = Math.random()<.2; darts.push(miss ? {v:0,mult:1} : {v:Math.max(1,Math.min(20,target.value+(Math.random()<.5?-1:1))),mult:1}); }
       }
@@ -867,7 +938,7 @@ export default function PresidentPlay(props: any) {
       setBotThinking(false);
     }, 480);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [activeId, state.trickNo, state.roundNo, state.currentTarget?.value, state.currentTarget?.size, state.pendingTaxes?.length, showRound, showEnd]);
+  }, [activeId, state.trickNo, state.roundNo, state.currentTarget?.value, state.currentTarget?.size, state.pendingTaxes?.length, showRound, showEnd, trickTransition]);
 
   function buildHistoryRecord() {
     const now = Date.now();
@@ -876,7 +947,7 @@ export default function PresidentPlay(props: any) {
       const profile = profilesById.get(p.id) || p; const s = state.statsByPlayer[p.id]; const standingIndex = standings.findIndex((x:any)=>x.id===p.id); const rank = standingIndex>=0 ? standingIndex+1 : 0;
       return {
         id:p.id, playerId:p.id, profileId:p.id, name:playerName(profile), avatarDataUrl:profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null,
-        winner:p.id===state.winnerId, win:p.id===state.winnerId, rank, score:s.powerPoints, points:s.powerPoints, powerPoints:s.powerPoints,
+        winner:p.id===state.winnerId, win:p.id===state.winnerId, rank, score:s.kilos || 0, points:s.powerPoints, powerPoints:s.powerPoints, kilos:s.kilos || 0, scoreType:"penalty_kilos_lower_is_better",
         roundsPlayed:s.roundsPlayed, president:s.president, vicePresident:s.vicePresident, citizen:s.citizen, viceTrouDuCul:s.viceTrouDuCul, trouDuCul:s.trouDuCul,
         avgRank:s.roundsPlayed ? Math.round((s.rankTotal/s.roundsPlayed)*100)/100 : 0, bestFinishRank:s.bestFinishRank, worstFinishRank:s.worstFinishRank,
         darts:s.darts, dartsThrown:s.darts, visits:s.visits, successfulPlays:s.successfulPlays, failedPlays:s.failedPlays, successRate:formatPct(s.successfulPlays,s.visits),
@@ -886,7 +957,7 @@ export default function PresidentPlay(props: any) {
       };
     });
     const matchStats = { durationMs:Math.max(0,(state.finishedAt||now)-state.startedAt), roundsPlayed:state.roundResults.length, totalDarts:rows.reduce((a,p)=>a+p.darts,0), totalCardsPlayed:rows.reduce((a,p)=>a+p.cardsPlayed,0), totalTricks:rows.reduce((a,p)=>a+p.tricksWon,0), coupEtats:rows.reduce((a,p)=>a+p.coupEtats,0), revolutions:rows.reduce((a,p)=>a+p.revolutions,0) };
-    const summary = { kind:"president", mode:"president", sport:"darts", finished:state.finished, winnerId:state.winnerId, winnerName:playerName(profilesById.get(state.winnerId)), rounds:config.rounds, handSize:config.handSize, variant:config.variant, standings, rankings:standings, players:rows, perPlayer:rows, roundResults:state.roundResults, matchStats, durationMs:matchStats.durationMs, scoreLine:standings.map((x:any)=>`${x.name} ${x.powerPoints} pts`).join(" • "), game:{mode:"president"} };
+    const summary = { kind:"president", mode:"president", sport:"darts", finished:state.finished, winnerId:state.winnerId, winnerName:playerName(profilesById.get(state.winnerId)), rounds:config.rounds, handSize:config.handSize, variant:config.variant, standings, rankings:standings, players:rows, perPlayer:rows, roundResults:state.roundResults, matchStats, durationMs:matchStats.durationMs, scoreType:"penalty_kilos_lower_is_better", kiloBarème:{numeric:"3-10", valet:11, dame:12, roi:13, as:14, deux:15, jokerBull:20, jokerDBull:25}, scoreLine:standings.map((x:any)=>`${x.name} ${x.kilos} kg`).join(" • "), game:{mode:"president"} };
     return { id:matchIdRef.current, matchId:matchIdRef.current, kind:"president", mode:"president", sport:"darts", status:state.finished?"finished":"in_progress", createdAt:state.startedAt, updatedAt:now, winnerId:state.winnerId, players:rows, game:{mode:"president"}, summary, payload:{ kind:"president", mode:"president", sport:"darts", winnerId:state.winnerId, config, rules:state.rules, players:rows, summary, visits:state.history, visitHistory:state.history, roundResults:state.roundResults, stats:{sport:"darts",mode:"president",players:rows,match:matchStats,global:matchStats}, state:{standings:state.standings,previousRoles:state.previousRoles} } };
   }
   React.useEffect(() => {
@@ -911,7 +982,7 @@ export default function PresidentPlay(props: any) {
   const trickEvents = state.history.filter((ev:any)=>ev.roundNo===state.roundNo && ev.trickNo===state.trickNo).slice(-12).reverse();
   const activeColor = activeTeam?.color || roleColor(currentRole, primary);
 
-  const visibleWonTrick = wonTrick?.round === state.roundNo && wonTrick?.nextTrick === state.trickNo ? wonTrick : null;
+
   const jumpToInput = () => setShowInput(true);
   const jumpToHand = () => { setShowInput(false); setShowHand(true); };
   // A single selection path shared by the table, the hand and the shooting dock.
@@ -920,12 +991,12 @@ export default function PresidentPlay(props: any) {
     if (botThinking || needsHandoff || state.finished || state.pendingTaxes?.length) return;
     setSelectedTarget(target);
     setThrowDarts([]);
-    setMultiplier(target.size as 1 | 2 | 3);
+    setMultiplier(target.value === 50 ? 2 : target.size as 1 | 2 | 3);
     setNotice("");
   };
   // Help is derived from the real, currently legal targets and never invents a playable move.
   const objectiveType = selectedTarget?.size===1 ? "SIMPLE" : selectedTarget?.size===2 ? "DOUBLE" : "TRIPLE";
-  const objectiveAim = selectedTarget ? `${selectedTarget.size===1?"S":selectedTarget.size===2?"D":"T"}${selectedTarget.value}` : "—";
+  const objectiveAim = selectedTarget ? presidentTargetLabel(selectedTarget) : "—";
   const objectiveCardCount = selectedTarget?.size || 0;
   const objectiveExplanation = state.currentTarget
     ? `Pour répondre à ${presidentTargetLabel(state.currentTarget)}, garde le même nombre de cartes et joue une valeur ${state.revolutionActive?"inférieure":"supérieure"}.`
@@ -933,7 +1004,7 @@ export default function PresidentPlay(props: any) {
   const objectiveInstruction = !activeCanPlay
     ? "Aucune combinaison autorisée dans ta main : utilise PASSER LE PLI."
     : selectedTarget
-      ? `Vise ${objectiveAim} sur la cible (${objectiveType} ${selectedTarget.value}). Un impact exact en 3 fléchettes maximum pose ${objectiveCardCount} carte${objectiveCardCount>1?"s":""}.`
+      ? `Vise ${objectiveAim} sur la cible. Un impact exact en 3 fléchettes maximum pose ${objectiveCardCount} carte${objectiveCardCount>1?"s":""}.`
       : "Sélectionne une carte jouable de ta main pour préparer ton tir.";
   const shotOptions = legalTargets.slice().sort((a,b) =>
     a.size - b.size || (a.value === 2 ? 15 : a.value) - (b.value === 2 ? 15 : b.value)
@@ -999,7 +1070,7 @@ export default function PresidentPlay(props: any) {
     <main className="president-game">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,fontSize:10,color:"#f7d48c",fontWeight:1000,flex:"0 0 auto"}}>
         <span>♛ MANCHE {Math.min(state.roundNo,config.rounds)}/{config.rounds} · PLI {state.trickNo}</span>
-        <span>{state.revolutionActive?"⚡ RÉVOLUTION · ":""}{hand.length} CARTES · {activeScore} PTS</span>
+        <span>{state.revolutionActive?"⚡ RÉVOLUTION · ":""}{hand.length} CARTES · {activeStanding?.kilos || 0} KG DE PÉNALITÉ</span>
       </div>
       <section className="president-felt" aria-label="Tapis de jeu Président">
         <div className={`president-players players-${state.order.length} ${state.order.length > 4 ? "president-players-many" : ""}`}>
@@ -1014,9 +1085,9 @@ export default function PresidentPlay(props: any) {
           </button>})}
         </div>
         <div className="president-center">
-          {visibleWonTrick?<div style={{color:"#ffdd88",fontSize:11,fontWeight:1000}}>♛ PLI GAGNÉ : {playerName(profilesById.get(visibleWonTrick.winnerId))}</div>:null}
+
           <button type="button" onClick={()=>setShowTrick(true)} style={{border:0,background:"transparent",padding:0,cursor:"pointer",width:"100%",display:"grid",placeItems:"center"}}>
-            <FeltTableCards target={state.currentTarget} suits={state.currentTableSuits || []} primary={primary} />
+            <FeltTableCards target={state.currentTarget} history={state.history} roundNo={state.roundNo} trickNo={state.trickNo} primary={primary} />
           </button>
           <button type="button" className="president-advice-art" onClick={()=>{setAdviceTab("conseil");setShowObjective(true);}} aria-label="Lire le conseil d’Awena et ouvrir les détails">
             <img className="president-advice-image" src={awenaAdviceBubble} draggable={false} alt="Awena donne un conseil" />
@@ -1059,7 +1130,7 @@ export default function PresidentPlay(props: any) {
     {showInput && !botThinking ? <div className="president-keypad-modal" role="presentation" onClick={()=>setShowInput(false)}>
       <div className="president-keypad-inner" role="dialog" aria-modal="true" aria-label="Saisie des fléchettes" onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:10}}><b style={{color:primary,fontSize:14}}>🎯 SAISIE DES FLÉCHETTES</b><button type="button" onClick={()=>setShowInput(false)} style={{...action(primary),minHeight:36,padding:"0 12px"}}>✕ FERMER</button></div>
-        <div style={{fontWeight:1000,color:"#bdeee1",fontSize:11,marginBottom:7}}>{selectedTarget?`VISER ${selectedTarget.size===1?"SIMPLE":selectedTarget.size===2?"DOUBLE":"TRIPLE"} ${selectedTarget.value} · ${presidentTargetLabel(selectedTarget)}`:"AUCUN COUP LÉGAL · PASSER LE PLI"}</div>
+        <div style={{fontWeight:1000,color:"#bdeee1",fontSize:11,marginBottom:7}}>{selectedTarget?`VISER ${presidentTargetLabel(selectedTarget)} · ${presidentTargetDescription(selectedTarget)}`:"AUCUN COUP LÉGAL · PASSER LE PLI"}</div>
         <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:6,marginBottom:8}}>{shotOptions.map(target=><button type="button" key={`${target.value}-${target.size}`} onClick={()=>chooseShot(target)} disabled={throwDarts.length>0} style={{...action(primary),minWidth:53,minHeight:37,flex:"0 0 auto",padding:"4px 7px",background:selectedTarget?.value===target.value&&selectedTarget?.size===target.size?`${primary}55`:"#ffffff0a"}}>{presidentTargetLabel(target)}</button>)}</div>
         <div style={{display:"flex",gap:5,marginBottom:8}}>{[0,1,2].map(i=><div key={i} style={{flex:1,textAlign:"center",background:"#ffffff0a",borderRadius:8,padding:6,fontSize:11,color:throwDarts[i]?"#9bffc8":"#b4c5c8"}}>FLÉCHETTE {i+1}<div style={{fontWeight:1000,fontSize:14}}>{throwDarts[i]?presidentDartLabel(toGameDart(throwDarts[i])):"—"}</div></div>)}</div>
         {config.scoreInputMethod === "dartboard" ? <><div style={{display:"grid",placeItems:"center",opacity:selectedTarget?1:.45,pointerEvents:selectedTarget?"auto":"none"}}><DartboardClickable multiplier={multiplier} onHit={(segment,mult)=>addDart(segment,mult)} size={Math.min(310,Math.max(235,window.innerWidth-42))}/></div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginTop:8}}><button onClick={undoTurn} style={action(primary)}>ANNULER</button><button disabled={!state.currentTarget} onClick={passTurn} style={action("#ff9a70",!state.currentTarget)}>PASSER</button><button disabled={!throwDarts.length} onClick={validateAttempt} style={action("#6ee7b7",!throwDarts.length)}>VALIDER</button></div></> : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={()=>setMultiplier(1)} onDouble={()=>setMultiplier(2)} onTriple={()=>setMultiplier(3)} onCancel={undoTurn} onBackspace={()=>setThrowDarts(d=>d.slice(0,-1))} onNumber={n=>addDart(n)} onBull={bull=>addDart(25,bull===50?2:1)} onValidate={validateAttempt} hidePreview hideTotal centerSlot={<div style={{textAlign:"center"}}><div style={{color:primary,fontWeight:1100,fontSize:12}}>{selectedTarget?presidentTargetLabel(selectedTarget):"—"}</div><button disabled={!state.currentTarget} onClick={e=>{e.stopPropagation();passTurn();}} style={{marginTop:2,border:0,background:"transparent",color:"#ffae77",fontSize:9}}>PASSER</button></div>} noticeSlot={notice?<span>{notice}</span>:null} validateAttention={throwDarts.length>0} safeBottomPad={false}/>} 
@@ -1139,7 +1210,7 @@ export default function PresidentPlay(props: any) {
           <div style={{display:"grid",gap:4,flex:"1 1 190px"}}>
             <div style={{fontSize:10,color:"#ffda89",fontWeight:1100}}>TON COUP SÉLECTIONNÉ</div>
             <div style={{fontSize:22,color:"#ffe2a6",fontWeight:1100,lineHeight:1.15}}>{selectedTarget?presidentTargetLabel(selectedTarget):"—"}</div>
-            <div style={{fontSize:11,color:"#deebe2",lineHeight:1.42}}>{selectedTarget?`Vise ${selectedTarget.size===1?"le SIMPLE":selectedTarget.size===2?"le DOUBLE":"le TRIPLE"} ${selectedTarget.value} : ${selectedTarget.size} carte${selectedTarget.size>1?"s":""} à poser. Tu as 3 fléchettes maximum.`:"Choisis une carte ou une combinaison dans les options ci-dessus."}</div>
+            <div style={{fontSize:11,color:"#deebe2",lineHeight:1.42}}>{selectedTarget?`Vise ${presidentTargetLabel(selectedTarget)} : ${selectedTarget.size} carte${selectedTarget.size>1?"s":""} à poser. Tu as 3 fléchettes maximum.`:"Choisis une carte ou une combinaison dans les options ci-dessus."}</div>
           </div>
           {selectedTarget ? <div style={{display:"flex",alignItems:"center",gap:3,flex:"0 0 auto"}}>{hand.map((value:number,index:number)=>({value,index,suit:(state.suitsByPlayer?.[activeId]||[])[index]??0})).filter(c=>c.value===selectedTarget.value).slice(0,selectedTarget.size).map(c=><PlayingCard key={c.index} value={c.value} suitIndex={c.suit} mini/>)}</div> : null}
         </section>
@@ -1160,17 +1231,18 @@ export default function PresidentPlay(props: any) {
     </ModalShell>:null}
 
     {showStats ? <ModalShell title="STATISTIQUES PRÉSIDENT" color="#c45cff" onClose={()=>setShowStats(false)} wide>
-      <div style={{ ...panel(), padding:9, borderColor:`${activeColor}55` }}><div style={{ display:"grid",gridTemplateColumns:"44px minmax(0,1fr) auto",gap:9,alignItems:"center" }}><ProfileAvatar profile={activeProfile} size={40}/><div><div style={{ color:activeColor,fontWeight:1100 }}>{playerName(activeProfile)}</div><div style={{ color:"rgba(255,255,255,.48)",fontSize:9 }}>{currentRole}</div></div><div style={{ color:"#c45cff",fontSize:22,fontWeight:1100 }}>{activeScore} pts</div></div></div>
+      <div style={{ ...panel(), padding:9, borderColor:`${activeColor}55` }}><div style={{ display:"grid",gridTemplateColumns:"44px minmax(0,1fr) auto",gap:9,alignItems:"center" }}><ProfileAvatar profile={activeProfile} size={40}/><div><div style={{ color:activeColor,fontWeight:1100 }}>{playerName(activeProfile)}</div><div style={{ color:"rgba(255,255,255,.48)",fontSize:9 }}>{currentRole}</div></div><div style={{ color:"#c45cff",fontSize:22,fontWeight:1100 }}>{activeStanding?.kilos || 0} kg</div></div></div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:7 }}><MiniKpi label="RÉUSSITE" value={`${successRate}%`} color="#72efad"/><MiniKpi label="CARTES JOUÉES" value={activeStats.cardsPlayed||0} color="#ffd45c"/><MiniKpi label="PLIS GAGNÉS" value={activeStats.tricksWon||0} color="#43d8ff"/><MiniKpi label="PRÉSIDENCES" value={activeStats.president||0} color="#ffb347"/></div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:5 }}><MiniKpi label="SIMPLES" value={activeStats.singlesPlayed||0} color="#f0f3ff"/><MiniKpi label="PAIRES" value={activeStats.pairsPlayed||0} color="#39c9ff"/><MiniKpi label="BRELANS" value={activeStats.triplesPlayed||0} color="#c45cff"/><MiniKpi label="ÉCHECS" value={activeStats.failedPlays||0} color="#ff6f86"/></div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:5 }}><MiniKpi label="DARTS" value={activeStats.darts||0} color={primary}/><MiniKpi label="PASS" value={totalPasses} color="#ff9b67"/><MiniKpi label="TAXES" value={totalTaxes} color="#ffcf57"/><MiniKpi label="COUPS D'ÉTAT" value={activeStats.coupEtats||0} color="#ff6e55"/></div>
-      <div style={{ ...panel(), marginTop:8, padding:9 }}><div style={{ color:"#c45cff",fontSize:10,fontWeight:1100,marginBottom:6 }}>COMPARATIF JOUEURS</div>{standingsLive.map((row:any,i:number)=>{const st=state.statsByPlayer[row.id];const rate=formatPct(st.successfulPlays,st.visits);return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"24px 32px minmax(0,1fr) repeat(3,auto)",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid rgba(255,255,255,.05)" }}><div style={{ color:i===0?"#ffd45c":"rgba(255,255,255,.55)",fontWeight:1100 }}>{i+1}</div><ProfileAvatar profile={profilesById.get(row.id)} size={28}/><div style={{ minWidth:0,fontWeight:1000,fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:"#c45cff",fontWeight:1100,fontSize:10 }}>{row.powerPoints}p</div><div style={{ color:"#43d8ff",fontWeight:1000,fontSize:9 }}>{st.tricksWon} plis</div><div style={{ color:"#72efad",fontWeight:1000,fontSize:9 }}>{rate}%</div></div>})}</div>
+      <div style={{ ...panel(), marginTop:8, padding:9 }}><div style={{ color:"#c45cff",fontSize:10,fontWeight:1100,marginBottom:6 }}>COMPARATIF JOUEURS</div>{standingsLive.map((row:any,i:number)=>{const st=state.statsByPlayer[row.id];const rate=formatPct(st.successfulPlays,st.visits);return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"24px 32px minmax(0,1fr) repeat(3,auto)",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid rgba(255,255,255,.05)" }}><div style={{ color:i===0?"#ffd45c":"rgba(255,255,255,.55)",fontWeight:1100 }}>{i+1}</div><ProfileAvatar profile={profilesById.get(row.id)} size={28}/><div style={{ minWidth:0,fontWeight:1000,fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:"#c45cff",fontWeight:1100,fontSize:10 }}>{row.kilos} kg</div><div style={{ color:"#43d8ff",fontWeight:1000,fontSize:9 }}>{st.tricksWon} plis</div><div style={{ color:"#72efad",fontWeight:1000,fontSize:9 }}>{rate}%</div></div>})}</div>
     </ModalShell>:null}
 
     {!showRound && !state.finished && Boolean(state.pendingTaxes?.length) ? <TaxExchangeOverlay key={`${state.roundNo}-${state.pendingTaxes?.[0]?.highId}`} state={state} profilesById={profilesById} primary={primary} onConfirm={(indices:number[])=>{setUndo(u=>[...u.slice(-49),clonePresidentState(state)]);setState(prev=>resolvePresidentTax(prev,indices));setSelectedTarget(null);setThrowDarts([]);}}/> : null}
     {showRound && latestRound && !state.finished ? <RoundOverlay result={latestRound} state={state} profilesById={profilesById} primary={primary} onClose={()=>setShowRound(false)} /> : null}
+    {trickTransition && !showRound && !showEnd ? <PresidentTrickTransition data={trickTransition} profilesById={profilesById} primary={primary} onContinue={()=>setTrickTransition(null)}/> : null}
     {showEnd && state.finished ? <EndOverlay state={state} profilesById={profilesById} primary={primary} onClose={()=>setShowEnd(false)} onReplay={replay} onHistory={()=>{ try { onFinish?.(buildHistoryRecord(),{navigate:true}); } catch { if(typeof go==="function") go("statsHub",{tab:"history"}); } }} /> : null}
-    {showTable ? <ModalShell title="CLASSEMENT DU RÈGNE" color="#ffb347" onClose={()=>setShowTable(false)}><div style={{ display:"grid", gap:6 }}>{standingsLive.map((row:any,i:number)=>{ const st=state.statsByPlayer[row.id]; const role=state.previousRoles[row.id]||"Citoyen"; return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"26px 36px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:8,borderRadius:12,background:i===0?"rgba(255,179,71,.09)":"rgba(255,255,255,.035)",border:`1px solid ${i===0?"#ffb34755":"rgba(255,255,255,.06)"}` }}><div style={{ color:i===0?"#ffd45c":"#fff",fontWeight:1100 }}>{i+1}.</div><ProfileAvatar profile={profilesById.get(row.id)} size={32}/><div style={{ minWidth:0 }}><div style={{ color:roleColor(role,primary),fontWeight:1100,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:"rgba(255,255,255,.45)",fontSize:8.5 }}>{role} · {state.hands[row.id]?.length||0} cartes</div></div><div style={{ color:"#43d8ff",fontWeight:1000,fontSize:9 }}>{st.tricksWon} plis</div><div style={{ color:"#ffb347",fontSize:18,fontWeight:1100 }}>{row.powerPoints}</div></div>})}</div></ModalShell> : null}
+    {showTable ? <ModalShell title="CLASSEMENT DU RÈGNE" color="#ffb347" onClose={()=>setShowTable(false)}><div style={{ display:"grid", gap:6 }}>{standingsLive.map((row:any,i:number)=>{ const st=state.statsByPlayer[row.id]; const role=state.previousRoles[row.id]||"Citoyen"; return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"26px 36px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:8,borderRadius:12,background:i===0?"rgba(255,179,71,.09)":"rgba(255,255,255,.035)",border:`1px solid ${i===0?"#ffb34755":"rgba(255,255,255,.06)"}` }}><div style={{ color:i===0?"#ffd45c":"#fff",fontWeight:1100 }}>{i+1}.</div><ProfileAvatar profile={profilesById.get(row.id)} size={32}/><div style={{ minWidth:0 }}><div style={{ color:roleColor(role,primary),fontWeight:1100,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:"rgba(255,255,255,.45)",fontSize:8.5 }}>{role} · {state.hands[row.id]?.length||0} cartes</div></div><div style={{ color:"#43d8ff",fontWeight:1000,fontSize:9 }}>{st.tricksWon} plis</div><div style={{ color:"#ffb347",fontSize:18,fontWeight:1100 }}>{row.kilos} kg</div></div>})}</div></ModalShell> : null}
     {needsHandoff ? <PlayerHandoffOverlay key={turnKey} profile={activeProfile} cards={hand.length} roundNo={state.roundNo} trickNo={state.trickNo} primary={primary} onReveal={()=>setRevealedTurnKey(turnKey)}/> : null}
   </div>;
 }

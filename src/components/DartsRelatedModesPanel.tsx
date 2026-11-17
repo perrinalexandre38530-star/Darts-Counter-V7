@@ -1,7 +1,9 @@
 import React from "react";
+import { createPortal } from "react-dom";
+import { DartsGuideRelatedSlot } from "./DartsConfigGuideBoundary";
 import { useLang } from "../contexts/LangContext";
 import { DARTS_GAMES } from "../games/dartsGameRegistry";
-import { dartsGameFamily, dartsGameRelatedIds } from "../games/dartsGameFamilies";
+import { dartsGameFamily, dartsGameRelatedIds, dartsGameHasAlliedFamilies } from "../games/dartsGameFamilies";
 import { getTicker } from "../lib/tickers";
 
 type Props = {
@@ -15,13 +17,15 @@ type Props = {
 /** Bi-directional links between an original game and its playable variants. */
 export default function DartsRelatedModesPanel({ gameId, onOpenGame, accent = "#F6C256", compact = false, bare = false }: Props) {
   const { lang } = useLang();
+  const guideRelatedSlot = React.useContext(DartsGuideRelatedSlot);
   const family = dartsGameFamily(gameId);
   const siblings = dartsGameRelatedIds(gameId);
+  const crossFamilies = dartsGameHasAlliedFamilies(gameId);
   if (!family || !siblings.length) return null;
   const isFr = String(lang || "fr").toLowerCase().startsWith("fr");
   const isMain = gameId === family.mainId;
   const main = DARTS_GAMES.find(g => g.id === family.mainId);
-  return <section data-mss-game-family={family.id} data-mss-game-id={gameId} style={{
+  const panel = <section data-mss-game-family={family.id} data-mss-game-id={gameId} style={{
     margin: bare ? "10px auto 5px" : "8px auto 12px", width: "100%", maxWidth: 900, boxSizing: "border-box",
     padding: bare ? "0" : compact ? 8 : 11,
     borderRadius: bare ? 0 : 14, border: bare ? "none" : `1px solid ${accent}60`,
@@ -29,9 +33,10 @@ export default function DartsRelatedModesPanel({ gameId, onOpenGame, accent = "#
   }}>
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
       <strong style={{ color: accent, fontSize: compact ? 11 : 13, letterSpacing: .9 }}>
-        {isFr ? "VARIANTES" : "VARIANTS"}
+        {crossFamilies ? (isFr ? "JEUX DE SURVIE APPARENTÉS" : "RELATED SURVIVAL GAMES") : (isFr ? "VARIANTES" : "VARIANTS")}
       </strong>
     </div>
+    {crossFamilies ? <div style={{ color: "#cfd4dd", fontSize: compact ? 9 : 10, lineHeight: 1.4, marginBottom: 8 }}>{isFr ? "Killer et 5 Vies : mêmes enjeux de survie, mais règles et scores distincts." : "Killer and Five Lives: shared survival theme, different rules and scoring."}</div> : null}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, padding: "2px 1px 5px" }}>
       {siblings.map(id => {
         const game = DARTS_GAMES.find(g => g.id === id);
@@ -56,4 +61,5 @@ export default function DartsRelatedModesPanel({ gameId, onOpenGame, accent = "#
       })}
     </div>
   </section>;
+  return guideRelatedSlot ? createPortal(panel, guideRelatedSlot) : panel;
 }

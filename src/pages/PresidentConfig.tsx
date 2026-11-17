@@ -15,7 +15,7 @@ import tickerPresident from "../assets/tickers/ticker_president.png";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { useTheme } from "../contexts/ThemeContext";
 import { loadBotPlayers } from "../lib/bots";
-import type { PresidentConfigPayload } from "../lib/gameEngines/presidentEngine";
+import { PRESIDENT_DECK_SIZE, presidentCardsPerPlayer, type PresidentConfigPayload } from "../lib/gameEngines/presidentEngine";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import {
   PillButton,
@@ -53,6 +53,7 @@ function Rules({ color }: { color: string }) {
     <div><b style={{ color }}>PLI</b><br />À l’ouverture tu choisis une combinaison de ta main. Ensuite il faut jouer la même combinaison avec une valeur supérieure. Quand tous les autres passent, le dernier joueur ayant réussi reprend la main.</div>
     <div><b style={{ color }}>HIÉRARCHIE</b><br />Président, Vice-Président, Citoyen, Vice-Trou du cul, Trou du cul selon le nombre de joueurs.</div>
     <div><b style={{ color }}>TAXE</b><br />À la manche suivante, le dernier donne ses 2 meilleures cartes au Président, qui lui rend ses 2 plus faibles. À 4 joueurs ou plus, VP/VTC échangent aussi 1 carte.</div>
+    <div><b style={{ color }}>PAQUET UNIQUE</b><br />52 cartes classiques (3 à 2 dans les 4 enseignes) et 2 jokers uniques. HAWAII 501 se pose en touchant BULL25 ; KING OF BLING en touchant DBULL50. Ces jokers sont plus forts que le 2. Le nombre de cartes/joueur est adapté aux participants.</div>
     <div><b style={{ color: "#ffcf66" }}>CHAOS</b><br />Optionnel : BULL joker sur un simple, DBULL Coup d’État, T20 Révolution qui inverse l’ordre des valeurs jusqu’à la fin de la manche.</div>
   </div>;
 }
@@ -86,7 +87,7 @@ export default function PresidentConfig(props: any) {
   const [botLevel, setBotLevel] = React.useState(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
   const [rounds, setRounds] = React.useState<1 | 3 | 5 | 7 | 10>(([1,3,5,7,10].includes(Number(saved.rounds)) ? Number(saved.rounds) : 5) as any);
   const [handSize, setHandSize] = React.useState<number>(Math.max(5, Math.min(16, Number(saved.handSize || 10))));
-  const [deckCopies, setDeckCopies] = React.useState<3 | 4 | 5>(([3,4,5].includes(Number(saved.deckCopies)) ? Number(saved.deckCopies) : 4) as any);
+  const deckCopies = 1 as const;
   const [variant, setVariant] = React.useState<"classic" | "chaos">(saved.variant === "chaos" ? "chaos" : "classic");
   const [bullJoker, setBullJoker] = React.useState(saved.bullJoker !== false);
   const [coupEtat, setCoupEtat] = React.useState(saved.coupEtat !== false);
@@ -114,9 +115,10 @@ export default function PresidentConfig(props: any) {
   const selectedItems = selectedProfiles.map((profile: any) => ({ id: String(profile.id), kind: isBotLike(profile) ? "bot" : "player", name: profile?.name || profile?.displayName || "Joueur", profile }));
   const selectedBotCount = selectedProfiles.filter(isBotLike).length;
   const valid = selectedIds.length >= 3 && selectedIds.length <= 8;
-  const deckCapacity = deckCopies * 13;
-  const needCards = selectedIds.length * handSize;
-  const deckWarning = needCards > deckCapacity;
+  const deckCapacity = PRESIDENT_DECK_SIZE;
+  const actualHandSize = presidentCardsPerPlayer(selectedIds.length || 3, handSize);
+  const needCards = selectedIds.length * actualHandSize;
+  const deckWarning = actualHandSize < handSize;
 
   function togglePlayer(raw: string) {
     const id = String(raw || ""); if (!id) return;
@@ -138,7 +140,7 @@ export default function PresidentConfig(props: any) {
     const payload: PresidentConfigPayload = {
       mode: "president", players: orderedIds.length, selectedIds: orderedIds,
       playersList: orderedProfiles.map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur", dartSetId: playerDartSets[String(p.id)] ?? null })),
-      playerDartSets, botIds, botsEnabled: botIds.length > 0, botLevel, rounds, handSize, deckCopies,
+      playerDartSets, botIds, botsEnabled: botIds.length > 0, botLevel, rounds, handSize: actualHandSize, deckCopies,
       variant, randomOrder, bullJoker: variant === "chaos" && bullJoker, coupEtat: variant === "chaos" && coupEtat,
       revolution: variant === "chaos" && revolution, scoreInputMethod,
     };
@@ -164,10 +166,10 @@ export default function PresidentConfig(props: any) {
   const reign = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>FORMAT DU RÈGNE</div>
     <OptionRow label="Manches"><OptionSelect value={rounds} options={[1,3,5,7,10]} onChange={(v: any) => setRounds(Number(v) as any)} /></OptionRow>
     <OptionRow label="Cartes / joueur"><OptionSelect value={handSize} options={[6,8,10,12,14,16]} onChange={(v: any) => setHandSize(Number(v))} /></OptionRow>
-    <OptionRow label="Copies du paquet (3 à As, 2)"><OptionSelect value={deckCopies} options={[3,4,5]} onChange={(v: any) => setDeckCopies(Number(v) as any)} /></OptionRow>
+    <div style={{ ...rowHelp, color: primary, fontWeight: 900 }}>1 paquet unique de 54 cartes : 52 cartes physiques + 2 jokers uniques. Aucune duplication.</div>
     <OptionRow label="Ordre de départ aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
     <div style={rowHelp}>Chaque manche redistribue une nouvelle main. À partir de la manche 2, les taxes Président/Trou du cul sont appliquées automatiquement après la distribution.</div>
-    {deckWarning ? <div style={{ marginTop: 8, color: "#ffd36e", fontSize: 10.5 }}>Le moteur complètera automatiquement le paquet si {needCards} cartes sont nécessaires pour une capacité nominale de {deckCapacity}.</div> : null}
+    <div style={{ marginTop: 8, color: deckWarning ? "#ffd36e" : "#83e6bd", fontSize: 11, fontWeight: 850 }}>{selectedIds.length || 3} joueurs × {actualHandSize} cartes = {needCards} distribuées · {deckCapacity - needCards} restantes dans le paquet.{deckWarning ? ` Demande de ${handSize} cartes/joueur automatiquement limitée à ${actualHandSize} pour éviter tout doublon.` : ""}</div>
   </section>;
 
   const chaos = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>VARIANTE</div>
@@ -184,7 +186,7 @@ export default function PresidentConfig(props: any) {
 
   const summary = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 9 }}>RÉSUMÉ</div>
     <div style={{ display: "grid", gap: 7, fontSize: 11.5 }}>
-      {[["Participants", `${selectedIds.length} joueurs`],["Règne", `${rounds} manche${rounds > 1 ? "s" : ""}`],["Main", `${handSize} cartes`],["Paquet", `${deckCopies}× 13 rangs`],["Variante", variant === "chaos" ? "CHAOS" : "CLASSIQUE"],["Saisie", scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
+      {[["Participants", `${selectedIds.length} joueurs`],["Règne", `${rounds} manche${rounds > 1 ? "s" : ""}`],["Main", `${actualHandSize} cartes/joueur${deckWarning ? ` (au lieu de ${handSize})` : ""}`],["Paquet", `Unique · ${PRESIDENT_DECK_SIZE} cartes`],["Variante", variant === "chaos" ? "CHAOS" : "CLASSIQUE"],["Saisie", scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
     </div>
   </section>;
 

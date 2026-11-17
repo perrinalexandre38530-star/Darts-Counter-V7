@@ -38,7 +38,7 @@ import InfoDot from "../components/InfoDot";
 import GameDifficultyStars from "../components/GameDifficultyStars";
 import GameDifficultyFilter from "../components/GameDifficultyFilter";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
-import { dartsGameFamily, dartsGameRelatedIds, dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
+import { dartsGameFamily, dartsGameRelatedIds, dartsGameHasAlliedFamilies, dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { mssGameDifficulty } from "../lib/mssVisualCharter";
 import BackDot from "../components/BackDot";
 import { PageAdBanner } from "../monetization/AdSlot";
@@ -2149,8 +2149,8 @@ export default function Games({ setTab, params }: Props) {
                           </div>
                           {dartsGameFamily(g.id) ? <div style={{ marginTop: 4, fontSize: 9, color: "#c9b5f5", fontWeight: 900, letterSpacing: .2 }}>
                             {g.id === dartsGameFamily(g.id)?.mainId
-                              ? `${dartsGameRelatedIds(g.id).length} VARIANTE${dartsGameRelatedIds(g.id).length > 1 ? "S" : ""} À DÉCOUVRIR`
-                              : `FAMILLE ${DARTS_GAMES.find(item => item.id === dartsGameFamily(g.id)?.mainId)?.label || "DARTS"}`}
+                              ? `${dartsGameRelatedIds(g.id).length} MODE${dartsGameRelatedIds(g.id).length > 1 ? "S" : ""} APPARENTÉ${dartsGameRelatedIds(g.id).length > 1 ? "S" : ""}`
+                              : `${dartsGameHasAlliedFamilies(g.id) ? "SURVIE · " : ""}FAMILLE ${DARTS_GAMES.find(item => item.id === dartsGameFamily(g.id)?.mainId)?.label || "DARTS"}`}
                           </div> : null}
 
                           <div

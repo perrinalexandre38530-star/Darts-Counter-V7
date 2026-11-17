@@ -4,6 +4,9 @@ import { useTheme } from "../contexts/ThemeContext";
 
 type ViewMode = "guided" | "complete";
 
+// Slot commun : les jeux apparentés accompagnent la première étape, sans en créer une.
+export const DartsGuideRelatedSlot = React.createContext<HTMLElement | null>(null);
+
 type Props = {
   route: string;
   children: React.ReactNode;
@@ -21,6 +24,8 @@ function isPersistentNode(el: HTMLElement, index: number) {
   if (tag === "style" || tag === "script") return true;
   if (el.getAttribute("role") === "dialog") return true;
   if (el.hasAttribute("data-mss-config-guide-toolbar")) return true;
+  if (el.matches("[data-mss-game-family], [data-mss-guide-related-slot]")) return true;
+  if (el.querySelector("[data-mss-game-family]") && !el.querySelector("input,select,[data-mss-guide-section]")) return true;
   const className = String(el.className || "").toLowerCase();
   // Les rails vidéo Awena et les headers/tickers restent permanents pendant
   // le parcours guidé : seuls les blocs de paramètres changent d'étape.
@@ -37,7 +42,7 @@ function findStepNodes(host: HTMLElement): HTMLElement[] {
   // ne soit jamais une simple copie de la configuration complète.
   const explicit = Array.from(page.querySelectorAll("[data-mss-guide-section]"))
     .filter((node): node is HTMLElement => node instanceof HTMLElement);
-  if (explicit.length >= 2) return explicit;
+  if (explicit.length >= 2) return explicit.sort((a,b) => Number(a.dataset.mssGuideOrder || 999) - Number(b.dataset.mssGuideOrder || 999));
 
   const direct = Array.from(page.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
   let candidates = direct.filter((el, index) => !isPersistentNode(el, index));
@@ -88,6 +93,7 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
   const [step, setStep] = React.useState(0);
   const [steps, setSteps] = React.useState<string[]>([]);
   const [portalHost, setPortalHost] = React.useState<HTMLElement | null>(null);
+  const [relatedHost, setRelatedHost] = React.useState<HTMLElement | null>(null);
 
   React.useEffect(() => {
     setStep(0);
@@ -97,6 +103,18 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
     const host = hostRef.current;
     if (!host) return;
     const nodes = findStepNodes(host);
+    // Un bloc de variantes n'est JAMAIS une étape de configuration.
+    const firstStep = nodes[0];
+    if (firstStep) {
+      let relatedSlot = host.querySelector("[data-mss-guide-related-slot]") as HTMLElement | null;
+      if (!relatedSlot) {
+        relatedSlot = document.createElement("div");
+        relatedSlot.setAttribute("data-mss-guide-related-slot", "1");
+      }
+      if (firstStep.nextElementSibling !== relatedSlot) firstStep.after(relatedSlot);
+      setRelatedHost(relatedSlot);
+      relatedSlot.style.display = mode === "guided" && step !== 0 ? "none" : "";
+    }
     setSteps(nodes.map(stepLabel));
     setStep((current) => Math.min(current, Math.max(0, nodes.length - 1)));
 
@@ -127,6 +145,9 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
       else node.style.display = previous || "";
       node.dataset.mssGuideStep = String(index);
     });
+
+    const intro = host.querySelector("[data-mss-guide-intro]") as HTMLElement | null;
+    if (intro) intro.style.display = mode === "guided" && step !== 0 ? "none" : "";
 
     if (mode === "guided" && nodes.length) {
       const activeNode = nodes[Math.min(step, nodes.length - 1)] || null;
@@ -202,5 +223,9 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
     </section>
   );
 
-  return <div ref={hostRef} className="mss-darts-config-guide-boundary" data-config-view={mode}>{children}{portalHost ? createPortal(toolbar, portalHost) : null}</div>;
+  return <DartsGuideRelatedSlot.Provider value={relatedHost}>
+    <div ref={hostRef} className="mss-darts-config-guide-boundary" data-config-view={mode}>
+      {children}{portalHost ? createPortal(toolbar, portalHost) : null}
+    </div>
+  </DartsGuideRelatedSlot.Provider>;
 }

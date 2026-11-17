@@ -4905,6 +4905,17 @@ function advanceWave61Turn(state: Wave61State): Wave61State {
       if (ranked[0]) finishWith(state, ranked[0].id);
       return state;
     }
+    if (state.modeId === "mexicain") {
+      // A round cap must not reward the player with the highest raw score
+      // over a survivor with more remaining lives. These are distinct metrics.
+      // Preserve the deterministic original player order for exact ties.
+      const ranked = state.players
+        .filter(p => !state.eliminated[p.id])
+        .sort((a, b) => Number(state.lives[b.id] || 0) - Number(state.lives[a.id] || 0)
+          || Number(state.scores[b.id] || 0) - Number(state.scores[a.id] || 0));
+      if (ranked[0]) finishWith(state, ranked[0].id);
+      return state;
+    }
     if (state.config.participantMode === "teams") {
       const team = bestTeam(state);
       if (team) finishWith(state, team.playerId, team.teamId);

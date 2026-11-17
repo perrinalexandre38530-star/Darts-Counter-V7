@@ -505,11 +505,10 @@ export default function Wave61SharedConfig(props: any) {
 
   return <div className={`page wave61-config-screen ${spec.id === "mexicain" ? "mex-fiesta-config" : ""}`} data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
     <div className="wave61-config-header"><PageHeader difficultyGameId={spec.id} tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
-    <DartsRelatedModesPanel gameId={spec.id} accent={accent} compact onOpenGame={id => { const target = dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
     {isQuick ? <div style={{maxWidth:980,margin:"8px auto",padding:"9px 14px",fontWeight:950,color:accent}}>⚡ PARTIE RAPIDE · {spec.label} · JOUEURS ET RÈGLES ESSENTIELLES</div> : null}
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10, width: "100%", minWidth: 0, overflowX: "hidden" }}>
-      {spec.id === "mexicain" ? <div className="mex-fiesta-intro"><span>🌵 FIESTA DE DARDOS</span><strong>CHOISIS TES RÈGLES, PUIS ENTRE DANS L’ARÈNE !</strong><small>Un tirage commun · 3 fléchettes par joueur · le dernier survivant gagne</small></div> : null}
-      <section className="wave61-config-participants" style={spec.id === "green_vs_red" && greenRedFormat === "teams" ? { padding:0, background:"transparent", border:"none", boxShadow:"none" } : card}>
+      {spec.id === "mexicain" ? <div data-mss-guide-intro="1" className="mex-fiesta-intro"><span>🌵 FIESTA DE DARDOS</span><strong>CHOISIS TES RÈGLES, PUIS ENTRE DANS L’ARÈNE !</strong><small>Un tirage commun · 3 fléchettes par joueur · le dernier survivant gagne</small></div> : null}
+      <section data-mss-guide-section={spec.id === "mexicain" ? "1" : undefined} data-mss-guide-label={spec.id === "mexicain" ? "Choix des participants" : undefined} data-mss-guide-order={spec.id === "mexicain" ? 1 : undefined} className="wave61-config-participants" style={spec.id === "green_vs_red" && greenRedFormat === "teams" ? { padding:0, background:"transparent", border:"none", boxShadow:"none" } : card}>
         {spec.id === "green_vs_red" ? <>
           <div style={greenRedFormat === "teams" ? { ...card, marginBottom:10 } : undefined}>
             <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
@@ -597,7 +596,8 @@ export default function Wave61SharedConfig(props: any) {
         primarySoft={`${accent}1c`}
       /> : null}
 
-      <section className="wave61-config-engine" style={card}>
+      <DartsRelatedModesPanel gameId={spec.id} accent={accent} compact onOpenGame={id => { const target = dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
+      <section data-mss-guide-section={spec.id === "mexicain" ? "1" : undefined} data-mss-guide-label={spec.id === "mexicain" ? "Options de partie" : undefined} data-mss-guide-order={spec.id === "mexicain" ? 3 : undefined} className="wave61-config-engine" style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Moteur · {preset.label}</div>
         {spec.id === "shove_a_penny" ? <section data-shove-variant-selector="1" style={{ marginBottom: 10, padding: 10, borderRadius: 13, border: `1px solid ${accent}80`, background: `${accent}0b` }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 1100, letterSpacing: .8, marginBottom: 9 }}>VERSION DU JEU · SHOVE A PENNY</div>
@@ -633,7 +633,7 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[...(spec.id === "shove_a_penny" ? [{ value: "target", label: "Cibles successives · Keypad Cricket" }] : []), { value: "keypad", label: "Keypad classique" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
 
-      {!isQuick ? <section className="wave61-config-assistance" style={{ ...card, borderColor: `${accent}45` }}>
+      {!isQuick ? <section data-mss-guide-section={spec.id === "mexicain" ? "1" : undefined} data-mss-guide-label={spec.id === "mexicain" ? "Assistance et ambiance" : undefined} data-mss-guide-order={spec.id === "mexicain" ? 4 : undefined} className="wave61-config-assistance" style={{ ...card, borderColor: `${accent}45` }}>
         <div className="wave61-config-awena-card" aria-hidden="true">
           <img src="/awena/awena-avatar.webp" alt="" />
           <div><b>AWENA VOUS EXPLIQUE</b><span>{spec.infoBody}</span></div>
@@ -646,7 +646,7 @@ export default function Wave61SharedConfig(props: any) {
       </section> : null}
 
 
-      {dedicatedOptions.length ? <section className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
+      {dedicatedOptions.length ? <section data-mss-guide-section={spec.id === "mexicain" ? "1" : undefined} data-mss-guide-label={spec.id === "mexicain" ? "Cible, BULL et variante" : undefined} data-mss-guide-order={spec.id === "mexicain" ? 2 : undefined} className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
         {!isQuick && dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
         {dedicatedGroupsForMode(spec.id) ? (() => {
@@ -675,7 +675,7 @@ export default function Wave61SharedConfig(props: any) {
         })}
       </section> : null}
 
-      <section className="wave61-config-launch" style={{ ...card, borderColor: valid ? `${accent}66` : "rgba(255,255,255,.08)" }}>
+      <section data-mss-guide-section={spec.id === "mexicain" ? "1" : undefined} data-mss-guide-label={spec.id === "mexicain" ? "Lancer la partie" : undefined} data-mss-guide-order={spec.id === "mexicain" ? 5 : undefined} className="wave61-config-launch" style={{ ...card, borderColor: valid ? `${accent}66` : "rgba(255,255,255,.08)" }}>
         {!isQuick && spec.id !== "mexicain" ? <div style={{ color: "#aeb5c8", fontSize: 11, lineHeight: 1.55 }}><b style={{ color: "#fff" }}>{spec.label}</b> utilise désormais le moteur <b style={{ color: accent }}>{preset.label}</b>. La sauvegarde/reprise, l'Undo, les bots, le scoring par dart et l'écran de fin sont branchés dans le socle commun.</div> : null}
         <button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 48, marginTop: 12, borderRadius: 14, border: `1px solid ${valid ? accent : "rgba(255,255,255,.1)"}`, background: valid ? `linear-gradient(180deg,${accent}33,${accent}12)` : "rgba(255,255,255,.03)", color: valid ? "#fff" : "#5e6474", fontWeight: 1100, letterSpacing: .8 }}>{spec.id === "mexicain" ? "🇲🇽 ENTRER DANS L’ARÈNE" : isQuick ? "JOUER" : `LANCER ${spec.label}`}</button>
       </section>

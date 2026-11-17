@@ -22,7 +22,7 @@ export type PresidentConfigPayload = {
   botLevel: PresidentBotLevel;
   rounds: 1 | 3 | 5 | 7 | 10;
   handSize: number;
-  deckCopies: 3 | 4 | 5;
+  deckCopies: 1;
   variant: PresidentVariant;
   randomOrder: boolean;
   bullJoker: boolean;
@@ -65,6 +65,8 @@ export type PresidentRoundResult = {
   ranking: string[];
   roles: Record<string, string>;
   powerPoints: Record<string, number>;
+  kilos: Record<string, number>;
+  remainingCards: Record<string, number[]>;
   taxes: PresidentTaxEvent[];
   startedAt: number;
   finishedAt: number;
@@ -98,6 +100,7 @@ export type PresidentPlayerStats = {
   viceTrouDuCul: number;
   trouDuCul: number;
   powerPoints: number;
+  kilos: number;
   taxesGiven: number;
   taxesReceived: number;
   coupEtats: number;
@@ -179,7 +182,7 @@ function emptyStats(): PresidentPlayerStats {
     voluntaryPasses: 0, automaticPasses: 0, cardsPlayed: 0,
     singlesPlayed: 0, pairsPlayed: 0, triplesPlayed: 0, tricksWon: 0,
     president: 0, vicePresident: 0, citizen: 0, viceTrouDuCul: 0, trouDuCul: 0,
-    powerPoints: 0, taxesGiven: 0, taxesReceived: 0, coupEtats: 0, revolutions: 0,
+    powerPoints: 0, kilos: 0, taxesGiven: 0, taxesReceived: 0, coupEtats: 0, revolutions: 0,
     bestFinishRank: null, worstFinishRank: null, rankTotal: 0, roundsPlayed: 0,
     singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0,
   };
@@ -189,35 +192,55 @@ function emptyStats(): PresidentPlayerStats {
 // Les valeurs 11–14 se jouent sur les segments S/D/T 11–14.
 const CARD_RANKS = [3,4,5,6,7,8,9,10,11,12,13,14,2];
 export function presidentCardRank(value: number): string {
-  return ({ 11:"V",12:"D",13:"R",14:"A" } as Record<number,string>)[value] || String(value);
+  return ({ 11:"V",12:"D",13:"R",14:"A",25:"JOKER BULL",50:"JOKER DBULL" } as Record<number,string>)[value] || String(value);
 }
-function cardPower(value: number): number { return value === 2 ? 15 : value; }
+// Paquet physique MSS : 52 cartes (13 rangs × 4 enseignes) + 2 Jokers uniques.
+// Les jokers ne sont jamais des copies : HAWAII 501 = BULL25, KING OF BLING = DBULL50.
+export const PRESIDENT_DECK_SIZE = 54;
+export function presidentCardsPerPlayer(playerCount: number, requested: number): number {
+  const count = Math.max(3, Math.min(8, Math.floor(Number(playerCount) || 3)));
+  return Math.min(Math.max(1, Math.floor(Number(requested) || 10)), Math.floor(PRESIDENT_DECK_SIZE / count));
+}
+function cardPower(value: number): number { return value === 2 ? 15 : value === 25 ? 16 : value === 50 ? 17 : value; }
 const sortCards = (a:number,b:number) => cardPower(a)-cardPower(b);
-function createSuitMap(hands: Record<string, number[]>): Record<string, number[]> {
-  const seen = new Map<number,number>();
-  return Object.fromEntries(Object.entries(hands).map(([id,hand]) => [id, hand.map(value => {
-    const next = seen.get(value) || 0; seen.set(value,next+1); return next % 4;
-  })]));
+/** Barème maison MSS, pénalité des cartes restant en main en fin de manche. */
+export function presidentCardKilos(value: number): number {
+  if (value === 25) return 20; // Joker BULL
+  if (value === 50) return 25; // Joker DBULL
+  if (value === 2) return 15;
+  if (value >= 3 && value <= 14) return value;
+  return 0;
 }
-function makeDeck(copies: number): number[] {
-  const deck: number[] = [];
-  for (let copy = 0; copy < copies; copy += 1) {
-    for (const value of CARD_RANKS) deck.push(value);
+export function presidentHandKilos(hand: number[]): number {
+  return (hand || []).reduce((total, value) => total + presidentCardKilos(value), 0);
+}
+type PhysicalCard = { value: number; suit: number };
+function makeDeck(): PhysicalCard[] {
+  const deck: PhysicalCard[] = [];
+  // Exactement une carte de chaque valeur pour chaque enseigne, sans duplication.
+  for (let suit = 0; suit < 4; suit += 1) {
+    for (const value of CARD_RANKS) deck.push({ value, suit });
   }
+  deck.push({ value: 25, suit: 4 }, { value: 50, suit: 5 });
   return shuffle(deck);
 }
 
-function dealHands(playerIds: string[], handSize: number, copies: number): Record<string, number[]> {
-  let deck = makeDeck(copies);
-  const needed = playerIds.length * handSize;
-  while (deck.length < needed) deck = [...deck, ...makeDeck(copies)];
-  const hands: Record<string, number[]> = Object.fromEntries(playerIds.map((id) => [id, []]));
+function dealHands(playerIds: string[], requestedHandSize: number): { hands: Record<string, number[]>; suitsByPlayer: Record<string, number[]> } {
+  const deck = makeDeck();
+  const count = presidentCardsPerPlayer(playerIds.length, requestedHandSize);
+  const dealt: Record<string, PhysicalCard[]> = Object.fromEntries(playerIds.map(id => [id, []]));
   let cursor = 0;
-  for (let card = 0; card < handSize; card += 1) {
-    for (const id of playerIds) hands[id].push(deck[cursor++]);
+  for (let card = 0; card < count; card += 1) {
+    for (const id of playerIds) dealt[id].push(deck[cursor++]);
   }
-  for (const id of playerIds) hands[id].sort(sortCards);
-  return hands;
+  const hands: Record<string, number[]> = {};
+  const suitsByPlayer: Record<string, number[]> = {};
+  for (const id of playerIds) {
+    const cards = dealt[id].sort((a,b) => sortCards(a.value,b.value) || a.suit-b.suit);
+    hands[id] = cards.map(c => c.value);
+    suitsByPlayer[id] = cards.map(c => c.suit);
+  }
+  return { hands, suitsByPlayer };
 }
 
 function roleForRank(rank: number, count: number): string {
@@ -246,7 +269,7 @@ export function presidentLegalTargets(hand: number[], current: PresidentTarget |
   const out: PresidentTarget[] = [];
   for (const [value, count] of counts) {
     for (const size of [1, 2, 3] as PresidentComboSize[]) {
-      if (count < size) continue;
+      if (count < size || (value >= 25 && size !== 1)) continue;
       if (current && size !== current.size) continue;
       if (current) {
         const beats = revolutionActive ? cardPower(value) < cardPower(current.value) : cardPower(value) > cardPower(current.value);
@@ -264,12 +287,16 @@ export function presidentLegalTargets(hand: number[], current: PresidentTarget |
 
 export function presidentTargetLabel(target: PresidentTarget | null): string {
   if (!target) return "OUVERTURE LIBRE";
+  if (target.value === 25) return "BULL";
+  if (target.value === 50) return "DBULL";
   const prefix = target.size === 3 ? "T" : target.size === 2 ? "D" : "S";
   return `${prefix}${target.value}`;
 }
 
 export function presidentTargetDescription(target: PresidentTarget | null): string {
   if (!target) return "Choisis une combinaison dans ta main";
+  if (target.value === 25) return "JOKER HAWAII 501 · BULL25";
+  if (target.value === 50) return "JOKER KING OF BLING · BULL50";
   return target.size === 3 ? `BRELAN DE ${target.value}` : target.size === 2 ? `PAIRE DE ${target.value}` : `CARTE ${target.value}`;
 }
 
@@ -282,10 +309,10 @@ export function presidentDartLabel(dart: GameDart): string {
 
 function dartMatchesTarget(dart: GameDart, target: PresidentTarget, state: PresidentState): { ok: boolean; coupEtat: boolean } {
   if (!dart) return { ok: false, coupEtat: false };
-  if (state.rules.variant === "chaos") {
-    if (state.rules.coupEtat && dart.bed === "IB") return { ok: true, coupEtat: true };
-    if (state.rules.bullJoker && target.size === 1 && dart.bed === "OB") return { ok: true, coupEtat: false };
-  }
+  if (state.rules.variant === "chaos" && state.rules.coupEtat && dart.bed === "IB") return { ok: true, coupEtat: true };
+  if (target.value === 25) return { ok: dart.bed === "OB", coupEtat: false };
+  if (target.value === 50) return { ok: dart.bed === "IB", coupEtat: false };
+  if (state.rules.variant === "chaos" && state.rules.bullJoker && target.size === 1 && dart.bed === "OB") return { ok: true, coupEtat: false };
   const expectedBed = target.size === 3 ? "T" : target.size === 2 ? "D" : "S";
   return { ok: dart.bed === expectedBed && Number(dart.number) === target.value, coupEtat: false };
 }
@@ -377,14 +404,19 @@ function finishRound(state: PresidentState): PresidentState {
   const ranking = [...next.currentRoundRanking, ...remaining];
   const roles = roleMap(ranking);
   const points: Record<string, number> = {};
+  const kilos: Record<string, number> = {};
+  const remainingCards: Record<string, number[]> = {};
   ranking.forEach((id, index) => {
     const rank = index + 1;
     const power = ranking.length - index;
     points[id] = power;
+    remainingCards[id] = [...(next.hands[id] || [])];
+    kilos[id] = presidentHandKilos(remainingCards[id]);
     const s = next.statsByPlayer[id];
     s.roundsPlayed += 1;
     s.rankTotal += rank;
     s.powerPoints += power;
+    s.kilos = (s.kilos || 0) + kilos[id];
     s.bestFinishRank = s.bestFinishRank == null ? rank : Math.min(s.bestFinishRank, rank);
     s.worstFinishRank = s.worstFinishRank == null ? rank : Math.max(s.worstFinishRank, rank);
     const role = roles[id];
@@ -399,6 +431,8 @@ function finishRound(state: PresidentState): PresidentState {
     ranking,
     roles,
     powerPoints: points,
+    kilos,
+    remainingCards,
     taxes: [...next.taxesThisRound],
     startedAt: next.roundStartedAt,
     finishedAt: Date.now(),
@@ -409,6 +443,7 @@ function finishRound(state: PresidentState): PresidentState {
   if (next.roundNo >= next.rules.rounds) {
     const standings = [...next.order].sort((a, b) => {
       const sa = next.statsByPlayer[a], sb = next.statsByPlayer[b];
+      if ((sa.kilos || 0) !== (sb.kilos || 0)) return (sa.kilos || 0) - (sb.kilos || 0);
       if (sb.powerPoints !== sa.powerPoints) return sb.powerPoints - sa.powerPoints;
       if (sb.president !== sa.president) return sb.president - sa.president;
       const aa = sa.roundsPlayed ? sa.rankTotal / sa.roundsPlayed : 999;
@@ -444,8 +479,8 @@ export function createPresidentState(
   const rounds = ([1, 3, 5, 7, 10].includes(Number(inputRules.rounds)) ? Number(inputRules.rounds) : 5) as 1 | 3 | 5 | 7 | 10;
   const rules: PresidentRules = {
     rounds,
-    handSize: clampInt(inputRules.handSize, 5, 16, 10),
-    deckCopies: ([3, 4, 5].includes(Number(inputRules.deckCopies)) ? Number(inputRules.deckCopies) : 4) as 3 | 4 | 5,
+    handSize: presidentCardsPerPlayer(players.length, clampInt(inputRules.handSize, 5, 16, 10)),
+    deckCopies: 1,
     variant: inputRules.variant === "chaos" ? "chaos" : "classic",
     bullJoker: inputRules.variant === "chaos" && inputRules.bullJoker !== false,
     coupEtat: inputRules.variant === "chaos" && inputRules.coupEtat !== false,
@@ -454,8 +489,7 @@ export function createPresidentState(
   const order = players.map((p) => p.id);
   const statsByPlayer: Record<string, PresidentPlayerStats> = {};
   order.forEach((id) => { statsByPlayer[id] = emptyStats(); });
-  const hands = dealHands(order, rules.handSize, rules.deckCopies);
-  const suitsByPlayer = createSuitMap(hands);
+  const { hands, suitsByPlayer } = dealHands(order, rules.handSize);
   const now = Date.now();
   return {
     sport: "darts", mode: "president", rules, players, order, hands, suitsByPlayer, currentTableSuits: [], pendingTaxes: [],
@@ -480,9 +514,9 @@ export function startNextPresidentRound(state: PresidentState): PresidentState {
   next.currentRoundRanking = [];
   next.revolutionActive = false;
   next.roundStartedAt = Date.now();
-  const hands = dealHands(next.order, next.rules.handSize, next.rules.deckCopies);
+  const { hands, suitsByPlayer } = dealHands(next.order, next.rules.handSize);
   next.hands = hands;
-  next.suitsByPlayer = createSuitMap(hands);
+  next.suitsByPlayer = suitsByPlayer;
   next.taxesThisRound = [];
   const ranking = next.previousRoundRanking;
   next.pendingTaxes = ranking.length >= 3 ? [
@@ -689,17 +723,18 @@ export function clonePresidentState(state: PresidentState): PresidentState {
     previousRoles: { ...state.previousRoles },
     taxesThisRound: state.taxesThisRound.map((x) => ({ ...x, given: [...x.given], returned: [...x.returned], givenSuits: x.givenSuits ? [...x.givenSuits] : undefined, returnedSuits: x.returnedSuits ? [...x.returnedSuits] : undefined })),
     history: state.history.map((x) => ({ ...x, playedSuits: x.playedSuits ? [...x.playedSuits] : undefined, target: x.target ? { ...x.target } : null, darts: x.darts.map((d) => ({ ...d })), labels: [...x.labels] })),
-    roundResults: state.roundResults.map((r) => ({ ...r, ranking: [...r.ranking], roles: { ...r.roles }, powerPoints: { ...r.powerPoints }, taxes: r.taxes.map((x) => ({ ...x, given: [...x.given], returned: [...x.returned] })) })),
+    roundResults: state.roundResults.map((r) => ({ ...r, ranking: [...r.ranking], roles: { ...r.roles }, powerPoints: { ...r.powerPoints }, kilos: { ...(r.kilos || {}) }, remainingCards: Object.fromEntries(Object.entries(r.remainingCards || {}).map(([id, cards]) => [id, [...cards]])), taxes: r.taxes.map((x) => ({ ...x, given: [...x.given], returned: [...x.returned] })) })),
     statsByPlayer: Object.fromEntries(Object.entries(state.statsByPlayer).map(([id, s]) => [id, { ...s }])),
     standings: [...state.standings],
   };
 }
 
-export function getPresidentStandings(state: PresidentState): Array<{ id: string; name: string; powerPoints: number; presidents: number; avgRank: number; hand: number }> {
+export function getPresidentStandings(state: PresidentState): Array<{ id: string; name: string; powerPoints: number; kilos: number; presidents: number; avgRank: number; hand: number }> {
   const byId = new Map(state.players.map((p) => [p.id, p]));
-  const ids = state.finished && state.standings.length ? state.standings : [...state.order].sort((a, b) => state.statsByPlayer[b].powerPoints - state.statsByPlayer[a].powerPoints);
+  const ids = state.finished && state.standings.length ? state.standings : [...state.order].sort((a, b) =>
+    (state.statsByPlayer[a].kilos || 0) - (state.statsByPlayer[b].kilos || 0) || state.statsByPlayer[b].powerPoints - state.statsByPlayer[a].powerPoints);
   return ids.map((id) => {
     const s = state.statsByPlayer[id];
-    return { id, name: byId.get(id)?.name || id, powerPoints: s.powerPoints, presidents: s.president, avgRank: s.roundsPlayed ? s.rankTotal / s.roundsPlayed : 0, hand: state.hands[id]?.length || 0 };
+    return { id, name: byId.get(id)?.name || id, powerPoints: s.powerPoints, kilos: s.kilos || 0, presidents: s.president, avgRank: s.roundsPlayed ? s.rankTotal / s.roundsPlayed : 0, hand: state.hands[id]?.length || 0 };
   });
 }
