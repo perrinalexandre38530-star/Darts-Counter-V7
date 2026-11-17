@@ -1,0 +1,5 @@
+{
+  "schema": "mss.dev.mission.v1",
+  "requestId": "MSS-DEV-001",
+  "description": "Verifier les ecarts de moyenne X01 entre le tableau de bord et les profils joueurs, puis proposer une correction minimale."
+}

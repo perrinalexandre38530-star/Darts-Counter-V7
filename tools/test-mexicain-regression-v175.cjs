@@ -161,3 +161,52 @@ console.log('✅ MEXICAIN V175 : bots, reprise JSON, manches complètes et fin �
   assert.deepEqual(buildMexicainRoundStandings(p,[],3),[]);
 }
 console.log('✅ MEXICAIN V178 : classement historique de survie, égalités et source immuable OK');
+
+// MEXICO: a shuffled bag changes the target at every completed round, while
+// every player in a single round still sees the same target (fair score battle).
+{
+  const { mexicainMexicoTargets, getWave61Target, pickWave61BotDarts } = require('../src/lib/gameEngines/wave61Engine.ts');
+  for (const bullEnabled of [false, true]) {
+    const max = bullEnabled ? 21 : 20;
+    const targetSequence = mexicainMexicoTargets('mexico-regression', bullEnabled, 60);
+    assert.equal(targetSequence.length, 60);
+    assert.deepEqual(targetSequence, mexicainMexicoTargets('mexico-regression', bullEnabled, 60), 'seeded sequence must be reproducible');
+    for (let i = 1; i < targetSequence.length; i++) assert.notEqual(targetSequence[i],targetSequence[i-1], 'MEXICO must change every round, including across cycle boundaries');
+    for (let i = 0; i + max <= targetSequence.length; i += max) {
+      const bag = targetSequence.slice(i,i+max);
+      assert.equal(new Set(bag).size, max, 'no sector repeats during a cycle');
+      assert.equal(bag.includes(21), bullEnabled, 'BULL inclusion follows configuration');
+    }
+  }
+  let s = start(p.slice(0,2), {targetMode:'mexico',bullEnabled:'yes'});
+  const targets = s.special.mexicainTargets;
+  assert.notEqual(targets[0],targets[1]);
+  for (let round = 0; round < 4; round++) {
+    const target = targets[round];
+    const label = getWave61Target(s);
+    assert.equal(target === 21 ? label.kind === 'bull' : label.value === target, true);
+    const darts = target===21 ? [{bed:'OB'},{bed:'OB'},{bed:'OB'}] : [hit(target),hit(target),hit(target)];
+    s=turn(s,darts);
+    assert.equal(getWave61Target(s).label, label.label, 'all players play the same target within each round');
+    const resumed=cloneWave61State(JSON.parse(JSON.stringify(s)));
+    assert.deepEqual(resumed.special.mexicainTargets,targets,'save and resume preserve the planned targets');
+    s=turn(resumed,darts);
+    assert.equal(s.special.mexicainHistory[round].target,target,'history records the common round target');
+    assert.equal(s.roundIndex,round+1);
+  }
+  // The existing random and fixed options must keep their original semantics.
+  let fixed = start(p.slice(0,2),{targetMode:'fixed',fixedTarget:7});
+  assert(fixed.special.mexicainTargets.every(n=>n===7));
+  let random = start(p.slice(0,2),{targetMode:'random',bullEnabled:'no'});
+  assert(random.special.mexicainTargets.every(n=>n>=1 && n<=20));
+  let bot = start([{id:'human',name:'Human'},{id:'cpu',name:'CPU'}],{targetMode:'mexico',bullEnabled:'yes'});
+  const botFirstTarget = bot.special.mexicainTargets[0];
+  bot=turn(bot,misses);
+  assert.equal(bot.special.mexicainTargets[bot.roundIndex],botFirstTarget);
+  const botDarts=pickWave61BotDarts(bot,'hard',5);
+  assert.equal(botDarts.length,3);
+  bot=turn(bot,botDarts);
+  assert.equal(bot.special.mexicainHistory[0].target,botFirstTarget);
+  assert.notEqual(bot.special.mexicainTargets[bot.roundIndex],botFirstTarget);
+}
+console.log('✅ MEXICO : secteur renouvelé à chaque manche sans répétition, mêmes chances, bots, sauvegarde et rétrocompatibilité OK');

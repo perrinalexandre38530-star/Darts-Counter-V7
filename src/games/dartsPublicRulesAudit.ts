@@ -45,6 +45,7 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
     "options": [
       "FIESTA MEXICAINE : un secteur commun est tiré pour toute la manche",
       "CIBLES POSSIBLES : 1 à 20, avec option BULL activable ou non dans la configuration",
+      "CHOIX DE CIBLE : Fixe (toujours la même), Aléatoire (tirage à chaque manche avec répétition possible), MEXICO (nouveau secteur garanti à chaque manche, sans répétition avant d'avoir parcouru tous les secteurs)",
       "Chaque joueur lance 3 fléchettes ; seules les touches sur la cible tirée marquent",
       "SCORING : Simple = valeur simple, Double = valeur double, Triple = valeur triple, BULL = 25 ou 50 selon la cible",
       "Le plus petit score de la manche perd une vie ; en cas d’égalité générale, personne ne perd",

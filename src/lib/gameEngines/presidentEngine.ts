@@ -290,6 +290,14 @@ export function presidentLegalTargets(hand: number[], current: PresidentTarget |
   return out;
 }
 
+/** A plain-language explanation of the legal response, shared by game and help panels. */
+export function presidentTrickInstruction(current: PresidentTarget | null, revolutionActive = false): string {
+  if (!current) return "TABLE LIBRE · choisis 1 carte, une paire ou un brelan. La valeur doit exister dans ta main.";
+  const combo = current.size === 1 ? "une carte" : current.size === 2 ? "une paire" : "un brelan";
+  const order = revolutionActive ? "plus faible" : "plus forte";
+  return `À BATTRE : ${presidentTargetLabel(current)} · joue ${combo} de valeur ${order} ou de même valeur pour faire sauter le joueur suivant. PASSER ne fait pas gagner le pli.`;
+}
+
 export function presidentTargetLabel(target: PresidentTarget | null): string {
   if (!target) return "OUVERTURE LIBRE";
   if (target.value === 25) return "BULL";
@@ -320,6 +328,37 @@ function dartMatchesTarget(dart: GameDart, target: PresidentTarget, state: Presi
   if (state.rules.variant === "chaos" && state.rules.bullJoker && target.size === 1 && dart.bed === "OB") return { ok: true, coupEtat: false };
   const expectedBed = target.size === 3 ? "T" : target.size === 2 ? "D" : "S";
   return { ok: dart.bed === expectedBed && Number(dart.number) === target.value, coupEtat: false };
+}
+
+/**
+ * A throw is authoritative: resolve it against cards actually in the active
+ * player's hand and the current trick. The highlighted shot is a suggestion,
+ * not a restriction. Darts are examined in chronological order; equal or
+ * higher responses must have the same combination size as the table.
+ */
+export function presidentResolvePlayedTarget(
+  state: PresidentState,
+  darts: GameDart[],
+  preferred: PresidentTarget | null = null,
+): PresidentTarget | null {
+  const hand = state.hands[state.activePlayerId] || [];
+  const legal = presidentLegalTargets(hand, state.currentTarget, state.revolutionActive);
+  if (!legal.length) return null;
+  const same = (a: PresidentTarget, b: PresidentTarget) => a.value === b.value && a.size === b.size;
+  for (const dart of (darts || []).slice(0, 3)) {
+    // Preserve the selection on ambiguous CHAOS joker hits, but never let an
+    // obsolete or illegal selection override an actual legal shot.
+    if (preferred && legal.some(t => same(t, preferred)) && dartMatchesTarget(dart, preferred, state).ok) {
+      return preferred;
+    }
+    const exact = legal.find(t => t.value === 50 && dart.bed === "IB" ||
+      t.value === 25 && dart.bed === "OB" ||
+      t.value < 25 && dart.bed === (t.size === 1 ? "S" : t.size === 2 ? "D" : "T") && Number(dart.number) === t.value);
+    if (exact) return exact;
+    const special = legal.find(t => dartMatchesTarget(dart, t, state).ok);
+    if (special) return special;
+  }
+  return null;
 }
 
 function removeCards(hand: number[], value: number, count: number): number[] {
@@ -576,6 +615,20 @@ export function resolvePresidentTax(state: PresidentState, chosenIndices: number
   return next;
 }
 
+/** The winner of a completed trick is the author of its last SUCCESSFUL play.
+ * PASS events and stale pre-transition player IDs must not determine it. */
+export function presidentTrickWinnerFromHistory(
+  history: PresidentTurnEvent[], roundNo: number, trickNo: number,
+): string | null {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const event = history[i];
+    if (event.roundNo === roundNo && event.trickNo === trickNo && event.success && !event.passed) {
+      return event.playerId;
+    }
+  }
+  return null;
+}
+
 export function presidentCanPlayerPlay(state: PresidentState, playerId: string): boolean {
   return presidentLegalTargets(state.hands[playerId] || [], state.currentTarget, state.revolutionActive).length > 0;
 }
@@ -585,7 +638,8 @@ export function presidentAutoTarget(state: PresidentState, playerId: string): Pr
 }
 
 export function passPresidentTurn(state: PresidentState, automatic = false): PresidentState {
-  if (state.finished || state.pendingTaxes?.length) return state;
+  // No pass on an empty table: the leader must open with a legal combination.
+  if (state.finished || state.pendingTaxes?.length || !state.currentTarget) return state;
   const next = clonePresidentState(state);
   const playerId = next.activePlayerId;
   const stats = next.statsByPlayer[playerId];
@@ -619,11 +673,16 @@ export function playPresidentTurn(state: PresidentState, target: PresidentTarget
   const next = clonePresidentState(state);
   const playerId = next.activePlayerId;
   const hand = next.hands[playerId] || [];
-  const legal = presidentLegalTargets(hand, next.currentTarget, next.revolutionActive)
-    .some((t) => t.value === target.value && t.size === target.size);
-  if (!legal) return passPresidentTurn(next, true);
-
   const normalizedDarts = (darts || []).slice(0, 3);
+  // The physical hit takes precedence over an obsolete selection. Resolve
+  // against the live hand before checking legality; otherwise a stale S3
+  // blocks an actual, legal S4 when the table has changed.
+  const actualTarget = presidentResolvePlayedTarget(next, normalizedDarts, target);
+  const candidate = actualTarget || target;
+  const legal = presidentLegalTargets(hand, next.currentTarget, next.revolutionActive)
+    .some((t) => t.value === candidate.value && t.size === candidate.size);
+  if (!legal) return state; // Never consume a turn for an invalid selection.
+  target = candidate;
   const stats = next.statsByPlayer[playerId];
   stats.visits += 1;
   updateImpactStats(stats, normalizedDarts);

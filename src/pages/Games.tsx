@@ -522,9 +522,11 @@ export default function Games({ setTab, params }: Props) {
             ? "ptit_1"
             : id;
 
-    // CHASE et SPLIT SCORE possèdent des visuels FR/EN, pas de ticker générique.
-    if (lang === "fr" && (id === "chase" || id === "split_score" || id === "killer_progressive" || id === "mexicain")) {
-      return findTickerById(`${baseId}_fr`) || findTickerById(baseId);
+    // Tous les modes avec tickers localisés doivent trouver leur version FR,
+    // même si aucun ticker générique n'existe (ex. KILO DE MERDE).
+    if (lang === "fr") {
+      const french = findTickerById(`${baseId}_fr`);
+      if (french) return french;
     }
     if (lang !== "fr") {
       const preferred = lang === "es" ? "es" : "en";

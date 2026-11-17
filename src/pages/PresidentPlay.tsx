@@ -28,6 +28,9 @@ import {
   presidentCanPlayerPlay,
   presidentDartLabel,
   presidentLegalTargets,
+  presidentResolvePlayedTarget,
+  presidentTrickWinnerFromHistory,
+  presidentTrickInstruction,
   presidentRoleForRank,
   presidentCardRank,
   presidentCardKilos,
@@ -336,7 +339,7 @@ function PresidentTrickTransition({ data, profilesById, onContinue, primary }: a
       <div style={{fontSize:10,fontWeight:1000,letterSpacing:1.4,color:"#d3ecd9"}}>MANCHE {data.roundNo} · FIN DU PLI {data.trickNo}</div>
       <div style={{display:"grid",placeItems:"center",gap:5}}><span style={{fontSize:36,color:"#f8d77e",filter:"drop-shadow(0 0 15px #ffd76a55)"}}>♛</span><div style={{fontSize:24,fontWeight:1100,color:"#ffe3a0"}}>PLI REMPORTÉ !</div></div>
       <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:"center"}}><ProfileAvatar profile={winner} size={52}/><div style={{fontSize:17,fontWeight:1000,color:"#fff5d6"}}>{playerName(winner).toUpperCase()}</div></div>
-      <div style={{fontSize:11,color:"#b9e4cc",lineHeight:1.55}}>Tous les adversaires ont passé : le dernier joueur à avoir posé des cartes remporte ce pli.</div>
+      <div style={{fontSize:11,color:"#b9e4cc",lineHeight:1.55}}>Tous les adversaires encore en jeu ont passé. <b>Le dernier joueur qui a réussi à poser des cartes remporte le pli</b>, même si un autre joueur a passé juste avant. Passer ne fait jamais gagner.</div>
       <div style={{width:"100%",minHeight:135,position:"relative",display:"grid",placeItems:"center",overflow:"hidden",borderRadius:16,background:"radial-gradient(ellipse at center,#185f49,#0a3228 74%)"}}>
         {cards.length ? <div style={{width:220,height:122,position:"relative"}}>{cards.map((card,index)=>{
           const angle = index*2.39996, dist = Math.min(65,11+Math.sqrt(index)*11);
@@ -363,7 +366,7 @@ function RulesContent({ config, primary }: any) {
     <RuleStep n="2" title="COMMENT LIRE S / D / T ?" color="#43d8ff"><b>S7</b> = jouer 1 carte 7 → toucher Simple 7. <b>D7</b> = jouer 2 cartes 7 → toucher Double 7. <b>T7</b> = jouer 3 cartes 7 → toucher Triple 7.</RuleStep>
     <div style={{ ...panel(), padding: 9, borderColor: "rgba(67,216,255,.28)" }}><div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "center" }}><div style={{ position: "relative", width: 77, height: 66 }}><div style={{ position: "absolute", left: 0, top: 2, transform: "rotate(-7deg) scale(.72)", transformOrigin: "top left" }}><PlayingCard value={2}/></div><div style={{ position: "absolute", left: 26, top: 2, transform: "rotate(7deg) scale(.72)", transformOrigin: "top left" }}><PlayingCard value={2}/></div></div><div style={{ fontSize: 11.5, lineHeight: 1.45 }}><b style={{ color: "#43d8ff" }}>EXEMPLE — D2</b><br />Ta combinaison est une <b>paire de 2</b>. Tu as jusqu’à 3 fléchettes pour toucher <b>Double 2</b>. Dès que D2 est touché, les 2 cartes « 2 » quittent ta main.</div></div></div>
     <RuleStep n="3" title="OUVERTURE DU PLI" color="#ffd45c">Quand « OUVERTURE LIBRE » est affiché, choisis n’importe quelle combinaison autorisée par ta main : simple, paire ou brelan.</RuleStep>
-    <RuleStep n="4" title="RÉPONDRE AU COUP PRÉCÉDENT" color="#72efad">Tu dois garder le <b>même type de combinaison</b> et jouer une valeur supérieure. Exemple : après D7, tu peux jouer D8, D9, D14 (As) ou D2, mais pas S8 ni T8. Une valeur identique avec autant de cartes fait sauter le joueur suivant. Le 2 est la plus forte carte classique, et finir avec un 2 fait perdre la manche.{config.variant === "chaos" ? " Les Jokers MSS sont plus forts que le 2." : ""}</RuleStep>
+    <RuleStep n="4" title="RÉPONDRE AU COUP PRÉCÉDENT" color="#72efad">Tu dois garder le <b>même type de combinaison</b> et jouer une valeur supérieure. Exemple : après D7, tu peux jouer D8, D9, D14 (As) ou D2, mais pas S8 ni T8. <b>D7 est également autorisé : cette égalité saute le joueur suivant.</b> Tu peux donc jouer de nouveau un 3 sur S3, mais tu peux aussi jouer un simple 4, 5, 6, etc., si tu les as en main. Le 2 est la plus forte carte classique, et finir avec un 2 fait perdre la manche.{config.variant === "chaos" ? " Les Jokers MSS sont plus forts que le 2." : ""}</RuleStep>
     <RuleStep n="5" title="3 FLÉCHETTES MAX" color="#c45cff">Le premier impact exact valide immédiatement le coup. Après 3 fléchettes sans réussite, ton tour devient un <b>PASS</b>. Tu peux aussi passer volontairement.</RuleStep>
     <RuleStep n="6" title="FIN DU PLI" color="#ff9b67">Quand tous les autres joueurs ont passé, le dernier joueur ayant réussi un coup gagne le pli et ouvre le suivant librement. <b>Un pli gagné ne donne pas de points</b> : il compte dans tes statistiques et te redonne l’ouverture.</RuleStep>
     <RuleStep n="7" title="FIN DE MANCHE & TAXES" color="#ffcf57">Le classement fixe les rôles. À la manche suivante, le Trou du cul donne ses 2 meilleures cartes au Président, qui lui rend ses 2 plus faibles. À partir de 4 joueurs, Vice-Président et Vice-Trou du cul échangent aussi 1 carte.</RuleStep>
@@ -636,9 +639,11 @@ function PresidentTrickArchive({ state, profilesById, primary }: any) {
     return <div key={group.key} style={{border:`1px solid ${isCurrent?primary+"66":"rgba(255,255,255,.12)"}`,borderRadius:13,overflow:"hidden",background:"rgba(255,255,255,.035)"}}>
       <button type="button" aria-expanded={opened} onClick={()=>setExpanded(opened?"":group.key)} style={{width:"100%",border:0,background:"rgba(255,255,255,.035)",color:"#fff",padding:"10px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,textAlign:"left",cursor:"pointer"}}>
         <span style={{fontWeight:1000,fontSize:11}}>MANCHE {group.roundNo} · PLI {group.trickNo} {isCurrent?"· EN COURS":""}</span>
-        <span style={{color:isCurrent?"#86e2ff":"#e9c56c",fontSize:10,fontWeight:900}}>{isCurrent?"Table active":winner?`Dernière pose : ${playerName(profilesById.get(winner))}`:"Aucune carte posée"} {opened?"▴":"▾"}</span>
+        <span style={{color:isCurrent?"#86e2ff":"#e9c56c",fontSize:10,fontWeight:900}}>{isCurrent?"PLI EN COURS":winner?`🏆 PLI GAGNÉ : ${playerName(profilesById.get(winner))}`:"Aucune carte posée"} {opened?"▴":"▾"}</span>
       </button>
-      {opened?<div style={{padding:9,display:"grid",gap:7}}>{group.events.map((ev:any) => <div key={ev.id} style={{display:"flex",gap:9,alignItems:"center",borderBottom:"1px solid rgba(255,255,255,.06)",paddingBottom:6}}>
+      {opened?<div style={{padding:9,display:"grid",gap:7}}>
+        <div style={{fontSize:10,color:"#ccebdd",lineHeight:1.45,padding:"4px 5px"}}>{isCurrent?"Ordre chronologique ci-dessous. Le pli n'est pas terminé.":"Ordre chronologique ci-dessous. Le gagnant est le DERNIER joueur ayant réussi une pose ; une passe ne remporte jamais le pli."}</div>
+        {group.events.map((ev:any) => <div key={ev.id} style={{display:"flex",gap:9,alignItems:"center",borderBottom:"1px solid rgba(255,255,255,.06)",paddingBottom:6}}>
         <ProfileAvatar profile={profilesById.get(ev.playerId)} size={30}/>
         <div style={{flex:1,minWidth:0}}><div style={{fontSize:11,fontWeight:950}}>{playerName(profilesById.get(ev.playerId))}</div><div style={{fontSize:9,color:ev.success?"#83eabc":"#ffae89"}}>{ev.success?`POSE ${ev.target?.size===1?"UNE CARTE":ev.target?.size===2?"UNE PAIRE":"UN BRELAN"}`:ev.automaticPass?"PASSAGE AUTOMATIQUE":ev.passed?"PASSE":"TIR MANQUÉ"}</div></div>
         {ev.success && ev.target ? <div style={{display:"flex",gap:3,flexShrink:0}}>{Array.from({length:ev.target.size},(_:unknown,i:number)=>ev.playedSuits?.[i] !== undefined ? <PlayingCard key={i} value={ev.target.value} suitIndex={ev.playedSuits[i]} mini/> : <div key={i} title="Enseigne non enregistrée dans cette ancienne action" style={{width:43,height:61,borderRadius:6,background:"#eee8d8",color:"#242424",display:"grid",placeItems:"center",fontWeight:900,fontSize:18}}>{presidentCardRank(ev.target.value)}</div>)}</div> : <span style={{fontSize:11,color:"#ffae89",fontWeight:900}}>PASS</span>}
@@ -803,6 +808,7 @@ function PresidentStandardPlay(props: any) {
   const [notice, setNotice] = React.useState("");
   const [undo, setUndo] = React.useState<PresidentState[]>([]);
   const [botThinking, setBotThinking] = React.useState(false);
+  const submissionTurnRef = React.useRef<string | null>(null);
   const inputSectionRef = React.useRef<HTMLElement | null>(null);
   const handSectionRef = React.useRef<HTMLElement | null>(null);
   const [showHelp, setShowHelp] = React.useState(false);
@@ -821,10 +827,15 @@ function PresidentStandardPlay(props: any) {
   const previousTrickRef = React.useRef({round:state.roundNo,trick:state.trickNo,winnerId:state.lastSuccessfulPlayerId,target:state.currentTarget,history:state.history});
   React.useEffect(() => {
     const prev = previousTrickRef.current;
-    if (state.roundNo === prev.round && state.trickNo === prev.trick + 1 && prev.winnerId && prev.target) {
-      const events = (prev.history || []).filter((event:any)=>event.roundNo===prev.round && event.trickNo===prev.trick);
-      setTrickTransition({roundNo:prev.round,trickNo:prev.trick,nextTrick:state.trickNo,winnerId:prev.winnerId,events});
-      setShowInput(false);
+    if (state.roundNo === prev.round && state.trickNo === prev.trick + 1) {
+      const events = (state.history || []).filter((event:any)=>event.roundNo===prev.round && event.trickNo===prev.trick);
+      // The final successful play can itself close the trick. A captured
+      // previous winner is then stale; derive the winner from recorded plays.
+      const winnerId = presidentTrickWinnerFromHistory(state.history || [], prev.round, prev.trick);
+      if (winnerId) {
+        setTrickTransition({roundNo:prev.round,trickNo:prev.trick,nextTrick:state.trickNo,winnerId,events});
+        setShowInput(false);
+      }
     } else if (state.roundNo !== prev.round || state.trickNo < prev.trick) {
       setTrickTransition(null);
     }
@@ -852,9 +863,10 @@ function PresidentStandardPlay(props: any) {
   // A new confirmed turn always requires a new handoff, including after undo.
   // Bots never need an approval screen. Taxes and end-of-round dialogs have priority.
   const turnKey = `${state.roundNo}:${state.trickNo}:${state.history.length}:${activeId}`;
+  React.useEffect(() => { submissionTurnRef.current = null; }, [turnKey]);
   React.useEffect(() => { setShowInput(false); }, [turnKey]);
   const activeIsBot = isBotProfile(activeProfile, botIds);
-  const needsHandoff = !activeIsBot && !state.finished && !showRound && !showEnd &&
+  const needsHandoff = !activeIsBot && !state.finished && !showRound && !showEnd && !trickTransition &&
     !(state.pendingTaxes?.length) && revealedTurnKey !== turnKey;
 
   const teamConfigs = React.useMemo(
@@ -882,9 +894,14 @@ function PresidentStandardPlay(props: any) {
   }, [state.roundResults.length, state.finished]);
 
   function commitAttempt(darts: UiDart[], target = selectedTarget) {
-    if (!target || state.finished || botThinking || needsHandoff || trickTransition) return;
+    if (!target || state.finished || botThinking || needsHandoff || trickTransition || submissionTurnRef.current === turnKey) return;
+    submissionTurnRef.current = turnKey; // Reject repeated VALIDATE/clicks before React commits the new turn.
+    const normalized = darts.map(toGameDart);
+    const realTarget = presidentResolvePlayedTarget(state, normalized, target);
+    // The engine is also authoritative; both click-to-play and VALIDATE use
+    // the same resolution rather than treating the highlighted card as fixed.
     setUndo((u) => [...u.slice(-49), clonePresidentState(state)]);
-    setState((prev) => playPresidentTurn(prev, target, darts.map(toGameDart)));
+    setState((prev) => playPresidentTurn(prev, realTarget || target, normalized));
     setThrowDarts([]); setMultiplier(1); setNotice("");
   }
   function addDart(value: number, direct?: 1|2|3) {
@@ -892,12 +909,18 @@ function PresidentStandardPlay(props: any) {
     const mult = direct || multiplier;
     const d: UiDart = value === 25 ? { v:25, mult: mult === 2 ? 2 : 1 } : { v: Math.max(0,Math.min(20,Number(value)||0)), mult };
     const next = [...throwDarts,d]; setThrowDarts(next); if (mult>1) setMultiplier(1);
-    if (dartMatchesUi(config, selectedTarget, d)) { commitAttempt(next, selectedTarget); return; }
+    // A legal physical impact is a valid playable card, even if a different
+    // suggested shot was highlighted. Example: S3 highlighted, S4 hit, 4 held:
+    // play S4 instead of falsely recording a failed S3 and passing the turn.
+    // Restrict auto-resolution to legal targets from this player's real hand.
+    const matchingLegal = presidentResolvePlayedTarget(state, [toGameDart(d)], selectedTarget);
+    if (matchingLegal) { commitAttempt(next, matchingLegal); return; }
     if (next.length >= 3) { commitAttempt(next, selectedTarget); }
   }
   function validateAttempt() { if (!selectedTarget) return; if (!throwDarts.length) { setNotice("Joue au moins une fléchette ou utilise PASSER."); return; } commitAttempt(throwDarts); }
   function passTurn() {
-    if (!state.currentTarget || state.finished || botThinking || needsHandoff || trickTransition) return;
+    if (!state.currentTarget || state.finished || botThinking || needsHandoff || trickTransition || submissionTurnRef.current === turnKey) return;
+    submissionTurnRef.current = turnKey;
     setUndo((u) => [...u.slice(-49), clonePresidentState(state)]);
     setState((prev) => passPresidentTurn(prev, false));
     setThrowDarts([]); setMultiplier(1); setNotice("PASSÉ");
@@ -1001,7 +1024,7 @@ function PresidentStandardPlay(props: any) {
   const objectiveAim = selectedTarget ? presidentTargetLabel(selectedTarget) : "—";
   const objectiveCardCount = selectedTarget?.size || 0;
   const objectiveExplanation = state.currentTarget
-    ? `Pour répondre à ${presidentTargetLabel(state.currentTarget)}, garde le même nombre de cartes et joue une valeur ${state.revolutionActive?"inférieure":"supérieure"}.`
+    ? `Pour répondre à ${presidentTargetLabel(state.currentTarget)}, joue le même nombre de cartes avec une valeur ${state.revolutionActive?"inférieure":"supérieure"}, ou la même valeur pour sauter le joueur suivant.`
     : "Table libre : choisis une carte, une paire ou un brelan dans ta main.";
   const objectiveInstruction = !activeCanPlay
     ? "Aucune combinaison autorisée dans ta main : utilise PASSER LE PLI."
@@ -1091,6 +1114,9 @@ function PresidentStandardPlay(props: any) {
           <button type="button" onClick={()=>setShowTrick(true)} style={{border:0,background:"transparent",padding:0,cursor:"pointer",width:"100%",display:"grid",placeItems:"center"}}>
             <FeltTableCards target={state.currentTarget} history={state.history} roundNo={state.roundNo} trickNo={state.trickNo} primary={primary} />
           </button>
+          {latestTurnFeedback && latestTurnFeedback.trickNo === state.trickNo ? <div role="status" aria-live="polite" style={{maxWidth:"95%",borderRadius:999,padding:"5px 12px",background:latestTurnFeedback.success?"rgba(21,79,58,.85)":"rgba(72,43,23,.85)",border:`1px solid ${latestTurnFeedback.success?"#83eabc55":"#ffae8955"}`,color:latestTurnFeedback.success?"#b4ffe1":"#ffe0c3",fontSize:10,fontWeight:900,textAlign:"center"}}>
+            {playerName(profilesById.get(latestTurnFeedback.playerId)).toUpperCase()} : {latestTurnFeedback.success?`${presidentTargetLabel(latestTurnFeedback.target)} POSÉ · ${latestTurnFeedback.target?.size || 1} CARTE(S) EN MOINS`:latestTurnFeedback.automaticPass?"AUCUN COUP POSSIBLE · PASSE AUTOMATIQUE":latestTurnFeedback.darts.length?"VOLÉE RATÉE · AUCUNE CARTE POSÉE":"A CHOISI DE PASSER · NE GAGNE PAS LE PLI"}
+          </div> : null}
           <button type="button" className="president-advice-art" onClick={()=>{setAdviceTab("conseil");setShowObjective(true);}} aria-label="Lire le conseil d’Awena et ouvrir les détails">
             <img className="president-advice-image" src={awenaAdviceBubble} draggable={false} alt="Awena donne un conseil" />
             <span className="president-advice-text">
@@ -1112,6 +1138,19 @@ function PresidentStandardPlay(props: any) {
           </div>
           <button type="button" onClick={()=>setShowHand(true)} style={{border:"1px solid #d3ab5f66",background:"#0006",borderRadius:20,color:"#ffe2ab",padding:"5px 11px",fontSize:10, whiteSpace:"nowrap"}}>COMBINAISONS</button>
         </div>
+        <div style={{flex:"0 0 auto",display:"grid",gap:4,padding:"1px 4px 3px"}} role="region" aria-label="Coups autorisés sur ce pli">
+          <div style={{fontSize:10,color:"#c6e9d9",lineHeight:1.32}}>
+            {presidentTrickInstruction(state.currentTarget, state.revolutionActive)}
+          </div>
+          <div style={{display:"flex",gap:5,overflowX:"auto",padding:"2px 1px 4px",scrollbarWidth:"thin"}}>
+            {legalTargets.length ? legalTargets.map(target=>{
+              const active=selectedTarget?.value===target.value&&selectedTarget?.size===target.size;
+              return <button key={`${target.value}-${target.size}`} type="button" onClick={()=>chooseShot(target)}
+                disabled={botThinking||needsHandoff||!!trickTransition} aria-pressed={active}
+                style={{flex:"0 0 auto",border:`1px solid ${active?primary:"#9dd5b755"}`,borderRadius:10,background:active?`${primary}35`:"#061f1acb",color:active?"#ffe29c":"#d2f6e2",padding:"6px 10px",fontSize:11,fontWeight:1000,cursor:"pointer"}}>{presidentTargetLabel(target)}</button>;
+            }) : <span style={{fontSize:11,color:"#ffb68b"}}>Aucun coup légal : attends le passage au pli suivant.</span>}
+          </div>
+        </div>
         <div className="president-hand" role="group" aria-label="Ma main : sélectionner une carte">
           {hand.map((value:number,index:number)=>({value,index,suit:(state.suitsByPlayer?.[activeId]||[])[index]||0})).sort((a,b)=>rankOrder(a.value)-rankOrder(b.value)||a.suit-b.suit).map(({value,index,suit})=>{const options=legalTargets.filter(t=>t.value===value);const chosen=selectedTarget?.value===value;return <button type="button" key={index} className="president-hand-card" aria-pressed={!!chosen} disabled={!options.length||botThinking||needsHandoff} title={options.length?`Jouer ${presidentCardRank(value)} · ${options.length} combinaison(s) possibles`:"Carte non jouable sur ce pli"} onClick={()=>chooseShot(options.find(t=>t.size===selectedTarget?.size)||options[0])}><PlayingCard value={value} suitIndex={suit}/></button>})}
         </div>
@@ -1132,7 +1171,8 @@ function PresidentStandardPlay(props: any) {
     {showInput && !botThinking ? <div className="president-keypad-modal" role="presentation" onClick={()=>setShowInput(false)}>
       <div className="president-keypad-inner" role="dialog" aria-modal="true" aria-label="Saisie des fléchettes" onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:10}}><b style={{color:primary,fontSize:14}}>🎯 SAISIE DES FLÉCHETTES</b><button type="button" onClick={()=>setShowInput(false)} style={{...action(primary),minHeight:36,padding:"0 12px"}}>✕ FERMER</button></div>
-        <div style={{fontWeight:1000,color:"#bdeee1",fontSize:11,marginBottom:7}}>{selectedTarget?`VISER ${presidentTargetLabel(selectedTarget)} · ${presidentTargetDescription(selectedTarget)}`:"AUCUN COUP LÉGAL · PASSER LE PLI"}</div>
+        <div style={{fontWeight:1000,color:"#bdeee1",fontSize:11,marginBottom:7}}>{selectedTarget?`CIBLE CONSEILLÉE : ${presidentTargetLabel(selectedTarget)} · ${presidentTargetDescription(selectedTarget)}`:"AUCUN COUP LÉGAL · PASSER LE PLI"}</div>
+        <div style={{color:"#a8d9ca",fontSize:10,lineHeight:1.35,marginBottom:8}}>La cible conseillée n'est pas obligatoire : si tu touches S4 et possèdes un 4 jouable, tu poses ton 4. Même règle avec VALIDER. Un tir hors des coups possibles ne pose aucune carte.</div>
         <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:6,marginBottom:8}}>{shotOptions.map(target=><button type="button" key={`${target.value}-${target.size}`} onClick={()=>chooseShot(target)} disabled={throwDarts.length>0} style={{...action(primary),minWidth:53,minHeight:37,flex:"0 0 auto",padding:"4px 7px",background:selectedTarget?.value===target.value&&selectedTarget?.size===target.size?`${primary}55`:"#ffffff0a"}}>{presidentTargetLabel(target)}</button>)}</div>
         <div style={{display:"flex",gap:5,marginBottom:8}}>{[0,1,2].map(i=><div key={i} style={{flex:1,textAlign:"center",background:"#ffffff0a",borderRadius:8,padding:6,fontSize:11,color:throwDarts[i]?"#9bffc8":"#b4c5c8"}}>FLÉCHETTE {i+1}<div style={{fontWeight:1000,fontSize:14}}>{throwDarts[i]?presidentDartLabel(toGameDart(throwDarts[i])):"—"}</div></div>)}</div>
         {config.scoreInputMethod === "dartboard" ? <><div style={{display:"grid",placeItems:"center",opacity:selectedTarget?1:.45,pointerEvents:selectedTarget?"auto":"none"}}><DartboardClickable multiplier={multiplier} onHit={(segment,mult)=>addDart(segment,mult)} size={Math.min(310,Math.max(235,window.innerWidth-42))}/></div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginTop:8}}><button onClick={undoTurn} style={action(primary)}>ANNULER</button><button disabled={!state.currentTarget} onClick={passTurn} style={action("#ff9a70",!state.currentTarget)}>PASSER</button><button disabled={!throwDarts.length} onClick={validateAttempt} style={action("#6ee7b7",!throwDarts.length)}>VALIDER</button></div></> : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={()=>setMultiplier(1)} onDouble={()=>setMultiplier(2)} onTriple={()=>setMultiplier(3)} onCancel={undoTurn} onBackspace={()=>setThrowDarts(d=>d.slice(0,-1))} onNumber={n=>addDart(n)} onBull={bull=>addDart(25,bull===50?2:1)} onValidate={validateAttempt} hidePreview hideTotal centerSlot={<div style={{textAlign:"center"}}><div style={{color:primary,fontWeight:1100,fontSize:12}}>{selectedTarget?presidentTargetLabel(selectedTarget):"—"}</div><button disabled={!state.currentTarget} onClick={e=>{e.stopPropagation();passTurn();}} style={{marginTop:2,border:0,background:"transparent",color:"#ffae77",fontSize:9}}>PASSER</button></div>} noticeSlot={notice?<span>{notice}</span>:null} validateAttention={throwDarts.length>0} safeBottomPad={false}/>} 

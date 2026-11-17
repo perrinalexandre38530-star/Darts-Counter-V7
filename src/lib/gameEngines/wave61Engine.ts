@@ -193,6 +193,33 @@ function faceSecret(seedText: string): number {
   return seededNumbers(`face:${seedText}`, 1, 20)[0] || 1;
 }
 
+/**
+ * MEXICO: new sector every full round, not another independent random draw.
+ * A seeded shuffle bag guarantees every available sector is visited before
+ * recycling one, and the junction between bags cannot repeat a sector.
+ * The same sector is shared by all players in the round for fair scoring.
+ */
+export function mexicainMexicoTargets(seedText: string, includeBull = true, count = 60): number[] {
+  const maxSector = includeBull ? 21 : 20;
+  const rounds = Math.max(0, Math.floor(count));
+  const result: number[] = [];
+  for (let cycle = 0; result.length < rounds; cycle++) {
+    const bag = Array.from({ length: maxSector }, (_, i) => i + 1);
+    let seed = hashText(`${seedText}:mexico:${cycle}`) || 1;
+    for (let i = bag.length - 1; i > 0; i--) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const j = seed % (i + 1);
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+    if (result.length && bag[0] === result[result.length - 1]) {
+      // Preserve the cycle's unique sectors while avoiding a boundary repeat.
+      [bag[0], bag[1]] = [bag[1], bag[0]];
+    }
+    result.push(...bag);
+  }
+  return result.slice(0, rounds);
+}
+
 function seededSequence(seedText: string, count: number, max = 20): number[] {
   const out: number[] = [];
   let seed = hashText(seedText) || 1;
@@ -865,7 +892,11 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
 
       // 60 manches indépendantes, tirage reproductible depuis la graine conservée
       // dans la sauvegarde, avec un BULL qui accepte OB et IB.
-      mexicainTargets: modeId === "mexicain" ? Array.from({length: 60}, (_, i) => config.modeOptions?.targetMode === "fixed" ? Math.max(1, Math.min(21, Number(config.modeOptions?.fixedTarget || 20))) : (hashText(`${seedText}:mex:${i}`) % (config.modeOptions?.bullEnabled === "no" ? 20 : 21)) + 1) : [],
+      mexicainTargets: modeId === "mexicain" ? (
+        config.modeOptions?.targetMode === "mexico"
+          ? mexicainMexicoTargets(seedText, config.modeOptions?.bullEnabled !== "no")
+          : Array.from({length: 60}, (_, i) => config.modeOptions?.targetMode === "fixed" ? Math.max(1, Math.min(21, Number(config.modeOptions?.fixedTarget || 20))) : (hashText(`${seedText}:mex:${i}`) % (config.modeOptions?.bullEnabled === "no" ? 20 : 21)) + 1)
+      ) : [],
       mexicainHistory: [],
       mexicainRoundScores: {},
       hotPotatoSequence: modeId === "hot_potato" ? survivalSequence(seedText, "hotpotato") : [],

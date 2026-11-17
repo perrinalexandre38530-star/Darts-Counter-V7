@@ -1,4 +1,5 @@
 import React from "react";
+import FinishDoTraining from "../training/modes/finish/FinishDoTraining";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { syncTrainingEvents } from "../training/sync/trainingSyncEngine";
@@ -284,6 +285,8 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   const configProps = { profiles, onStart: start, onExit: exitAndSync };
   const labConfigProps = { ...configProps, accountProfile: currentProfile || null, initialDetailExerciseId: id === "training_lab" ? String(config?.returnExerciseDetailId || "") || null : null };
   const playProps = { config: activePlayConfig, onExit: finishOrAdvance };
+
+  if (id === "training_finish_do" || id === "training_finish_challenge") return <FinishDoTraining key={id} onExit={exitAndSync} challenge={id === "training_finish_challenge"} />;
 
   if (phase === "summary" && summary) {
     return <TrainingComparisonSummary group={summary} tickerId={id} onExit={exitAndSync} onReplay={() => beginRun(config)} />;

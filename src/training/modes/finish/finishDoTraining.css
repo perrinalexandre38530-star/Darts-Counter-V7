@@ -1,0 +1,34 @@
+/* FINISH DO cockpit — scoped to this training screen only. */
+.mss-finish-do{--finish-cyan:#35d9fb;--finish-glass:rgba(13,22,38,.94);font-family:inherit;min-height:100%;background:radial-gradient(ellipse at 50% 0%,rgba(10,116,150,.17),transparent 58%)}
+.mss-finish-do .mss-finish-header{background:linear-gradient(115deg,rgba(10,58,78,.96),rgba(18,25,47,.97))!important;box-shadow:0 10px 35px rgba(0,0,0,.25);border-color:rgba(51,216,240,.35)!important}
+.mss-finish-header h2{font-size:clamp(21px,3vw,29px);letter-spacing:.035em;text-shadow:0 3px 18px rgba(33,216,250,.23)}
+.mss-finish-layout>section{min-width:0;box-shadow:0 8px 26px rgba(0,0,0,.2)}
+.mss-finish-layout section h3{font-size:15px;letter-spacing:.045em;text-transform:uppercase;color:#f5fbff}
+.mss-finish-scoreboard{margin-top:18px;padding:20px 12px 16px;text-align:center;border-radius:17px;border:1px solid rgba(53,217,251,.36);background:radial-gradient(ellipse at center,rgba(20,116,150,.3),rgba(4,13,28,.8));box-shadow:inset 0 0 28px rgba(41,201,234,.08)}
+.mss-finish-score-label{font-size:11px;color:#9bbed5;font-weight:800;letter-spacing:.16em}
+.mss-finish-score-number{display:block;font-variant-numeric:tabular-nums;font-size:clamp(68px,7vw,104px);font-weight:950;line-height:1.08;text-shadow:0 2px 25px rgba(53,217,251,.25)}
+.mss-finish-darts{display:flex;justify-content:center;gap:16px;margin:6px 0 8px;font-size:20px}.mss-finish-darts .spent{filter:grayscale(1);opacity:.25}.mss-finish-score-status{font-size:12px;font-weight:800;color:#d3f0f8}
+.mss-finish-multipliers>button{font-size:19px!important;min-height:46px}
+.mss-finish-numbers>button{min-height:48px;font-size:17px!important;font-variant-numeric:tabular-nums;border-color:rgba(255,255,255,.12)!important}
+.mss-finish-numbers>button:disabled,.mss-finish-specials>button:disabled{cursor:not-allowed}
+.mss-finish-specials>button{min-height:48px;white-space:nowrap;font-size:12px!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13)}
+.mss-finish-do button{transition:transform .12s ease,filter .12s ease,border-color .12s ease}
+.mss-finish-do button:not(:disabled):active{transform:scale(.96)}.mss-finish-do button:not(:disabled):hover{filter:brightness(1.16);border-color:rgba(53,217,251,.7)!important}
+.mss-finish-do button:focus-visible{outline:3px solid #7eeaff;outline-offset:2px}
+.mss-finish-route{padding:12px;margin-bottom:8px;border:1px solid rgba(50,215,239,.26);border-radius:13px;background:linear-gradient(120deg,rgba(15,61,78,.3),rgba(18,29,47,.75))}
+.mss-finish-route-label{color:#6ce8f0;font-size:11px;letter-spacing:.14em}
+.mss-finish-route-darts{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:8px}
+.mss-finish-dart-pill{min-width:44px;display:inline-flex;justify-content:center;align-items:center;padding:9px 11px;border-radius:9px;background:#243a56;border:1px solid rgba(128,197,225,.3);font-size:16px;font-weight:900;white-space:nowrap}
+.mss-finish-dart-pill.final{background:linear-gradient(135deg,#0b7c93,#145975);color:white;border-color:#4edbed}
+.mss-finish-arrow{color:#8da6bd;font-size:18px}
+.mss-finish-setup{margin:9px 0;padding:12px;border:1px solid rgba(112,237,166,.35);border-radius:12px;background:rgba(19,86,60,.26)}
+.mss-finish-setup>strong{font-size:12px;color:#9cf0c8}.mss-finish-setup small{display:block;margin-top:8px;line-height:1.45;color:#cee4df}
+.mss-finish-pro-tip{padding:11px 12px;border-left:3px solid #ffd36b;background:rgba(111,85,21,.18);border-radius:4px 10px 10px 4px;font-size:13px;line-height:1.55}
+.mss-finish-summary{background:linear-gradient(100deg,rgba(15,48,66,.96),rgba(20,28,42,.94))!important}
+@media (max-width:650px){.mss-finish-do{padding:8px 8px 28px!important}.mss-finish-layout{grid-template-columns:minmax(0,1fr)!important}.mss-finish-layout>section{padding:12px!important}.mss-finish-numbers>button{min-height:48px}.mss-finish-header h2{font-size:21px}.mss-finish-score-number{font-size:76px}}
+@media (min-width:1000px){.mss-finish-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}.mss-finish-coach{grid-column:1/-1}.mss-finish-config,.mss-finish-keypad{align-self:stretch}}
+@media (prefers-reduced-motion:reduce){.mss-finish-do button{transition:none}}
+
+.mss-finish-awena-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid rgba(53,217,251,.2)}
+.mss-finish-awena-head img{width:64px;height:64px;object-fit:contain;border-radius:50%;filter:drop-shadow(0 4px 10px rgba(53,217,251,.18))}
+.mss-finish-awena-head small{color:#8ebdd0;font-size:12px}

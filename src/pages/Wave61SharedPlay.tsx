@@ -184,7 +184,7 @@ function familyRules(spec: any, preset: any) {
     microscopia: "Isole six échantillons microscopiques tout en contrôlant la contamination. BULL désinfecte le laboratoire.",
     disjoncte: "Alimente six circuits sans faire sauter l'installation. Doubles/triples sont puissants mais font grimper la surcharge ; BULL met à la terre.",
     petit_bac: "Six catégories et une lettre liée au secteur. Touche la lettre demandée pour valider la catégorie ; BULL sert de joker. La saisie des mots sera ajoutée dans le Play dédié.",
-    mexicain: "Une cible commune (1 à 20 ou BULL) est tirée au début de chaque manche. Chaque joueur lance trois fléchettes : seules les touches sur cette cible marquent. Le plus faible score perd une vie ; une égalité générale ne coûte aucune vie. Le dernier survivant gagne.",
+    mexicain: "Une cible commune (1 à 20 ou BULL) est tirée au début de chaque manche. En variante MEXICO, la cible change à chaque manche sans répétition jusqu'à avoir parcouru les secteurs disponibles. Chaque joueur lance trois fléchettes sur la même cible ; seules les touches correspondantes marquent. Le plus faible score perd une vie ; une égalité générale ne coûte aucune vie. Le dernier survivant gagne.",
     hot_potato: "La mèche descend à chaque tour. Touche le secteur demandé pour transmettre proprement la patate ; une mèche à zéro provoque une explosion et coûte une vie.",
     zombie_siege: "Un camp commence infecté. Les zombies propagent la contamination, les survivants renforcent leurs barricades et les BULL permettent de réduire l'infection.",
     le_loup: "Le loup doit toucher sa cible pour attraper un joueur et transmettre le rôle. Les fuyards progressent et peuvent obtenir une protection au BULL.",
@@ -1356,7 +1356,7 @@ function MexicainPanel({ state, accent, detailed = false, avatarFor }: any) {
   const min = scores.length ? Math.min(...scores) : null;
   return <section className={`mex-fiesta-scoreboard ${detailed ? "mex-detailed" : "mex-compact"}`} data-mexicain-panel="1" aria-label="Tableau de manche du Mexicain">
     {detailed ? <div className="mex-score-head"><span><b>RONDA {Number(state?.roundIndex || 0)+1}</b></span><span>{living.length} SURVIVANTS</span><span className="mex-score-darts">{[0,1,2].map(i=><img key={i} src={cricketDartSvg} alt=""/>)}</span></div> : null}
-    <div className="mex-target-stage mex-target-art" role="img" aria-label={`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">OBJECTIF</span><strong className="mex-target-number">{target}</strong></div>
+    <div className="mex-target-stage mex-target-art" role="img" aria-label={`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">{state?.config?.modeOptions?.targetMode === "mexico" ? "MEXICO · OBJECTIF" : "OBJECTIF"}</span><strong className="mex-target-number">{target}</strong></div>
     {detailed ? <div className="mex-player-grid">{(state?.players||[]).map((p:any)=>{
       const out=!!state?.eliminated?.[p.id]; const hearts=Math.max(0,Number(state?.lives?.[p.id]||0));
       const value=current[p.id];const isLow=value!=null && min!=null && Number(value)===min && scores.length>1 && !scores.every(s=>s===min);
@@ -1647,7 +1647,7 @@ export default function Wave61SharedPlay(props: any) {
   // Serialize checkpoints for this match. Two overlapping IndexedDB upserts
   // (BOT recap then CONTINUER) must never finish in the opposite order.
   const historyWriteQueueRef = React.useRef<Promise<void>>(Promise.resolve());
-  const [shoveHistorySaveError, setShoveHistorySaveError] = React.useState("");
+  const [finalHistorySaveError, setFinalHistorySaveError] = React.useState("");
   const persist = React.useCallback((s: Wave61State, clearDraft = false) => {
     // Une partie n'existe dans l'Historique V4 qu'après sa première volée validée.
     // Les saisies partielles restent enregistrables après cette première volée.
@@ -1666,12 +1666,12 @@ export default function Wave61SharedPlay(props: any) {
     historyWriteQueueRef.current = historyWriteQueueRef.current
       .catch(() => undefined)
       .then(() => History.upsert(record))
-      .then(() => { if (spec.id === "shove_a_penny") setShoveHistorySaveError(""); })
+      .then(() => { if (spec.id === "shove_a_penny" || spec.id === "mexicain") setFinalHistorySaveError(""); })
       .catch((error) => {
         console.warn('[wave61-history] checkpoint save failed', error);
-        if (spec.id === "shove_a_penny") {
+        if (spec.id === "shove_a_penny" || spec.id === "mexicain") {
           if (s.phase === "finished") finishedRef.current = false;
-          setShoveHistorySaveError(String((error as Error)?.message || error || "Enregistrement impossible"));
+          setFinalHistorySaveError(String((error as Error)?.message || error || "Enregistrement impossible"));
         }
       });
   }, [buildRecord, spec.id]);
@@ -2056,7 +2056,7 @@ export default function Wave61SharedPlay(props: any) {
     setState(createWave61State(players, spec.id, config));
   }
 
-  const retryShoveHistorySave = () => {
+  const retryFinalHistorySave = () => {
     finishedRef.current = false;
     persist(state, true);
   };
@@ -2353,7 +2353,7 @@ export default function Wave61SharedPlay(props: any) {
       </div> : null}
 
       {state.phase === "finished" ? <div style={{ flex:1,minHeight:0,overflowY:"auto",padding:10,display:"grid",placeItems:"start center" }}>
-        <div style={{ width:"min(720px,100%)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={()=>go?.("darts_mode_summary",{rec:buildRecord(state,"finished"),mode:spec.id,from:"game_end"})} onHistory={()=>go?.("statsHub",{tab:"history",mode:spec.id,focusMatchId:matchIdRef.current})} onConfig={()=>go?.("wave61_config",{gameId:spec.id})} onGames={()=>go?.("games",{gamesView:"all"})} extra={spec.id === "mexicain" ? <MexicainFinalSummary state={state} profiles={profiles}/> : <Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label}/>} exportActions={spec.id === "mexicain" || spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={spec.id === "shove_a_penny" ? shoveHistorySaveError : ""} onRetrySave={spec.id === "shove_a_penny" ? retryShoveHistorySave : undefined}/> : null} /></div>
+        <div style={{ width:"min(720px,100%)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={()=>go?.("darts_mode_summary",{rec:buildRecord(state,"finished"),mode:spec.id,from:"game_end"})} onHistory={()=>go?.("statsHub",{tab:"history",mode:spec.id,focusMatchId:matchIdRef.current})} onConfig={()=>go?.("wave61_config",{gameId:spec.id})} onGames={()=>go?.("games",{gamesView:"all"})} extra={spec.id === "mexicain" ? <MexicainFinalSummary state={state} profiles={profiles}/> : <Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label}/>} exportActions={spec.id === "mexicain" || spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={finalHistorySaveError} onRetrySave={retryFinalHistorySave}/> : null} /></div>
       </div> : <div style={isLandscapeTablet
         ? { flex:1,minHeight:0,display:"grid",gridTemplateColumns:"minmax(0,.92fr) minmax(440px,1.08fr)",gap:8,padding:"5px 7px 7px",overflow:"hidden" }
         : { flex:1,minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden" }
@@ -2486,7 +2486,7 @@ export default function Wave61SharedPlay(props: any) {
         {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 28, height: 28, borderRadius: 9, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, cursor: "pointer" }}>🔊</button> : null}
       </div> : null}
 
-      {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={spec.id === "mexicain" ? <MexicainFinalSummary state={state} profiles={profiles}/> : <Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "mexicain" || spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={spec.id === "shove_a_penny" ? shoveHistorySaveError : ""} onRetrySave={spec.id === "shove_a_penny" ? retryShoveHistorySave : undefined}/> : null} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
+      {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={spec.id === "mexicain" ? <MexicainFinalSummary state={state} profiles={profiles}/> : <Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "mexicain" || spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={finalHistorySaveError} onRetrySave={retryFinalHistorySave}/> : null} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
         <section data-wave61-zone="players" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 6 }}>
           {spec.id === "mexicain" ? <MexicainActivePlayer player={activePlayer} profile={activeProfile} state={state} currentThrow={currentThrow} onOpenScore={()=>{setMexScoreTab("round");setQuickPanel("stats");}} /> : <div style={{ ...panelStyle(accent + "45"), padding: compactHeight ? 7 : 9, flex: "0 0 auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div><div style={{ color: accent, fontSize: compactHeight ? 8.4 : 9.5, fontWeight: 1100, letterSpacing: .8 }}>ROUND {roundLabel}/{config.rounds}</div><div style={{ marginTop: 2, color: "#fff", fontSize: compactHeight ? 12 : 14, fontWeight: 1000 }}>{activePlayer?.name || "—"}</div></div><button type="button" onClick={doUndo} disabled={!canUndo} style={{ ...actionStyle(accent, !canUndo), minHeight: compactHeight ? 32 : 36, padding: "0 8px", fontSize: 9 }}>↶ UNDO</button></div>
@@ -2636,7 +2636,7 @@ export default function Wave61SharedPlay(props: any) {
 
         {!activeIsBot ? (spec.id === "mexicain" ? <MexicainTargetInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} />) : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
         {spec.id !== "mexicain" ? <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={5} /> : null}
-      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={spec.id === "mexicain" ? <MexicainFinalSummary state={state} profiles={profiles}/> : <Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "mexicain" || spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={spec.id === "shove_a_penny" ? shoveHistorySaveError : ""} onRetrySave={spec.id === "shove_a_penny" ? retryShoveHistorySave : undefined}/> : null} />}
+      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={spec.id === "mexicain" ? <MexicainFinalSummary state={state} profiles={profiles}/> : <Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "mexicain" || spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={finalHistorySaveError} onRetrySave={retryFinalHistorySave}/> : null} />}
     </div>
     {mexicainModal}
   </div>;

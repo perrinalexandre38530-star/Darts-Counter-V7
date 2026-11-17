@@ -54,6 +54,21 @@ export const TRAINING_EXERCISE_CATALOG: TrainingExerciseDefinition[] = [
   { id: "checkout_100", title: "Checkout 100", subtitle: "Ferme 100 en trois fléchettes maximum.", family: "checkout", engine: "checkout", difficulty: 4, maxDarts: 3, checkoutScore: 100, tags: ["checkout", "route"] },
   { id: "checkout_121", title: "Checkout 121", subtitle: "Travaille une sortie trois fléchettes de référence.", family: "checkout", engine: "checkout", difficulty: 5, maxDarts: 3, checkoutScore: 121, tags: ["checkout", "pressure"] },
 
+  // FINISH DO : routes et solutions de secours, validées par le moteur checkout existant.
+  { id: "checkout_do_41", title: "FINISH DO · 41", subtitle: "Un simple impair pour préparer D20 ou D16.", family: "checkout", engine: "checkout", difficulty: 2, maxDarts: 3, checkoutScore: 41, tags: ["checkout", "double-out", "placement", "awena"] },
+  { id: "checkout_do_85", title: "FINISH DO · 85", subtitle: "Découvre les alternatives et les secteurs de repli.", family: "checkout", engine: "checkout", difficulty: 3, maxDarts: 3, checkoutScore: 85, tags: ["checkout", "double-out", "plan-b", "awena"] },
+  { id: "checkout_do_96", title: "FINISH DO · 96", subtitle: "Prépare un double confortable en deux fléchettes.", family: "checkout", engine: "checkout", difficulty: 3, maxDarts: 3, checkoutScore: 96, tags: ["checkout", "double-out", "placement", "awena"] },
+  { id: "checkout_do_101", title: "FINISH DO · 101", subtitle: "Reste vigilant après un simple ou un triple voisin.", family: "checkout", engine: "checkout", difficulty: 4, maxDarts: 3, checkoutScore: 101, tags: ["checkout", "double-out", "plan-b", "awena"] },
+  { id: "checkout_do_125", title: "FINISH DO · 125", subtitle: "Trois fléchettes, gestion du bull et préparation d'un double.", family: "checkout", engine: "checkout", difficulty: 4, maxDarts: 3, checkoutScore: 125, tags: ["checkout", "double-out", "bull", "awena"] },
+  { id: "checkout_do_164", title: "FINISH DO · 164", subtitle: "T20, T18, BULL50 : sortie de haut niveau.", family: "checkout", engine: "checkout", difficulty: 5, maxDarts: 3, checkoutScore: 164, tags: ["checkout", "double-out", "bull", "awena"] },
+  { id: "checkout_do_167", title: "FINISH DO · 167", subtitle: "T20, T19, BULL50 : la précision sous pression.", family: "checkout", engine: "checkout", difficulty: 5, maxDarts: 3, checkoutScore: 167, tags: ["checkout", "double-out", "bull", "awena"] },
+  { id: "checkout_do_170", title: "FINISH DO · 170", subtitle: "Le Big Fish : T20, T20, BULL50.", family: "checkout", engine: "checkout", difficulty: 5, maxDarts: 3, checkoutScore: 170, tags: ["checkout", "double-out", "bull", "awena"] },
+
+  // FINISH DO · drills de secours et secteurs voisins (3 fléchettes maximum).
+  { id:"checkout_do_recovery_50", title:"PLAN B · Bull 50", subtitle:"BULL25 touché au lieu de BULL50 : pense S9 → D8.", family:"checkout", engine:"checkout", difficulty:3, maxDarts:3, checkoutScore:50, tags:["checkout","double-out","plan-b","bull","awena"] },
+  { id:"checkout_do_recovery_32", title:"PLAN B · D16", subtitle:"Sur 32, un S16 laisse D8. Anticipe le deuxième double.", family:"checkout", engine:"checkout", difficulty:2, maxDarts:3, checkoutScore:32, tags:["checkout","double-out","plan-b","doubles","awena"] },
+  { id:"checkout_do_recovery_100", title:"PLAN B · T20 vers S20 ou T5", subtitle:"Après S20 ou T5, recalcule la sortie à 80 ou 85.", family:"checkout", engine:"checkout", difficulty:4, maxDarts:3, checkoutScore:100, tags:["checkout","double-out","plan-b","neighbors","awena"] },
+  { id:"checkout_do_recovery_101", title:"PLAN B · sortie 101", subtitle:"T20 manqué en S20 : T19 → D12 sur 81 restants.", family:"checkout", engine:"checkout", difficulty:4, maxDarts:3, checkoutScore:101, tags:["checkout","double-out","plan-b","awena"] },
   // PRÉCISION
   { id: "clock_singles", title: "Horloge précision", subtitle: "S1 → S20 dans l'ordre, uniquement le simple demandé.", family: "precision", engine: "sequence", difficulty: 3, maxDarts: 60, sequence: clockSingles, tags: ["clock", "singles"] },
   { id: "bull_t20_d20", title: "BULL → T20 → D20", subtitle: "Valide la séquence exacte dans cet ordre.", family: "precision", engine: "sequence", difficulty: 4, maxDarts: 12, sequence: ["BULL", "T20", "D20"], tags: ["sequence", "pressure"] },

@@ -362,7 +362,22 @@ export default function TrainingMenu({ go }: Props) {
       tickerSrc: findTickerSmart("training_challenges"),
     };
 
-    return [evolution, labCard, x01, clock, doubleIOCard, challengesCard];
+    const finishDo: ModeDef = {
+      id: "finish_do", titleKey: "training.finishdo.title", titleDefault: "FINISHS DOUBLE OUT",
+      subtitleKey: "training.finishdo.subtitle", subtitleDefault: "Combinaisons • Plans B • Checkouts DO",
+      infoKey: "training.finishdo.info", infoDefault: "Entraîne exclusivement les sorties Double Out, apprends à recalculer après une erreur et évite les BUST.",
+      tab: "training_mode", params: { modeId: "training_finish_do" }, enabled: true,
+      badge: "DO", accentHex: "#35d9fb", accentBorder: "rgba(53,217,251,.45)", accentGlow: "rgba(53,217,251,.5)",
+      tickerSrc: findTickerSmart("training_x01"),
+    };
+    const finishChallenge: ModeDef = {
+      id: "finish_do_challenge", titleKey: "training.finishchallenge.title", titleDefault: "CHALLENGE FINISH DO",
+      subtitleKey: "training.finishchallenge.subtitle", subtitleDefault: "1 volée pour réussir le checkout",
+      infoKey: "training.finishchallenge.info", infoDefault: "Un défi checkout Double Out : trois fléchettes au maximum pour sortir. Recalcule si tu rates ta cible.",
+      tab: "training_mode", params: { modeId: "training_finish_challenge" }, enabled: true,
+      badge: "DÉFI", tickerSrc: findTickerSmart("training_challenges"),
+    };
+    return [evolution, labCard, finishDo, x01, clock, doubleIOCard, challengesCard, finishChallenge];
   }, [t, lang, regById]);
 
   const extraModes: ModeDef[] = React.useMemo(() => {
