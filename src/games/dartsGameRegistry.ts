@@ -203,7 +203,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:killer",
     infoTitle: "Killer",
     infoBody:
-      "Chaque joueur a un numero. Phase 1: devenir Killer en touchant son numero (souvent double/selon config). Phase 2: une fois Killer, tu elimines les autres en touchant leur numero. Un joueur meurt quand ses vies/points tombent a 0 (selon les regles). Dernier survivant = victoire.",
+      "Chaque joueur a un numero. Phase 1: devenir Killer en touchant son numero (souvent double/selon config). Phase 2: une fois Killer, tu elimines les autres en touchant leur numero. Un joueur meurt quand ses vies/points tombent a 0 (selon les regles). Dernier survivant = victoire. Mode apparenté : LE MEXICAIN (survie par cibles communes).",
   },
   {
     id: "shanghai",
@@ -1658,6 +1658,7 @@ const READY_IDS = new Set<string>([
   "menteur",
   "crados",
   "shove_a_penny",
+  "mexicain",
   "double_down",
   "nine_dart_century",
   "green_vs_red",

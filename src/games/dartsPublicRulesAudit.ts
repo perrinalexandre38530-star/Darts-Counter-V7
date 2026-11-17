@@ -39,6 +39,20 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
       "BOTS IA, difficulté, ordre aléatoire et saisie Keypad / Cible interactive sont disponibles"
     ]
   },
+  "mexicain": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/mexicainConfig.tsx", "src/pages/wave61/mexicainPlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "FIESTA MEXICAINE : un secteur commun est tiré pour toute la manche",
+      "CIBLES POSSIBLES : 1 à 20, avec option BULL activable ou non dans la configuration",
+      "Chaque joueur lance 3 fléchettes ; seules les touches sur la cible tirée marquent",
+      "SCORING : Simple = valeur simple, Double = valeur double, Triple = valeur triple, BULL = 25 ou 50 selon la cible",
+      "Le plus petit score de la manche perd une vie ; en cas d’égalité générale, personne ne perd",
+      "VARIANTES : Classique (3 vies), Survie (5 vies) et Progressif (malus croissant)",
+      "VICTOIRE : dernier joueur encore en vie",
+      "JOUEURS, BOTS IA, ordre aléatoire, Undo et historique via le socle Wave61"
+    ]
+  },
   "hi_score": {
     "status": 'available',
     "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],

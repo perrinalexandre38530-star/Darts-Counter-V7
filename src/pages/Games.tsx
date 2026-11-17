@@ -522,7 +522,7 @@ export default function Games({ setTab, params }: Props) {
             : id;
 
     // CHASE et SPLIT SCORE possèdent des visuels FR/EN, pas de ticker générique.
-    if (lang === "fr" && (id === "chase" || id === "split_score" || id === "killer_progressive")) {
+    if (lang === "fr" && (id === "chase" || id === "split_score" || id === "killer_progressive" || id === "mexicain")) {
       return findTickerById(`${baseId}_fr`) || findTickerById(baseId);
     }
     if (lang !== "fr") {
@@ -909,7 +909,7 @@ export default function Games({ setTab, params }: Props) {
   const gamesForCat = React.useMemo(() => {
     const search = difficultyQuery.trim().toLocaleLowerCase();
     return filterDartsGamesForCurrentRuntime(DARTS_GAMES)
-      .filter((g) => g.category === activeCat)
+      .filter((g) => search ? true : g.category === activeCat)
       .filter((g) => !difficultyFilter || mssGameDifficulty(g) === difficultyFilter)
       .filter((g) => !search || `${g.id} ${g.label} ${g.infoTitle || ''}`.toLocaleLowerCase().includes(search))
       .slice().sort((a,b) => mssGameDifficulty(a) - mssGameDifficulty(b) || sortByPopularity(a,b));
@@ -2040,10 +2040,10 @@ export default function Games({ setTab, params }: Props) {
           {/* Cartes de jeux (liste) */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {(() => {
-              const ordered = (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
+              const ordered = difficultyQuery.trim() ? [] : (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
 
               const groups: Record<string, typeof gamesForCat> = {};
-              const sourceGames = activeSubCat === "all"
+              const sourceGames = difficultyQuery.trim() || activeSubCat === "all"
                 ? gamesForCat
                 : gamesForCat.filter((g) => subCategoryKeyForGame(g) === activeSubCat);
               for (const g of sourceGames) {
@@ -2056,7 +2056,7 @@ export default function Games({ setTab, params }: Props) {
               );
 
               const labelFor = (k: string) => {
-                const def = (GAME_SUBCATEGORIES?.[activeCat] || []).find((s) => s.id === k);
+                const def = (difficultyQuery.trim() ? GAME_CATEGORIES.flatMap((c) => GAME_SUBCATEGORIES?.[c.id] || []) : GAME_SUBCATEGORIES?.[activeCat] || []).find((s) => s.id === k);
                 if (def?.label) return localizedSubcategoryLabel(String(activeCat), k, String(def.label), lang);
                 if (k === "other") return t("games.subcat.other", "Autres");
                 return k;

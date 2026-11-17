@@ -31,8 +31,8 @@ export const DARTS_GAME_FAMILIES: readonly DartsGameFamily[] = [
     note: "Deux adaptations complémentaires de la famille des jeux de précision « Gros / P'tit ».",
   },
   {
-    id: "killer", mainId: "killer", variantIds: ["killer_progressive"],
-    note: "Killer traditionnel et progression des cœurs avant le statut de Killer.",
+    id: "killer", mainId: "killer", variantIds: ["killer_progressive", "mexicain"],
+    note: "Famille des jeux de survie et d’élimination : Killer traditionnel, Killer Progressif et Mexicain à cible commune. Chaque mode conserve ses propres règles.",
   },
   {
     id: "x01", mainId: "x01", variantIds: ["happy_mille", "v170", "training_x01"],

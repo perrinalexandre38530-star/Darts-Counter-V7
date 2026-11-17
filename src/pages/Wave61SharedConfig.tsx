@@ -1,3 +1,4 @@
+import "./wave61/MexicainFiesta.css";
 // @ts-nocheck
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
@@ -420,7 +421,7 @@ export default function Wave61SharedConfig(props: any) {
       botLevel: "normal", // Fallback des anciens bots non étoilés ; les bots notés utilisent leur niveau individuel.
       rounds: Number(lockedRounds ?? Math.max(1, Math.min(60, Number(rounds) || preset.defaultRounds))),
       goal: Number(lockedGoal ?? Math.max(0, Number(goal) || 0)),
-      lives: Math.max(0, Math.min(9, Number(lives) || 0)),
+      lives: spec.id === "mexicain" ? (modeOptions?.progressive === "survival" ? 5 : 3) : Math.max(0, Math.min(9, Number(lives) || 0)),
       randomOrder,
       scoreInputMethod,
       modeOptions: isQuick && spec.id === "green_vs_red" ? { ...modeOptions, matchFormat: "duel" } : modeOptions,
@@ -450,15 +451,15 @@ export default function Wave61SharedConfig(props: any) {
       three_colors: ["scoreMode", "bullColors"], la_suite: ["sequenceOrder"],
       color_call: ["callOrder", "scoreMode"], bim_bam_boum: ["comboRule"],
       saute_moutons: ["trackLength"], troupeau_en_danger: ["flockSize", "wolfDifficulty"],
-      une_ptite_raclette: ["seriesFormat"],
+      une_ptite_raclette: ["seriesFormat"], mexicain: ["targetMode", "fixedTarget", "progressive"],
     };
     const quickOptions = dedicatedOptions.filter((o) =>
       (relevantKeys[spec.id] || dedicatedOptions.filter((x) => x.type === "select").slice(0, 2).map((x) => x.key)).includes(o.key)
-    ).slice(0, 2);
+    ).slice(0, spec.id === "mexicain" ? 3 : 2);
     const quickChip = (active:boolean):React.CSSProperties => ({ ...pill(active), minHeight: 42, padding: "8px 14px", cursor: "pointer" });
     const quickInput:React.CSSProperties = { width: "100%", minWidth: 0, minHeight: 42, borderRadius: 12,
       border: "1px solid rgba(255,255,255,.18)", color: "#fff", background: "rgba(255,255,255,.05)", padding: "8px 12px", fontSize: 16, fontWeight: 850 };
-    return <div className="page wave61-config-screen wave61-quick-config" data-wave61-quick="1" style={{ minHeight:"100dvh", paddingBottom:90, color:"#fff", background:"#060811" }}>
+    return <div className={`page wave61-config-screen wave61-quick-config ${spec.id === "mexicain" ? "mex-fiesta-config" : ""}`} data-wave61-quick="1" style={{ minHeight:"100dvh", paddingBottom:90, color:"#fff", background:"#060811" }}>
       <div style={{padding:"0 12px"}}><DartsQuickHeader modeId={spec.id} title={spec.label} onBack={() => go?.("games", { gamesView: "all" })} /></div>
       <main style={{ maxWidth:760, margin:"0 auto", padding:"12px", display:"grid", gap:12 }}>
         <DartsQuickIntro title={spec.label} />
@@ -485,9 +486,9 @@ export default function Wave61SharedConfig(props: any) {
               <input type="number" min={1} max={60} value={rounds} onChange={(e)=>setRounds(Number(e.target.value))} style={quickInput}/></label>}
             {preset.defaultGoal > 0 && lockedGoal == null && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>OBJECTIF
               <input type="number" min={1} max={9999} value={goal} onChange={(e)=>setGoal(Number(e.target.value))} style={quickInput}/></label>}
-            {preset.defaultLives > 0 && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>VIES
+            {preset.defaultLives > 0 && spec.id !== "mexicain" && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>VIES
               <select value={lives} onChange={(e)=>setLives(Number(e.target.value))} style={quickInput}>{[3,4,5,6,7].map(n=><option value={n} key={n}>{n}</option>)}</select></label>}
-            {quickOptions.map(option=><label key={option.key} style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>{option.label}
+            {quickOptions.filter(option => spec.id !== "mexicain" || option.key !== "fixedTarget" || modeOptions?.targetMode === "fixed").map(option=><label key={option.key} style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>{option.label}
               {option.type==="select"?<select value={modeOptions[option.key] ?? option.defaultValue} onChange={e=>setModeOptions(p=>({...p,[option.key]:e.target.value}))} style={quickInput}>{(option.options||[]).map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}</select>
               :option.type==="toggle"?<input type="checkbox" checked={!!(modeOptions[option.key] ?? option.defaultValue)} onChange={e=>setModeOptions(p=>({...p,[option.key]:e.target.checked}))}/>
               :<input type="number" min={option.min} max={option.max} value={modeOptions[option.key] ?? option.defaultValue} onChange={e=>setModeOptions(p=>({...p,[option.key]:Number(e.target.value)}))} style={quickInput}/>}</label>)}
@@ -502,11 +503,12 @@ export default function Wave61SharedConfig(props: any) {
     </div>;
   }
 
-  return <div className="page wave61-config-screen" data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
+  return <div className={`page wave61-config-screen ${spec.id === "mexicain" ? "mex-fiesta-config" : ""}`} data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
     <div className="wave61-config-header"><PageHeader difficultyGameId={spec.id} tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
     <DartsRelatedModesPanel gameId={spec.id} accent={accent} compact onOpenGame={id => { const target = dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
     {isQuick ? <div style={{maxWidth:980,margin:"8px auto",padding:"9px 14px",fontWeight:950,color:accent}}>⚡ PARTIE RAPIDE · {spec.label} · JOUEURS ET RÈGLES ESSENTIELLES</div> : null}
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10, width: "100%", minWidth: 0, overflowX: "hidden" }}>
+      {spec.id === "mexicain" ? <div className="mex-fiesta-intro"><span>🌵 FIESTA DE DARDOS</span><strong>CHOISIS TES RÈGLES, PUIS ENTRE DANS L’ARÈNE !</strong><small>Un tirage commun · 3 fléchettes par joueur · le dernier survivant gagne</small></div> : null}
       <section className="wave61-config-participants" style={spec.id === "green_vs_red" && greenRedFormat === "teams" ? { padding:0, background:"transparent", border:"none", boxShadow:"none" } : card}>
         {spec.id === "green_vs_red" ? <>
           <div style={greenRedFormat === "teams" ? { ...card, marginBottom:10 } : undefined}>
@@ -626,7 +628,7 @@ export default function Wave61SharedConfig(props: any) {
         {spec.id === "shove_a_penny" ? <><OptionRow label="Fin de partie"><OptionSelect value={shoveEndMode} options={[{ value: "first_finish", label: "Victoire au 1er joueur qui ferme tout" }, { value: "full_ranking", label: "Continuer jusqu’au classement final" }, { value: "fixed_rounds", label: "Limiter par nombre de rounds" }]} onChange={(value: any) => setModeOptions((prev) => ({ ...prev, endMode: value }))} /></OptionRow><div style={{ color: "#7f8798", fontSize: 9.3, lineHeight: 1.4, padding: "0 4px 4px" }}>{shoveEndMode === "full_ranking" ? "Le premier joueur prend la 1re place, puis la partie continue jusqu’au dernier pour obtenir un classement complet." : shoveEndMode === "fixed_rounds" ? "La partie s’arrête à la limite choisie et le classement est figé à cet instant." : "La partie s’arrête dès qu’un joueur ferme toutes ses cases."}</div></> : null}
         {shoveUsesRounds ? <OptionRow label={`${roundsFieldLabel}${lockedRounds ? " · verrouillé" : ""}`}><input type="number" min={1} max={60} value={lockedRounds ?? rounds} disabled={lockedRounds != null} onChange={(e) => setRounds(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedRounds != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedRounds != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
         {preset.defaultGoal > 0 ? <OptionRow label={`${goalFieldLabel}${lockedGoal ? " · verrouillé" : ""}`}><input type="number" min={1} max={9999} value={lockedGoal ?? goal} disabled={lockedGoal != null} onChange={(e) => setGoal(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedGoal != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedGoal != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
-        {preset.defaultLives > 0 ? <OptionRow label="Vies"><OptionSelect value={lives} options={[3,4,5,6,7]} onChange={(v: any) => setLives(Number(v))} /></OptionRow> : null}
+        {preset.defaultLives > 0 && spec.id !== "mexicain" ? <OptionRow label="Vies"><OptionSelect value={lives} options={[3,4,5,6,7]} onChange={(v: any) => setLives(Number(v))} /></OptionRow> : null}
         <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[...(spec.id === "shove_a_penny" ? [{ value: "target", label: "Cibles successives · Keypad Cricket" }] : []), { value: "keypad", label: "Keypad classique" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
@@ -642,6 +644,7 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label="Awena · conseils & commentaires brefs"><OptionToggle value={awenaCommentaryEnabled} onChange={setAwenaCommentaryEnabled} /></OptionRow>
         <OptionRow label="Bruitages Wave61"><OptionToggle value={wave61SfxEnabled} onChange={setWave61SfxEnabled} /></OptionRow>
       </section> : null}
+
 
       {dedicatedOptions.length ? <section className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
@@ -662,7 +665,7 @@ export default function Wave61SharedConfig(props: any) {
               })}
             </div>)}
           </div>;
-        })() : dedicatedOptions.filter((option) => !(spec.id === "shove_a_penny" && option.key === "ruleSet")).map((option) => {
+        })() : dedicatedOptions.filter((option) => !(spec.id === "shove_a_penny" && option.key === "ruleSet") && !(spec.id === "mexicain" && option.key === "fixedTarget" && modeOptions?.targetMode !== "fixed")).map((option) => {
           const value = modeOptions?.[option.key] ?? option.defaultValue;
           const setValue = (next: any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
           return <div key={option.key} style={{ marginBottom: 4 }}>
@@ -673,8 +676,8 @@ export default function Wave61SharedConfig(props: any) {
       </section> : null}
 
       <section className="wave61-config-launch" style={{ ...card, borderColor: valid ? `${accent}66` : "rgba(255,255,255,.08)" }}>
-        {!isQuick ? <div style={{ color: "#aeb5c8", fontSize: 11, lineHeight: 1.55 }}><b style={{ color: "#fff" }}>{spec.label}</b> utilise désormais le moteur <b style={{ color: accent }}>{preset.label}</b>. La sauvegarde/reprise, l'Undo, les bots, le scoring par dart et l'écran de fin sont branchés dans le socle commun.</div> : null}
-        <button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 48, marginTop: 12, borderRadius: 14, border: `1px solid ${valid ? accent : "rgba(255,255,255,.1)"}`, background: valid ? `linear-gradient(180deg,${accent}33,${accent}12)` : "rgba(255,255,255,.03)", color: valid ? "#fff" : "#5e6474", fontWeight: 1100, letterSpacing: .8 }}>{isQuick ? "JOUER" : `LANCER ${spec.label}`}</button>
+        {!isQuick && spec.id !== "mexicain" ? <div style={{ color: "#aeb5c8", fontSize: 11, lineHeight: 1.55 }}><b style={{ color: "#fff" }}>{spec.label}</b> utilise désormais le moteur <b style={{ color: accent }}>{preset.label}</b>. La sauvegarde/reprise, l'Undo, les bots, le scoring par dart et l'écran de fin sont branchés dans le socle commun.</div> : null}
+        <button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 48, marginTop: 12, borderRadius: 14, border: `1px solid ${valid ? accent : "rgba(255,255,255,.1)"}`, background: valid ? `linear-gradient(180deg,${accent}33,${accent}12)` : "rgba(255,255,255,.03)", color: valid ? "#fff" : "#5e6474", fontWeight: 1100, letterSpacing: .8 }}>{spec.id === "mexicain" ? "🇲🇽 ENTRER DANS L’ARÈNE" : isQuick ? "JOUER" : `LANCER ${spec.label}`}</button>
       </section>
     </div>
   </div>;

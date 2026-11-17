@@ -1,3 +1,4 @@
+import "./wave61/MexicainFiesta.css";
 // @ts-nocheck
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
@@ -7,6 +8,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import cricketDartSvg from "../ui_assets/cricket-dart.svg";
+import mexicainRoundArt from "../assets/tickers/mexicain_round_target.webp";
 import ShovePennyCricketBoard from "../components/ShovePennyCricketBoard";
 import KeypadTargets from "../components/KeypadTargets";
 import ShoveActivePlayerCard from "../components/ShoveActivePlayerCard";
@@ -1192,27 +1194,146 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
 }
 
 
-function MexicainPanel({ state, accent }: any) {
-  const number = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
-  const target = number === 21 ? "BULL" : String(number);
+
+/** Mexico UI icons: same 24px outline geometry and rounded strokes as BottomNav. */
+function MexIcon({ name, size = 22 }: { name: string; size?: number }) {
+  const line = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const shape: Record<string, React.ReactNode> = {
+    objective: <><circle {...line} cx="12" cy="12" r="8"/><circle {...line} cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><path {...line} d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></>,
+    players: <><circle {...line} cx="9" cy="8" r="3"/><path {...line} d="M3.5 20v-2c0-3 2.3-5 5.5-5s5.5 2 5.5 5v2"/><path {...line} d="M16 5.5a3 3 0 0 1 0 5.7M17.5 14c2.2.5 3 2.2 3 4v2"/></>,
+    ranking: <><path {...line} d="M8 4h8v6a4 4 0 0 1-8 0V4ZM8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4M12 14v4M8 21h8M9 18h6v3H9z"/></>,
+    history: <><path {...line} d="M3 10a9 9 0 1 1 2 7M3 4v6h6"/><path {...line} d="M12 7v5l3 2"/></>,
+    settings: <><circle {...line} cx="12" cy="12" r="3"/><path {...line} d="m10 2-.6 2.4-2.1.9-2.2-1.1-2 3.4 1.8 1.6-.3 2.3-2.1 1.4 1.1 3.8 2.5-.2 1.7 1.6-.1 2.5 3.9.9 1.1-2.2 2.3-.4 1.8 1.7 3.4-2-1-2.3.8-2.2 2.4-.6V9.4L19 8.6l-.8-2.2 1-2.3-3.4-2-1.8 1.7-2.3-.4L10.6 2z" transform="translate(0 1) scale(.91) translate(1.2 .2)"/></>,
+    rules: <><circle {...line} cx="12" cy="12" r="9"/><path {...line} d="M12 10.5V17M12 7h.01" strokeWidth="2.5"/></>,
+    undo: <><path {...line} d="M8 7 3 12l5 5"/><path {...line} d="M3 12h11a6 6 0 0 1 0 12" transform="translate(0 -4)"/></>,
+    close: <><path {...line} d="M5 5 19 19M19 5 5 19"/></>,
+    miss: <><circle {...line} cx="12" cy="12" r="8"/><path {...line} d="M7 7 17 17M17 7 7 17"/></>,
+    check: <><path {...line} d="M4 12 10 18 20 6"/></>,
+  };
+  return <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24">{shape[name] || shape.rules}</svg>;
+}
+
+/** The same three SVG darts are reused for an empty/filled visit; color is CSS driven. */
+function MexDart({size=27}:{size?:number}) {
+  return <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 40 40" className="mex-dart-svg">
+    <path d="m6 33 7.5-7.5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round"/>
+    <path d="m12 27 13-13" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round"/>
+    <path d="m22 18 3.5-3.5" fill="none" stroke="#f8d795" strokeWidth="1.2" strokeLinecap="round"/>
+    <path d="M26 13 30 3l6 1-1 6-9 4Z" fill="currentColor" fillOpacity=".76" stroke="currentColor" strokeLinejoin="round" strokeWidth="1"/>
+    <path d="M30 4 35 10M36 4 26 13" fill="none" stroke="currentColor" strokeWidth=".8"/>
+    <path d="m4 35 4-5 1.5 1.5L4 35Z" fill="currentColor"/>
+  </svg>;
+}
+
+function MexHeartLives({ lives = 0 }: { lives?: number }) {
+  const count = Math.max(0, Math.min(7, Number(lives || 0)));
+  if (!count) return <span className="mex-heart-row mex-empty">☠</span>;
+  return <span className="mex-heart-row" aria-label={`${count} vies`}>{Array.from({ length: count }, (_, i) => <span key={i}>♥</span>)}</span>;
+}
+
+function MexicainTargetInput({ state, currentThrow, setCurrentThrow, onValidate, accent }: any) {
+  const targetNumber = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
+  const bull = targetNumber === 21;
+  const locked = currentThrow.length >= 3 || state.phase !== "playing";
+  const append = (mult: number, isMiss = false) => {
+    if (locked) return;
+    setCurrentThrow((previous: UIDart[]) => previous.length >= 3 ? previous : [...previous, isMiss ? {v:0,mult:1} : {v:bull?25:targetNumber,mult}]);
+  };
+  const dartText = (d: any) => !d ? "" : Number(d.v) === 0 ? "MISS" : Number(d.v) === 25 ? (Number(d.mult) === 2 ? "BULL50" : "BULL25") : `${Number(d.mult) === 3 ? "T" : Number(d.mult) === 2 ? "D" : "S"}${d.v}`;
+  const dartTone = (d: any) => !d ? "empty" : Number(d.v) === 0 ? "miss" : Number(d.mult) === 3 ? "triple" : Number(d.mult) === 2 ? "double" : "single";
+  return <section className="mex-target-input" data-mexicain-target-input="1" aria-label="Saisie sur la cible tirée au sort">
+    <div className="mex-target-slots" role="group" aria-label={`${currentThrow.length} impacts sur 3`}>
+      {[0,1,2].map(i => <div key={i} className={`mex-dart-slot ${currentThrow[i] ? "is-filled" : ""} mex-dart-${dartTone(currentThrow[i])}`} aria-label={`Fléchette ${i+1} : ${dartText(currentThrow[i]) || "à jouer"}`}><MexDart/><span>{dartText(currentThrow[i]) || `D${i+1}`}</span></div>)}
+    </div>
+    <div className="mex-target-keys">
+      {bull ? <><button type="button" className="mex-hit-single" disabled={locked} onClick={()=>append(1)}>BULL 25</button><button type="button" className="mex-hit-triple" disabled={locked} onClick={()=>append(2)}>BULL 50</button></> : <><button type="button" className="mex-hit-single" disabled={locked} onClick={()=>append(1)}>S{targetNumber}</button><button type="button" className="mex-hit-double" disabled={locked} onClick={()=>append(2)}>D{targetNumber}</button><button type="button" className="mex-hit-triple" disabled={locked} onClick={()=>append(3)}>T{targetNumber}</button></>}
+      <button type="button" className="mex-hit-miss" disabled={locked} onClick={()=>append(1,true)}><MexIcon name="miss" size={17}/> MISS</button>
+      <button type="button" className="mex-hit-undo" disabled={!currentThrow.length} onClick={()=>setCurrentThrow((previous:UIDart[])=>previous.slice(0,-1))}><MexIcon name="undo" size={17}/> ANNULER</button>
+      <button type="button" className="mex-hit-validate" disabled={currentThrow.length !== 3 || state.phase!=="playing"} onClick={onValidate}><MexIcon name="check" size={18}/> VALIDER</button>
+    </div>
+  </section>;
+}
+
+function MexicainActivePlayer({player,profile,state,currentThrow,onOpenScore}:any) {
+  const id=String(player?.id||"");
+  const portrait=profile?.avatarDataUrl||profile?.avatarUrl||profile?.avatar||null;
+  const lives=Math.max(0, Number(state?.lives?.[id]||0));
+  const confirmed=Number(state?.special?.mexicainRoundScores?.[id]||0);
+  const targetNumber=Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20);
+  const round=Number(state?.roundIndex||0)+1;
+  const survivors=(state?.players||[]).filter((p:any)=>!state?.eliminated?.[p.id]).length;
+  // The live total includes the impacts currently being entered, before VALIDATE.
+  const pending=(currentThrow||[]).reduce((sum:number, dart:any)=> {
+    const value=Number(dart?.v||0);
+    const mult=Number(dart?.mult||1);
+    if (!value) return sum;
+    if (targetNumber===21) return value===25 ? sum+25*mult : sum;
+    return value===targetNumber ? sum+value*mult : sum;
+  },0);
+  const liveScore=confirmed+pending;
+  return <section className="mex-active-player mex-active-player-premium mex-active-v167" data-mexicain-active-player="1">
+    {portrait ? <div className="mex-active-watermark" style={{backgroundImage:`url(${portrait})`}} aria-hidden="true"/> : null}
+    <div className="mex-active-topline" aria-label={`${survivors} survivants et trois fléchettes`}>
+      <span><MexIcon name="players" size={15}/> {survivors} SURVIVANTS</span>
+      <span className="mex-active-three-darts" aria-label="Trois fléchettes par joueur">{[0,1,2].map(i=><img key={i} src={cricketDartSvg} alt=""/>)}</span>
+    </div>
+    <div className="mex-active-identity">
+      <div className="mex-active-avatar">{portrait ? <img src={portrait} alt=""/> : <span>{String(player?.name||"?").slice(0,2).toUpperCase()}</span>}</div>
+      <div className="mex-active-description"><strong>{player?.name||"—"}</strong><div className="mex-active-hearts" aria-label={`${lives} vies restantes`}>{Array.from({length:Math.min(7,Math.max(lives,3))},(_,i)=><span key={i} className={i<lives?"alive":"lost"}>♥</span>)}</div></div>
+      <button type="button" className="mex-active-score-trigger" onClick={onOpenScore} aria-label={`RONDA ${round}, ${liveScore} points en cours. Voir le détail des scores`}>
+        <small>RONDA {round}</small>
+        <strong>{liveScore}</strong>
+        <span>PTS MANCHE</span>
+      </button>
+    </div>
+  </section>;
+}
+
+function MexicainScoreDetail({ state, tab, onTabChange }: any) {
+  const history:any[]=state?.special?.mexicainHistory || [];
+  const players:any[]=state?.players || [];
+  const activeScores=state?.special?.mexicainRoundScores || {};
+  const round=Number(state?.roundIndex||0)+1;
+  const tabs=[{id:"round",label:"MANCHE",icon:"objective"},{id:"recap",label:"RÉCAP",icon:"history"},{id:"evolution",label:"ÉVOLUTION",icon:"ranking"}];
+  const lines=players.map((p:any,i:number)=>({
+    player:p,
+    values:history.map((h:any)=>Number((h.scores||[]).find((x:any)=>String(x.id)===String(p.id))?.score||0)),
+    color:["#e9c77a","#64dcb1","#f56d68","#74c5f5","#cda3f4","#ffa65a"][i%6],
+  }));
+  const maxRound=Math.max(1,history.length);
+  const maxValue=Math.max(1,...lines.flatMap((l:any)=>l.values));
+  return <div className="mex-score-detail">
+    <nav className="mex-score-tabs" aria-label="Détails des scores">{tabs.map(t=><button type="button" key={t.id} className={tab===t.id?"selected":""} onClick={()=>onTabChange(t.id)}><MexIcon name={t.icon} size={17}/><span>{t.label}</span></button>)}</nav>
+    {tab==="round"?<div className="mex-score-rows"><h4>RONDA {round} · CIBLE {Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20)===21?"BULL":state?.special?.mexicainTargets?.[state?.roundIndex]}</h4>{players.map(p=><div key={p.id}><b>{p.name}</b><strong>{activeScores[p.id]==null?"EN ATTENTE":`${Number(activeScores[p.id])} PTS`}</strong></div>)}</div>:null}
+    {tab==="recap"?<div className="mex-score-history">{history.length?history.slice().reverse().map((h:any,i:number)=><section key={i}><h4>RONDA {h.round} · CIBLE {h.target===21?"BULL":h.target}</h4>{(h.scores||[]).map((sc:any)=><div key={sc.id}><span>{players.find((p:any)=>String(p.id)===String(sc.id))?.name||sc.id}</span><strong>{sc.score} PTS {h.losers?.includes(sc.id)?`· −${h.lifeLoss} ♥`:""}</strong></div>)}</section>):<p>Aucune manche terminée pour le moment.</p>}</div>:null}
+    {tab==="evolution"?<div className="mex-score-evolution"><h4>ÉVOLUTION DES POINTS PAR MANCHE</h4>{history.length?<><svg viewBox="0 0 320 178" role="img" aria-label="Graphique des scores par manche" preserveAspectRatio="xMidYMid meet"><path d="M28 12V151H310" stroke="#d0b987" strokeWidth="1" fill="none" opacity=".65"/>{[0,1,2,3,4].map(k=><line key={k} x1="28" y1={12+k*34.75} x2="310" y2={12+k*34.75} stroke="#ffffff" strokeOpacity=".10"/>)}{lines.map((l:any)=><polyline key={l.player.id} fill="none" stroke={l.color} strokeWidth="2.8" strokeLinejoin="round" strokeLinecap="round" points={l.values.map((v:number,i:number)=>`${28+((i+.5)/maxRound)*282},${151-(v/maxValue)*139}`).join(" ")}/>)}<text x="7" y="14" fill="#d9cba4" fontSize="9">{maxValue}</text><text x="16" y="154" fill="#d9cba4" fontSize="9">0</text></svg><div className="mex-chart-legend">{lines.map((l:any)=><span key={l.player.id}><i style={{background:l.color}}/>{l.player.name}</span>)}</div></>:<p>Le graphique apparaîtra après la première manche terminée.</p>}<h4>CLASSEMENT PAR MANCHE</h4>{history.map((h:any)=><div className="mex-rank-evolution" key={h.round}><b>R{h.round}</b>{[...(h.scores||[])].sort((a:any,b:any)=>b.score-a.score).map((sc:any,i:number)=><span key={sc.id}>#{i+1} {players.find((p:any)=>p.id===sc.id)?.name} ({sc.score})</span>)}</div>)}</div>:null}
+  </div>;
+}
+
+function MexicainPanel({ state, accent, detailed = false, avatarFor }: any) {
+  const n = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
+  const target = n === 21 ? "BULL" : String(n);
   const current = state?.special?.mexicainRoundScores || {};
   const last = (state?.special?.mexicainHistory || []).slice(-1)[0];
-  return <section data-mexicain-panel="1" style={{...panelStyle(accent),padding:10,display:"grid",gap:7}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-      <div style={{fontSize:10,color:accent,fontWeight:1000}}>🇲🇽 LE MEXICAIN · MANCHE {Number(state?.roundIndex || 0) + 1}</div>
-      <div style={{fontSize:9,color:"#b9c1d1"}}>3 FLÉCHETTES / JOUEUR</div>
-    </div>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,borderRadius:10,padding:"7px 10px",background:`${accent}15`,border:`1px solid ${accent}70`}}>
-      <span style={{fontSize:10,fontWeight:900,color:"#e6e9ef"}}>CIBLE COMMUNE</span>
-      <strong style={{fontSize:27,color:accent,lineHeight:1}}>{target}</strong>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:5}}>
-      {(state?.players || []).map((p:any) => <div key={p.id} style={{borderRadius:8,padding:"5px 7px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",opacity:state?.eliminated?.[p.id] ? .46 : 1}}>
-        <div style={{fontSize:9,fontWeight:1000,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{String(p.name || "JOUEUR").toUpperCase()}</div>
-        <div style={{display:"flex",justifyContent:"space-between",gap:4,alignItems:"center",fontSize:10}}><span style={{color:"#ff7a8d"}}>♥ {Number(state?.lives?.[p.id] || 0)}</span><strong style={{color:accent}}>{current[p.id] == null ? "—" : `${current[p.id]} PTS`}</strong></div>
-      </div>)}
-    </div>
-    {last ? <div style={{fontSize:9,color:"#bec6d5"}}>Dernière manche : {last.losers?.length ? `${last.losers.map((id:string)=>state.players.find((p:any)=>p.id===id)?.name || id).join(", ")} · -${last.lifeLoss} vie(s)` : "égalité générale · aucune vie perdue"}</div> : null}
+  const active = state?.players?.[state?.activePlayerIndex]?.id;
+  const living = (state?.players || []).filter((p:any) => !state?.eliminated?.[p.id]);
+  const scores = Object.values(current).map((s:any)=>Number(s||0));
+  const min = scores.length ? Math.min(...scores) : null;
+  return <section className={`mex-fiesta-scoreboard ${detailed ? "mex-detailed" : "mex-compact"}`} data-mexicain-panel="1" aria-label="Tableau de manche du Mexicain">
+    {detailed ? <div className="mex-score-head"><span><b>RONDA {Number(state?.roundIndex || 0)+1}</b></span><span>{living.length} SURVIVANTS</span><span className="mex-score-darts">{[0,1,2].map(i=><img key={i} src={cricketDartSvg} alt=""/>)}</span></div> : null}
+    <div className="mex-target-stage mex-target-art" role="img" aria-label={`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">OBJECTIF</span><strong className="mex-target-number">{target}</strong></div>
+    {detailed ? <div className="mex-player-grid">{(state?.players||[]).map((p:any)=>{
+      const out=!!state?.eliminated?.[p.id]; const hearts=Math.max(0,Number(state?.lives?.[p.id]||0));
+      const value=current[p.id];const isLow=value!=null && min!=null && Number(value)===min && scores.length>1 && !scores.every(s=>s===min);
+      const avatar = typeof avatarFor === "function" ? avatarFor(p.id) : null;
+      return <div key={p.id} className={`mex-player-tile ${active===p.id?"mex-active":""} ${out?"mex-out":""}`}>
+        {avatar ? <div className="mex-player-avatar-bg" style={{backgroundImage:`url(${avatar})`}} aria-hidden="true"/> : null}
+        <div className="mex-player-tile-shade" aria-hidden="true"/>
+        <div className="mex-player-top"><b>{String(p.name||"Joueur").toUpperCase()}</b><strong>{value == null ? "—" : value}</strong></div>
+        <div className="mex-player-bottom"><span aria-label={`${hearts} vies`}>{"♥ ".repeat(Math.min(hearts,7)) || "☠"}</span><small>{out?"ÉLIMINÉ":isLow?"EN DANGER":value==null?"EN ATTENTE":"PTS VALIDES"}</small></div>
+      </div>;
+    })}</div> : null}
+    {detailed && last ? <div className="mex-round-result">🌶️ {last.losers?.length ? `Manche précédente : ${last.losers.map((id:string)=>state.players.find((p:any)=>p.id===id)?.name||id).join(", ")} · -${last.lifeLoss} vie(s)` : "Manche précédente : égalité générale, aucune vie perdue"}</div> : null}
   </section>;
 }
 
@@ -1293,6 +1414,7 @@ export default function Wave61SharedPlay(props: any) {
   const shoveAnnouncedTurnRef = React.useRef("");
   const shoveFallbackSfxCountRef = React.useRef(currentThrow.length);
   const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective" | "situation" | "shove_marks" | "shove_advice" | "shove_objective">(null);
+  const [mexScoreTab, setMexScoreTab] = React.useState("round");
   const adviceTimerRef = React.useRef<number | null>(null);
   const adviceSpeechTimerRef = React.useRef<number | null>(null);
   const lastAdviceKeyRef = React.useRef("");
@@ -2104,6 +2226,36 @@ export default function Wave61SharedPlay(props: any) {
     </div>;
   };
 
+  const mexAvatarFor = (playerId: any) => {
+    const prof: any = profileById.get(String(playerId)) || state.players?.find((p:any)=>String(p.id)===String(playerId)) || null;
+    return prof?.avatarDataUrl || prof?.avatarUrl || prof?.avatar || null;
+  };
+  // Mexicain : les informations secondaires quittent le plateau et sont ouvertes à la demande.
+  const mexicainMenu = spec.id === "mexicain" ? <nav className="mex-floating-nav" aria-label="Informations du Mexicain">
+    {([
+      ["objective", "MANCHE"], ["players", "JOUEURS"], ["ranking", "CLASSEMENT"],
+      ["history", "HISTORIQUE"], ["settings", "RÉGLAGES"], ["rules", "RÈGLES"],
+    ] as const).map(([id, label]) => <button key={id} type="button" title={label} aria-label={label} aria-haspopup="dialog" aria-expanded={quickPanel===id} onClick={() => setQuickPanel(id)}><span className="mex-nav-icon"><MexIcon name={id} size={23}/></span><small>{label}</small></button>)}
+  </nav> : null;
+  const mexicainModal = spec.id === "mexicain" && quickPanel ? <div className="mex-floating-backdrop" role="presentation" onClick={() => setQuickPanel(null)}>
+    <section className="mex-floating-dialog" role="dialog" aria-modal="true" aria-label="Informations du Mexicain" onClick={event => event.stopPropagation()}>
+      <header className="mex-floating-header">
+        {modeTicker ? <img src={modeTicker} alt="Le Mexicain"/> : <strong>🇲🇽 LE MEXICAIN</strong>}
+        <button type="button" className="mex-floating-close" onClick={() => setQuickPanel(null)} aria-label="Fermer"><MexIcon name="close" size={20}/></button>
+      </header>
+      <h3>{({ objective:"MANCHE EN COURS", stats:"SCORES ET ÉVOLUTION", players:"JOUEURS ET VIES", ranking:"CLASSEMENT", history:"HISTORIQUE DES VOLÉES", settings:"CONFIGURATION", rules:"RÈGLES DU MEXICAIN" } as Record<string,string>)[quickPanel] || "INFORMATIONS"}</h3>
+      <div className="mex-floating-content">
+        {quickPanel === "stats" ? <MexicainScoreDetail state={state} tab={mexScoreTab} onTabChange={setMexScoreTab}/> : null}
+        {quickPanel === "objective" ? <MexicainPanel state={state} accent={accent} detailed avatarFor={mexAvatarFor} /> : null}
+        {quickPanel === "players" ? <div className="mex-floating-list">{state.players.map((player:any,index:number) => { const lives = Number(state.lives?.[player.id]||0); const total = Number(state.scores?.[player.id]||0); const round = Number(state.special?.mexicainRoundScores?.[player.id]||0); const avatar = mexAvatarFor(player.id); return <div key={player.id} className={`mex-player-list-card ${state.eliminated?.[player.id] ? "mex-list-out" : ""}`}>{avatar ? <div className="mex-list-avatar-bg" style={{backgroundImage:`url(${avatar})`}} aria-hidden="true"/> : null}<div className="mex-list-shade" aria-hidden="true"/><div className="mex-list-main"><span><b>{index+1}. {player.name}</b><small>{state.activePlayerIndex===index ? "JOUEUR ACTIF" : state.eliminated?.[player.id] ? "ÉLIMINÉ" : "EN JEU"}</small></span><em>{total} PTS AU TOTAL</em></div><div className="mex-list-side"><strong>{round} <small>PTS MANCHE</small></strong><MexHeartLives lives={lives} /></div></div>})}</div> : null}
+        {quickPanel === "ranking" ? <div className="mex-floating-list">{[...state.players].sort((a:any,b:any) => Number(state.lives?.[b.id]||0)-Number(state.lives?.[a.id]||0) || Number(state.scores?.[b.id]||0)-Number(state.scores?.[a.id]||0)).map((player:any,index:number) => { const avatar = mexAvatarFor(player.id); const lives = Number(state.lives?.[player.id]||0); const score = Number(state.scores?.[player.id]||0); return <div key={player.id} className="mex-player-list-card mex-ranking-card">{avatar ? <div className="mex-list-avatar-bg" style={{backgroundImage:`url(${avatar})`}} aria-hidden="true"/> : null}<div className="mex-list-shade" aria-hidden="true"/><div className="mex-list-main"><span><b>#{index+1} · {player.name}</b><small>{score} points validés</small></span><em>{state.eliminated?.[player.id] ? "ÉLIMINÉ" : lives > 0 ? "EN COURSE" : "OUT"}</em></div><div className="mex-list-side"><strong>{lives} <small>VIES</small></strong><MexHeartLives lives={lives} /></div></div>})}</div> : null}
+        {quickPanel === "history" ? <><VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="VOLÉES JOUÉES" limit={15}/>{(state.special?.mexicainHistory||[]).slice(-8).reverse().map((entry:any,index:number) => <div key={index} className="mex-history-line">RONDA {entry.round} · CIBLE {entry.target===21?"BULL":entry.target} · {entry.losers?.length ? `${entry.losers.map((id:string)=>state.players.find((p:any)=>p.id===id)?.name||id).join(", ")} : −${entry.lifeLoss} vie(s)` : "Égalité générale"}</div>)}</> : null}
+        {quickPanel === "settings" ? <div className="mex-floating-list"><div><span>Variante</span><strong>{({classic:"CLASSIQUE",survival:"SURVIE",progressive:"PROGRESSIF"} as Record<string,string>)[String(config?.modeOptions?.progressive||"classic")]||"CLASSIQUE"}</strong></div><div><span>BULL au tirage</span><strong>{config?.modeOptions?.bullEnabled==="no"?"NON":"OUI"}</strong></div><div><span>Participants</span><strong>{state.players.length}</strong></div><div><span>Manches maximales</span><strong>{config.rounds}</strong></div><button type="button" onClick={()=>{setQuickPanel(null);go?.("wave61_config",{gameId:spec.id});}}>MODIFIER LA CONFIGURATION</button></div> : null}
+        {quickPanel === "rules" ? <div className="mex-floating-rules"><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="objective" size={18} /></span><p>Chaque manche tire une cible commune parmi les secteurs 1 à 20, et éventuellement le BULL.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="rules" size={18} /></span><p>Chaque joueur lance trois fléchettes. Seules les touches de la cible demandée comptent : simple, double et triple conservent leur valeur.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="players" size={18} /></span><p>Le plus faible score de la manche perd une vie ; une égalité générale ne retire aucune vie.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="ranking" size={18} /></span><p>Le dernier joueur encore en vie remporte la partie.</p></div><button type="button" className="mex-related-killer" onClick={()=>{setQuickPanel(null);go?.("killer_config",{gameId:"killer"});}}><MexIcon name="players" size={19}/> DÉCOUVRIR LE KILLER · MODE APPARENTÉ</button></div> : null}
+      </div>
+    </section>
+  </div> : null;
+
   if (isClassicFive) {
     const activeMetric = activePlayer ? wave61PrimaryMetric(state, activePlayer.id) : { value:"—", label:"", sub:"" };
     const activeStats = activePlayer ? (state.statsByPlayer?.[activePlayer.id] || {}) : {};
@@ -2142,7 +2294,7 @@ export default function Wave61SharedPlay(props: any) {
     const gvrAvatar = activeProfile?.avatarDataUrl || activeProfile?.avatarUrl || activeProfile?.avatar || null;
     const threeId=String(activePlayer?.id||"");
 
-    return <div data-wave61-classic-five={spec.id} style={{ height:"calc(var(--vh,1vh) * 100 - 18px)", minHeight:0, overflow:"hidden", display:"flex", flexDirection:"column", background:`radial-gradient(circle at 50% 0%,${accent}14,transparent 34%),#070a11` }}>
+    return <div className={spec.id === "mexicain" ? "mex-fiesta-play" : undefined} data-wave61-classic-five={spec.id} style={{ height:"calc(var(--vh,1vh) * 100 - 18px)", minHeight:0, overflow:"hidden", display:"flex", flexDirection:"column", background:`radial-gradient(circle at 50% 0%,${accent}14,transparent 34%),#070a11` }}>
       <PageHeader
         tickerSrc={modeTicker || undefined}
         tickerAlt={spec.label}
@@ -2290,10 +2442,10 @@ export default function Wave61SharedPlay(props: any) {
     const tickerHeight = compactHeight ? 48 : Math.max(58, Math.min(82, Math.round(viewportH * 0.105)));
     const familyBadge = state.family === "survival" || state.family === "combat" ? "⚔️ SURVIE" : state.family === "ascent" ? "⛰️ ASCENSION" : state.family === "conquest" ? "🗺️ CONQUÊTE" : state.family === "deduction" ? "🧩 INDICES" : state.family === "rhythm" ? "⚡ COMBO" : state.family === "race" ? "🏁 COURSE" : state.family === "mission" ? "🗝️ MISSION" : "🎯 ACTION";
 
-    return <div data-wave61-landscape="three-zone" style={{ height: "100dvh", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
-      <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
-      {modeTicker ? <div data-wave61-landscape-ticker="1" style={{ flex: `0 0 ${tickerHeight}px`, minHeight: 0, padding: "3px 8px 2px", display: "grid", placeItems: "center" }}><img src={modeTicker} alt={spec.label} style={{ width: "min(760px,58vw)", height: tickerHeight - 5, objectFit: "cover", borderRadius: 13, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 8px 24px rgba(0,0,0,.34)` }} /></div> : null}
-      {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: compactHeight ? 56 : 76, right: 10, width: "min(350px,34vw)", borderRadius: 14, padding: "7px 9px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 14px 34px rgba(0,0,0,.48),0 0 22px ${accent}20` }}>
+    return <div className={spec.id === "mexicain" ? "mex-fiesta-play" : undefined} data-wave61-landscape="three-zone" style={{ height: "100dvh", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
+      <PageHeader title={spec.id === "mexicain" && modeTicker ? undefined : spec.label} subtitle={spec.id === "mexicain" && modeTicker ? undefined : `${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} tickerSrc={spec.id === "mexicain" ? modeTicker || undefined : undefined} tickerHeight={spec.id === "mexicain" ? 80 : 92} tickerFit="cover" tickerBottomGap={7} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={spec.id === "mexicain" ? <button type="button" className="mex-awena-medallion" title="Règles du Mexicain" aria-label="Ouvrir les règles" onClick={()=>setQuickPanel("rules")}><img src="/awena/awena-avatar.webp" alt="Awena"/></button> : <InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
+      {spec.id !== "mexicain" && modeTicker ? <div data-wave61-landscape-ticker="1" style={{ flex: `0 0 ${tickerHeight}px`, minHeight: 0, padding: "3px 8px 2px", display: "grid", placeItems: "center" }}><img src={modeTicker} alt={spec.label} style={{ width: "min(760px,58vw)", height: tickerHeight - 5, objectFit: "cover", borderRadius: 13, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 8px 24px rgba(0,0,0,.34)` }} /></div> : null}
+      {adviceText && spec.id !== "mexicain" ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: compactHeight ? 56 : 76, right: 10, width: "min(350px,34vw)", borderRadius: 14, padding: "7px 9px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 14px 34px rgba(0,0,0,.48),0 0 22px ${accent}20` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88` }} />
         <div><div style={{ color: accent, fontSize: 7.8, fontWeight: 1100, letterSpacing: .8 }}>AWENA · CONSEIL</div><div style={{ marginTop: 1, color: "#fff", fontSize: 9.2, fontWeight: 850, lineHeight: 1.28 }}>{adviceText}</div></div>
         {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 28, height: 28, borderRadius: 9, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, cursor: "pointer" }}>🔊</button> : null}
@@ -2301,55 +2453,59 @@ export default function Wave61SharedPlay(props: any) {
 
       {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={shoveHistorySaveError} onRetrySave={retryShoveHistorySave}/> : null} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
         <section data-wave61-zone="players" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ ...panelStyle(accent + "45"), padding: compactHeight ? 7 : 9, flex: "0 0 auto" }}>
+          {spec.id === "mexicain" ? <MexicainActivePlayer player={activePlayer} profile={activeProfile} state={state} currentThrow={currentThrow} onOpenScore={()=>{setMexScoreTab("round");setQuickPanel("stats");}} /> : <div style={{ ...panelStyle(accent + "45"), padding: compactHeight ? 7 : 9, flex: "0 0 auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div><div style={{ color: accent, fontSize: compactHeight ? 8.4 : 9.5, fontWeight: 1100, letterSpacing: .8 }}>ROUND {roundLabel}/{config.rounds}</div><div style={{ marginTop: 2, color: "#fff", fontSize: compactHeight ? 12 : 14, fontWeight: 1000 }}>{activePlayer?.name || "—"}</div></div><button type="button" onClick={doUndo} disabled={!canUndo} style={{ ...actionStyle(accent, !canUndo), minHeight: compactHeight ? 32 : 36, padding: "0 8px", fontSize: 9 }}>↶ UNDO</button></div>
             {activeProfile ? <div style={{ marginTop: 6 }}><PlayerCard profile={activeProfile} active accent={accent} value={activeMetric.value} subValue={`${activeMetric.label} · ${activeMetric.sub}${teamMode ? ` · Team ${config.teamByPlayer?.[activePlayer?.id] || "?"}` : ""}`} badge={state.eliminated?.[activePlayer?.id || ""] ? "OUT" : null} muted={!!state.eliminated?.[activePlayer?.id || ""]} /></div> : null}
-          </div>
+          </div>}
           {teamMode ? <div style={{ ...panelStyle("rgba(255,255,255,.08)"), padding: 6, display: "flex", gap: 5, flexWrap: "wrap", flex: "0 0 auto" }}>{Object.entries(state.teamScores || {}).map(([team, score]: any) => <span key={team} style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${team === "A" ? accent + "55" : "#ff657d55"}`, color: team === "A" ? accent : "#ff8fa0", fontSize: 8.5, fontWeight: 1000 }}>TEAM {team} · {Math.round(Number(score || 0))}</span>)}</div> : null}
-          <div data-wave61-player-list="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", alignContent: "start", gap: 5, paddingRight: 2 }}>
+          {spec.id !== "mexicain" ? <div data-wave61-player-list="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", alignContent: "start", gap: 5, paddingRight: 2 }}>
             {state.players.map((p: any, i: number) => { const prof = profileById.get(String(p.id)) || p; const metric = wave61PrimaryMetric(state, p.id); const eliminated = !!state.eliminated[p.id]; return <div key={p.id} style={{ opacity: state.activePlayerIndex === i ? .72 : 1 }}><PlayerCard profile={prof} active={state.activePlayerIndex === i} accent={accent} value={metric.value} subValue={`${metric.label} · ${metric.sub}${teamMode ? ` · Team ${config.teamByPlayer?.[p.id] || "?"}` : ""}`} badge={eliminated ? "OUT" : null} muted={eliminated} /></div>; })}
-          </div>
+          </div> : null}
         </section>
 
         <section data-wave61-zone="mission" style={{ minWidth: 0, minHeight: 0, overflowY: "auto", display: "grid", alignContent: "start", gap: 6, paddingRight: 2 }}>
           {notice ? <div style={{ borderRadius: 11, padding: "6px 8px", background: `${accent}0d`, border: `1px solid ${accent}2f`, color: "#e9ecf5", fontSize: 9.2, fontWeight: 850 }}>{notice}</div> : null}
-          {config?.modeOptions && Object.keys(config.modeOptions).length ? <div style={{ ...panelStyle(accent + "2d"), padding: "6px 7px", display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}><span style={{ color: accent, fontSize: 7.8, fontWeight: 1100 }}>RÉGLAGES</span>{Object.entries(config.modeOptions).slice(0, compactHeight ? 5 : 9).map(([key, value]: any) => <span key={key} style={{ borderRadius: 999, padding: "3px 5px", border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", color: "#cfd5e4", fontSize: 7.4, fontWeight: 850 }}>{key.replace(/([A-Z])/g, " $1").toUpperCase()} · {key.endsWith("Ms") ? `${Number(value) / 1000}s` : typeof value === "boolean" ? (value ? "ON" : "OFF") : String(value)}</span>)}</div> : null}
+
+      {spec.id !== "mexicain" && config?.modeOptions && Object.keys(config.modeOptions).length ? <div style={{ ...panelStyle(accent + "2d"), padding: "6px 7px", display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}><span style={{ color: accent, fontSize: 7.8, fontWeight: 1100 }}>RÉGLAGES</span>{Object.entries(config.modeOptions).slice(0, compactHeight ? 5 : 9).map(([key, value]: any) => <span key={key} style={{ borderRadius: 999, padding: "3px 5px", border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", color: "#cfd5e4", fontSize: 7.4, fontWeight: 850 }}>{key.replace(/([A-Z])/g, " $1").toUpperCase()} · {key.endsWith("Ms") ? `${Number(value) / 1000}s` : typeof value === "boolean" ? (value ? "ON" : "OFF") : String(value)}</span>)}</div> : null}
+          {mexicainMenu}
           {renderModeSpecificPanel()}
-          <div style={{ ...panelStyle(accent + "3d"), padding: compactHeight ? 8 : 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
-            <div><div style={{ color: accent, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>{target ? "OBJECTIF ACTIF" : "OBJECTIF LIBRE"}</div><div style={{ marginTop: 3, color: "#fff", fontSize: compactHeight ? 14 : 17, fontWeight: 1100, lineHeight: 1.12 }}>{spec.id === "golden_dart" ? "Trouve le secteur doré grâce aux indices" : spec.id === "luciole" ? "Mémorise la luciole avant qu'elle s'éteigne" : target?.label || (state.family === "score" ? "Marque le maximum" : spec.id === "align_4" ? "Choisis ta colonne avec le secteur" : "Fais progresser ta mission")}</div>{!compactHeight ? <div style={{ marginTop: 4, color: SOFT, fontSize: 8.8, lineHeight: 1.35 }}>{spec.infoBody}</div> : null}</div>
+          {spec.id !== "mexicain" ? <div style={{ ...panelStyle(accent + "3d"), padding: compactHeight ? 8 : 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+            <div><div style={{ color: accent, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>{spec.id === "mexicain" ? "🎯 OBJECTIF DE LA MANCHE" : target ? "OBJECTIF ACTIF" : "OBJECTIF LIBRE"}</div><div style={{ marginTop: 3, color: "#fff", fontSize: compactHeight ? 14 : 17, fontWeight: 1100, lineHeight: 1.12 }}>{spec.id === "golden_dart" ? "Trouve le secteur doré grâce aux indices" : spec.id === "luciole" ? "Mémorise la luciole avant qu'elle s'éteigne" : target?.label || (state.family === "score" ? "Marque le maximum" : spec.id === "align_4" ? "Choisis ta colonne avec le secteur" : "Fais progresser ta mission")}</div>{!compactHeight && spec.id !== "mexicain" ? <div style={{ marginTop: 4, color: SOFT, fontSize: 8.8, lineHeight: 1.35 }}>{spec.infoBody}</div> : null}</div>
             <div style={{ minWidth: compactHeight ? 58 : 70, minHeight: compactHeight ? 54 : 68, borderRadius: 15, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: compactHeight ? 8.5 : 9.5 }}>{familyBadge}</div>
-          </div>
-          <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={compactHeight ? 2 : 3} />
+          </div> : null}
+          {spec.id !== "mexicain" ? <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={compactHeight ? 2 : 3} /> : null}
         </section>
 
         <section data-wave61-zone="input" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
+          {!activeIsBot ? (spec.id === "mexicain" ? <MexicainTargetInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} />) : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
       {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} onClose={closeVisitRecap} durationMs={isColorDuelMode(spec.id) ? 5000 : 3000} /> : null}
       {!visitRecap && state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
+      {mexicainModal}
     </div>;
   }
 
-  return <div style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
+  return <div className={spec.id === "mexicain" ? "mex-fiesta-play mex-fiesta-portrait" : undefined} style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
     {state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
-    <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
-    {modeTicker ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
-    {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: 86, right: 12, width: "min(360px,calc(100vw - 24px))", borderRadius: 16, padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.48),0 0 26px ${accent}20` }}>
+    <PageHeader title={spec.id === "mexicain" && modeTicker ? undefined : spec.label} subtitle={spec.id === "mexicain" && modeTicker ? undefined : `${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} tickerSrc={spec.id === "mexicain" ? modeTicker || undefined : undefined} tickerAlt={spec.label} tickerHeight={spec.id === "mexicain" ? 126 : 92} tickerBottomGap={8} tickerFit="cover" left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={spec.id === "mexicain" ? <button type="button" className="mex-awena-medallion" title="Règles du Mexicain" aria-label="Ouvrir les règles" onClick={()=>setQuickPanel("rules")}><img src="/awena/awena-avatar.webp" alt="Awena"/></button> : <InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
+    {spec.id !== "mexicain" && modeTicker ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
+    {adviceText && spec.id !== "mexicain" ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: 86, right: 12, width: "min(360px,calc(100vw - 24px))", borderRadius: 16, padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.48),0 0 26px ${accent}20` }}>
       <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88`, boxShadow: `0 0 14px ${accent}35` }} />
       <div><div style={{ color: accent, fontSize: 8.8, fontWeight: 1100, letterSpacing: 1 }}>AWENA · CONSEIL CIBLE</div><div style={{ marginTop: 2, color: "#fff", fontSize: 10.4, fontWeight: 850, lineHeight: 1.35 }}>{adviceText}</div></div>
       {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, fontWeight: 1100, cursor: "pointer" }}>🔊</button> : null}
     </div> : null}
     <div style={{ padding: "7px 8px 18px", maxWidth: 1040, margin: "0 auto", display: "grid", gap: 8 }}>
-      <div style={{ ...panelStyle(accent + "45"), padding: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
-        <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>ROUND {roundLabel}/{config.rounds} · {preset.label.toUpperCase()}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Partie terminée" : `${activePlayer?.name || "—"} joue`}</div>{dedicatedPlayHint ? <div style={{ marginTop: 3, color: SOFT, fontSize: 9.2, lineHeight: 1.3 }}>{dedicatedPlayHint}</div> : null}</div>
+      {spec.id === "mexicain" ? <MexicainActivePlayer player={activePlayer} profile={activeProfile} state={state} currentThrow={currentThrow} onOpenScore={()=>{setMexScoreTab("round");setQuickPanel("stats");}} /> : <div style={{ ...panelStyle(accent + "45"), padding: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
+        <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>ROUND {roundLabel}/{config.rounds} · {preset.label.toUpperCase()}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Partie terminée" : `${activePlayer?.name || "—"} joue`}</div>{spec.id !== "mexicain" && dedicatedPlayHint ? <div style={{ marginTop: 3, color: SOFT, fontSize: 9.2, lineHeight: 1.3 }}>{dedicatedPlayHint}</div> : null}</div>
         <button type="button" onClick={doUndo} disabled={!canUndo} style={actionStyle(accent, !canUndo)}>↶ UNDO</button>
-      </div>
+      </div>}
+      {mexicainMenu}
 
       {notice ? <div style={{ borderRadius: 12, padding: "7px 10px", background: `${accent}0d`, border: `1px solid ${accent}2f`, color: "#e9ecf5", fontSize: 10.5, fontWeight: 850 }}>{notice}</div> : null}
 
-      {config?.modeOptions && Object.keys(config.modeOptions).length ? <div style={{ ...panelStyle(accent + "2d"), padding: "7px 9px", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      {spec.id !== "mexicain" && config?.modeOptions && Object.keys(config.modeOptions).length ? <div style={{ ...panelStyle(accent + "2d"), padding: "7px 9px", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ color: accent, fontSize: 8.8, fontWeight: 1100, letterSpacing: .8 }}>RÉGLAGES MODE</span>
         {Object.entries(config.modeOptions).map(([key, value]: any) => {
           const labels: Record<string,string> = { mineCount: "MINES", scannerStrength: "SCANNER", mineDamage: "DÉGÂTS", connectLength: "ALIGNEMENT", bullColumn: "BULL→COL", codeLength: "CODE", allowRepeats: "RÉPÉTITIONS", cluesPerMiss: "INDICES/ERREUR", sequenceLength: "SÉQUENCE", previewMs: "APERÇU", revealMs: "LUMIÈRE", wrongPenalty: "PÉNALITÉ", headshotBonus: "HEADSHOT", nightDamage: "NUIT", dayVoteMultiplier: "VOTES", medicShield: "BOUCLIER", captureThreshold: "SEUIL", territoryGoal: "OBJECTIF", resourceBoost: "RESSOURCE", baseFort: "FORT", torchStart: "TORCHE", torchDrain: "USURE", chamberNeed: "SALLE", weatherSeverity: "MÉTÉO", oxygenReserve: "OXYGÈNE", climbPower: "ASCENSION", peakThreshold: "SOMMET", burstThreshold: "COSMO", burstDamage: "BURST", shieldCap: "BOUCLIER", energyThreshold: "ÉNERGIE", bullEnergy: "BULL ÉNERGIE", tripleEnergy: "TRIPLE ÉNERGIE", trialNeed: "ÉPREUVE", favorThreshold: "FAVEUR", bullFavor: "BULL FAVEUR", alertGain: "ALERTE", bullStealth: "DISCRÉTION", phaseNeedBonus: "PHASE", attackThreshold: "ATTAQUE", tranquilizerPower: "TRANQ.", securityDamage: "SÉCURITÉ", pullPowerPct: "TRACTION", slipPenalty: "RECUL", bullBoostPct: "BULL", copyPoints: "COPIE", perfectBonus: "PARFAIT", failurePenalty: "ERREUR", missPenaltyPercent: "SANCTION", hitMultiplierPct: "TOUCHES", bustBack: "BUST", bustResetAfter: "RESET BUST", marksPerBox: "MARQUES", overflowRule: "SURPLUS", overflowBonus: "BONUS SURPLUS", finishSteps: "PISTE", tripleAdvance: "TRIPLE", wrongColorAdvance: "MAUV. COULEUR", scoreMultiplierPct: "SCORE", bullBonus: "BULL BONUS", missPenalty: "MISS", collisionResetPct: "COLLISION", collisionScoreBonus: "KNOCK BONUS", fuseLength: "MÈCHE", passFuseBonus: "BONUS PASSE", explosionDamage: "EXPLOSION", infectionPowerPct: "INFECTION", barricadePowerPct: "BARRICADE", curePowerPct: "SOIN", catchLives: "CAPTURE", escapePowerPct: "FUITE", bullProtectionCharges: "PROTECTION", catchThreshold: "SEUIL CAPTURE", crossingGoal: "TRAVERSÉE", runPowerPct: "COURSE", damagePowerPct: "DÉGÂTS", releaseHealth: "LIBÉRATION", compartmentGoal: "COMPART.", floodPowerPct: "INONDATION", pumpPowerPct: "POMPES", refugeGoal: "REFUGE", disasterThreshold: "CATASTROPHE", medkitPowerPct: "MEDKIT", startingArmor: "ARMURE", guardCap: "GARDE", attackPowerPct: "ATTAQUE", movePowerPct: "AVANCÉE", stopPenalty: "STOP", freezeBonus: "FIGÉ", mouseHeadStart: "AVANCE SOURIS", movementPowerPct: "DÉPLACEMENT", bullShortcutPct: "BULL RACCOURCI", ghostGap: "ÉCART FANTÔME", ghostAdvance: "VITESSE FANTÔME", bullPowerCharge: "POWER BULL", bonusMove: "BONUS PISTE", bullShortcut: "RACCOURCI", routePowerPct: "PISTE", dangerLimit: "LIMITE", missSpeedLoss: "PERTE VITESSE", sprintTripleBonus: "TRIPLE SPRINT", relayPerfectBonus: "RELAIS PARFAIT", startAltitude: "ALTITUDE", fallSpeedPct: "CHUTE", parachuteWindowPct: "FENÊTRE", startSpeed: "VITESSE DÉPART", boostPowerPct: "BOOST", windPenalty: "VENT", missJumpPenalty: "FAUTE", paceStep: "RYTHME", bullJumpBonusPct: "BULL SAUT", fixedCutoff: "BUZZER", clutchBonus: "CLUTCH", streakCap: "SÉRIE", phaseNeed: "PHASE", heatGain: "CHALEUR", bullCooling: "REFROID.", directStepPower: "VERROUS", bullJokerPower: "JOKER BULL", penaltyBackAfter: "ERREURS", fuelGainPct: "CARBURANT", stabilityLoss: "STABILITÉ", fuelMinimum: "MIN FUEL", sceneNeed: "PRISES", starPowerPct: "ÉTOILES", boxOfficePct: "BOX-OFFICE", sealNeed: "SCEAU", doomGain: "CYCLE", bullDoomRelief: "BULL CYCLE", waterStart: "EAU DÉPART", waterDrain: "EAU/ERREUR", harvestGoal: "RÉCOLTES", contaminationGain: "CONTAM.", bullDecontam: "DÉCONTAM.", qualityPowerPct: "QUALITÉ", hitOverloadPct: "CHARGE", wrongOverload: "ERREUR ÉLEC.", directAdvance: "CATÉGORIES", bullAdvance: "JOKER BAC", validationBonus: "VALIDATION", basePot: "POT", potGrowth: "CROISSANCE", payoutMultiplierPct: "GAINS", dangerThreshold: "DANGER", dangerPerMiss: "DANGER/ÉCHEC", bullShield: "BULL BOUCLIER", startWallet: "CAISSE DÉPART", targetWallet: "CAISSE CIBLE", missFee: "COÛT MISS", bullRebate: "COUPON BULL", startingCheese: "FROMAGES DÉPART", cheeseGoal: "FROMAGES CIBLE", fableThreshold: "RUSE", bullGuard: "GARDE BULL", missionCount: "MISSIONS", alarmGain: "ALARME/ERREUR", alarmThreshold: "SEUIL ALARME", failBack: "RECUL" };
@@ -2360,7 +2516,7 @@ export default function Wave61SharedPlay(props: any) {
 
       {teamMode ? <div style={{ ...panelStyle("rgba(255,255,255,.08)"), padding: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>{Object.entries(state.teamScores || {}).map(([team, score]: any) => <span key={team} style={{ borderRadius: 999, padding: "5px 9px", border: `1px solid ${team === "A" ? accent + "55" : "#ff657d55"}`, color: team === "A" ? accent : "#ff8fa0", fontSize: 10, fontWeight: 1000 }}>TEAM {team} · {Math.round(Number(score || 0))}</span>)}</div> : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>
+      {spec.id !== "mexicain" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>
         {state.players.map((p: any, i: number) => {
           const prof = profileById.get(String(p.id)) || p;
           const metric = wave61PrimaryMetric(state, p.id);
@@ -2368,7 +2524,9 @@ export default function Wave61SharedPlay(props: any) {
           const pct = preset.defaultGoal > 0 ? Math.min(100, (Number(state.progress[p.id] || state.scores[p.id] || 0) / Math.max(1, config.goal)) * 100) : 0;
           return <div key={p.id} style={{ display: "grid", gap: 4 }}><PlayerCard profile={prof} active={state.phase !== "finished" && state.activePlayerIndex === i} accent={accent} value={metric.value} subValue={`${metric.label} · ${metric.sub}${teamMode ? ` · Team ${config.teamByPlayer?.[p.id] || "?"}` : ""}`} badge={eliminated ? "OUT" : null} muted={eliminated} />{preset.defaultGoal > 0 && state.family !== "survival" && state.family !== "combat" ? <Meter value={state.progress[p.id] || state.scores[p.id] || 0} max={config.goal} accent={accent} /> : null}</div>;
         })}
-      </div>
+      </div> : null}
+
+      
 
       {spec.id === "align_4" ? <Align4Board state={state} accent={accent} /> : null}
       {spec.id === "demineur" ? <MineBoard state={state} accent={accent} /> : null}
@@ -2407,7 +2565,7 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "microscopia" ? <MicroscopiaPanel state={state} accent={accent} /> : null}
       {spec.id === "disjoncte" ? <DisjonctePanel state={state} accent={accent} /> : null}
       {spec.id === "petit_bac" ? <PetitBacPanel state={state} accent={accent} /> : null}
-      {spec.id === "mexicain" ? <MexicainPanel state={state} accent={accent} /> : null}
+      {spec.id === "mexicain" ? <MexicainPanel state={state} accent={accent} avatarFor={mexAvatarFor} /> : null}
     {spec.id === "hot_potato" ? <HotPotatoPanel state={state} accent={accent} /> : null}
       {spec.id === "zombie_siege" ? <ZombieSiegePanel state={state} accent={accent} /> : null}
       {spec.id === "le_loup" ? <LoupPanel state={state} accent={accent} /> : null}
@@ -2436,14 +2594,15 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "summit_14" ? <Summit14Panel state={state} accent={accent} /> : null}
 
       {state.phase !== "finished" ? <>
-        <div style={{ ...panelStyle(accent + "3d"), padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-          <div><div style={{ color: accent, fontSize: 9.5, fontWeight: 1100, letterSpacing: .8 }}>{target ? "OBJECTIF ACTIF" : "OBJECTIF LIBRE"}</div><div style={{ marginTop: 4, color: "#fff", fontSize: 18, fontWeight: 1100 }}>{spec.id === "golden_dart" ? "Trouve le secteur doré grâce aux indices" : spec.id === "luciole" ? "Mémorise la luciole avant qu'elle s'éteigne" : target?.label || (state.family === "score" ? "Marque le maximum" : spec.id === "align_4" ? "Choisis ta colonne avec le secteur" : "Fais progresser ta mission")}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9.8, lineHeight: 1.4 }}>{spec.infoBody}</div></div>
+        {spec.id !== "mexicain" ? <div style={{ ...panelStyle(accent + "3d"), padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+          <div><div style={{ color: accent, fontSize: 9.5, fontWeight: 1100, letterSpacing: .8 }}>{spec.id === "mexicain" ? "🎯 OBJECTIF DE LA MANCHE" : target ? "OBJECTIF ACTIF" : "OBJECTIF LIBRE"}</div><div style={{ marginTop: 4, color: "#fff", fontSize: 18, fontWeight: 1100 }}>{spec.id === "golden_dart" ? "Trouve le secteur doré grâce aux indices" : spec.id === "luciole" ? "Mémorise la luciole avant qu'elle s'éteigne" : target?.label || (state.family === "score" ? "Marque le maximum" : spec.id === "align_4" ? "Choisis ta colonne avec le secteur" : "Fais progresser ta mission")}</div>{spec.id !== "mexicain" ? <div style={{ marginTop: 4, color: SOFT, fontSize: 9.8, lineHeight: 1.4 }}>{spec.infoBody}</div> : null}</div>
           <div style={{ minWidth: 76, minHeight: 76, borderRadius: 18, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: 11 }}>{state.family === "survival" || state.family === "combat" ? "⚔️\nSURVIE" : state.family === "ascent" ? "⛰️\nASCENSION" : state.family === "conquest" ? "🗺️\nCONQUÊTE" : state.family === "deduction" ? "🧩\nINDICES" : state.family === "rhythm" ? "⚡\nCOMBO" : state.family === "race" ? "🏁\nCOURSE" : state.family === "mission" ? "🗝️\nMISSION" : "🎯\nACTION"}</div>
-        </div>
+        </div> : null}
 
-        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
-        <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={5} />
+        {!activeIsBot ? (spec.id === "mexicain" ? <MexicainTargetInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} />) : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
+        {spec.id !== "mexicain" ? <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={5} /> : null}
       </> : <ModeEndPanel title={spec.label} winner={state.winnerId} outcome={state.special?.troupeauSoloDefeat ? "defeat" : undefined} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} exportActions={spec.id === "shove_a_penny" ? <ShoveFinalExportActions record={buildRecord(state,"finished")} accent={accent} saveError={shoveHistorySaveError} onRetrySave={retryShoveHistorySave}/> : null} />}
     </div>
+    {mexicainModal}
   </div>;
 }

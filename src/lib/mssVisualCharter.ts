@@ -7,7 +7,7 @@ export const MSS_HIT = {
   simple: '#cbd5e1',
   double: '#4dbfea',
   triple: '#e689cc',
-  miss: '#ff4c59',
+  miss: '#e5a13a',
   bull: '#36d99d',
   dbull: '#fc5361',
   undo: '#ffbe35',

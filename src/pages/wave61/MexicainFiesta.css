@@ -1,0 +1,351 @@
+@import "../../styles/mss-scoring-palette.css";
+/* Dedicated Mexico theme: scoped. No CSS changes to other sports/modes. */
+.mex-fiesta-config,.mex-fiesta-play{--mex-gold:#f7c65d;--mex-red:#d83f38;--mex-green:#1fa56b;color:#fff;background:radial-gradient(ellipse at 5% 20%,#155a4140,transparent 44%),radial-gradient(ellipse at 95% 10%,#ad432c32,transparent 45%),linear-gradient(180deg,#110e16,#090d15 60%,#130d15)!important}
+.mex-fiesta-config .wave61-config-body{max-width:930px!important;gap:12px!important}
+.mex-fiesta-config .wave61-config-body>section{border:1px solid #d29b5369!important;border-radius:19px!important;background:linear-gradient(125deg,#1e1519f7,#0c181af7)!important;box-shadow:0 8px 30px #0006,inset 0 1px #ffe7b41b!important}
+.mex-fiesta-config .wave61-config-header{border-bottom:3px solid transparent;border-image:linear-gradient(90deg,#188951,#f5ca68,#cc3f35) 1}
+.mex-fiesta-intro{border:1px solid #f1ba6799;border-radius:18px;padding:16px 18px;background:linear-gradient(110deg,#076b4566,#151117 45%,#a437284f);display:grid;gap:5px;text-align:center;box-shadow:0 12px 30px #0006}
+.mex-fiesta-intro span{letter-spacing:2px;font-size:12px;color:#f5ce7b;font-weight:1000}.mex-fiesta-intro strong{color:#fff2c5;font-size:clamp(15px,3vw,22px);line-height:1.2}.mex-fiesta-intro small{font-size:11px;color:#e6d2be}
+.mex-fiesta-config .mex-fiesta-intro{order:-2}.mex-fiesta-config .wave61-config-dedicated{order:-1}
+.mex-fiesta-config .wave61-config-dedicated>div:first-child{font-size:15px!important;color:#ffe59d!important}
+.mex-fiesta-config .wave61-config-dedicated select,.mex-fiesta-config .wave61-config-engine select{border:1px solid #d9b26d66;border-radius:10px;min-height:40px}
+.mex-fiesta-config .wave61-config-launch button{min-height:55px!important;background:linear-gradient(95deg,#0c804e,#d9a344 52%,#a92e2b)!important;color:#fff!important;text-shadow:0 2px 6px #0009;font-size:16px!important;border-color:#ffe0a6!important}
+.mex-fiesta-config .wave61-config-awena-card{border-left:3px solid var(--mex-green)}
+.mex-fiesta-play .mex-fiesta-scoreboard{margin:0;border:1px solid #e2b15a91;border-radius:18px;padding:10px;background:radial-gradient(circle at 0 0,#1276492b,transparent 50%),linear-gradient(135deg,#21151a,#15121b 55%,#10271c);box-shadow:0 10px 28px #0008,0 0 26px #c5772920;display:grid;gap:9px;overflow:hidden}
+.mex-score-head{display:flex;justify-content:space-between;gap:6px;align-items:center;flex-wrap:wrap;font-size:clamp(9px,1.8vw,12px);font-weight:950;letter-spacing:.5px;color:#f8d684}
+.mex-target-stage{border:1px solid #ffd78588;border-radius:14px;background:linear-gradient(100deg,#194d36,#282021 65%,#672b25);display:grid;grid-template-columns:minmax(0,1fr) minmax(85px,.8fr);gap:6px;align-items:center;padding:9px 13px}
+.mex-target-stage>div:first-child{display:grid;gap:2px;text-align:center}.mex-target-stage small{font-size:9px;font-weight:900;color:#fee6a6;letter-spacing:.7px}.mex-target-stage strong{font-size:clamp(38px,8vw,60px);color:#ffdd74;line-height:1.02;text-shadow:0 3px 0 #7e3e1b,0 0 18px #edb43d66}.mex-target-stage em{font-size:10px;color:#f8e0bc;font-style:normal;font-weight:850}
+.mex-target-side{text-align:center;display:grid;gap:5px}.mex-target-side b{font-size:clamp(16px,3vw,27px);font-weight:1100;color:#fff1bc;text-shadow:0 2px 4px #000}.mex-target-side span{font-size:10px;color:#ffe3ce;line-height:1.3}
+.mex-player-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:7px}.mex-player-tile{padding:9px 10px;border:1px solid #ffffff20;border-radius:12px;background:#090d14c9;min-width:0}.mex-player-tile.mex-active{border-color:#ffcf72;box-shadow:inset 0 0 0 1px #e8ad6640,0 0 17px #e5a94a28}.mex-player-tile.mex-out{opacity:.44;filter:grayscale(1)}.mex-player-top,.mex-player-bottom{display:flex;justify-content:space-between;align-items:center;gap:8px}.mex-player-top b{font-size:11px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.mex-player-top strong{font-size:22px;color:#ffdb7c}.mex-player-bottom span{font-size:12px;color:#fc6570;white-space:nowrap}.mex-player-bottom small{font-size:8px;letter-spacing:.4px;color:#b5c6c0}.mex-round-result{font-size:10px;color:#fbdcb5;border-top:1px solid #ffffff20;padding-top:6px}
+.mex-fiesta-portrait>div[style*="max-width: 1040px"]{gap:7px!important}.mex-fiesta-play [data-wave61-zone="mission"]{gap:7px!important}.mex-fiesta-play [data-wave61-zone="input"]{border-radius:18px;background:#0e101a}
+@media(max-width:540px){.mex-fiesta-config .wave61-config-body{padding:8px 9px 70px!important}.mex-fiesta-intro{padding:12px}.mex-fiesta-play .mex-fiesta-scoreboard{padding:9px}.mex-target-stage{padding:7px}.mex-player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mex-player-tile{padding:7px}.mex-player-bottom span{font-size:10px}}
+@media(prefers-reduced-motion:no-preference){.mex-fiesta-play .mex-target-stage strong{animation:mex-glow 2.8s ease-in-out infinite alternate}@keyframes mex-glow{to{text-shadow:0 3px 0 #7e3e1b,0 0 25px #f4c055bb}}}
+
+/* V162 — Vue essentielle et panneaux flottants exclusivement mexicains. */
+.mex-fiesta-play .mex-compact{gap:5px;padding:7px 9px;border-color:#d5a55380}
+.mex-fiesta-play .mex-compact .mex-score-head{font-size:9px;letter-spacing:0}
+.mex-fiesta-play .mex-compact .mex-target-stage{padding:5px 9px;grid-template-columns:minmax(0,1fr) minmax(80px,.65fr);gap:4px}
+.mex-fiesta-play .mex-compact .mex-target-stage strong{font-size:clamp(34px,7vw,46px)}
+.mex-fiesta-play .mex-compact .mex-target-stage small{font-size:8px}
+.mex-fiesta-play .mex-compact .mex-target-side b{font-size:14px}
+.mex-fiesta-play .mex-compact .mex-target-side span{font-size:9px}
+.mex-compact-active{border:1px solid #e5b96d70;background:linear-gradient(100deg,#14563c55,#8d3d2b25);border-radius:11px;color:#ffe8b1;font-size:11px;font-weight:950;padding:7px 11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mex-floating-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;min-width:0}
+.mex-floating-nav button{min-width:0;border:1px solid #ebc47c55;border-radius:12px;background:linear-gradient(160deg,#0c382d,#1e1620 55%,#401d20);color:#ffe6ae;padding:6px 1px;min-height:49px;display:grid;justify-items:center;align-content:center;gap:3px;cursor:pointer;box-shadow:0 3px 10px #0004}
+.mex-floating-nav button:focus-visible,.mex-floating-close:focus-visible{outline:2px solid #ffdd7d;outline-offset:2px}
+.mex-floating-nav button span{font-size:20px;line-height:1}.mex-floating-nav button small{font-size:clamp(6px,1.25vw,9px);font-weight:900;letter-spacing:.15px;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.mex-floating-backdrop{position:fixed;inset:0;z-index:1250;display:flex;align-items:center;justify-content:center;padding:12px;background:#000c;backdrop-filter:blur(7px)}
+.mex-floating-dialog{display:flex;flex-direction:column;min-width:0;width:min(600px,96vw);max-height:min(86dvh,820px);border-radius:19px;border:1px solid #e3b269a8;background:radial-gradient(ellipse at top left,#23523d44,transparent 45%),linear-gradient(165deg,#20141b,#0e111a 70%,#222018);box-shadow:0 18px 65px #000c,0 0 30px #e7ad3f25;overflow:hidden}
+.mex-floating-header{position:relative;flex:none;padding:8px 10px 0}.mex-floating-header img{display:block;width:100%;height:auto;max-height:126px;aspect-ratio:800/230;object-fit:cover;border-radius:13px}.mex-floating-header strong{display:block;padding:15px;text-align:center;color:#ffe2a7}
+.mex-floating-close{position:absolute;top:3px;right:4px;width:36px;height:36px;border-radius:50%;border:1px solid #ffdc7a;background:#20202be8;color:#ffdb79;font-size:27px;line-height:1;cursor:pointer;box-shadow:0 4px 14px #0008}
+.mex-floating-dialog h3{margin:10px 12px 5px;text-align:center;font-size:15px;font-weight:1000;color:#ffe6b0;letter-spacing:.6px}
+.mex-floating-content{overflow-y:auto;overscroll-behavior:contain;padding:8px 12px 14px;min-height:0;color:#fff}
+.mex-floating-content .mex-fiesta-scoreboard{box-shadow:none}
+.mex-floating-list{display:grid;gap:7px}.mex-floating-list>div{padding:10px 11px;border:1px solid #f5c06b40;border-radius:11px;background:#ffffff08;display:flex;justify-content:space-between;align-items:center;gap:9px}.mex-floating-list span{min-width:0;display:grid;gap:3px}.mex-floating-list small{font-size:9px;color:#bac6c1}.mex-floating-list strong{color:#f8d17d;font-size:14px;white-space:nowrap}.mex-floating-list .mex-list-out{opacity:.5}.mex-floating-list button{padding:13px;background:linear-gradient(100deg,#146c4b,#c99947,#943b35);border:1px solid #e9c27d;border-radius:12px;color:white;font-weight:1000;cursor:pointer}
+.mex-history-line{margin-top:6px;padding:9px;border:1px solid #f1be6250;border-radius:9px;font-size:11px;color:#ffe3bd}.mex-floating-rules{display:grid;gap:8px;font-size:12px;line-height:1.5}.mex-floating-rules p{margin:0;padding:12px;border-radius:10px;background:#ffffff08;border:1px solid #ffd5882b}
+@media(max-width:400px){.mex-floating-nav{gap:3px}.mex-floating-nav button{min-height:44px}.mex-floating-nav button small{font-size:6px}.mex-fiesta-play .mex-compact .mex-score-head span:last-child{display:none}}
+
+/* V163 - header ticker, compact navigation, active player, single-target input */
+.mex-fiesta-play [data-mss-page-header="1"]{z-index:30}
+.mex-awena-medallion{appearance:none;width:52px;height:52px;padding:0;border-radius:50%;border:2px solid #f5c871;background:#07101a;box-shadow:0 0 12px #ffbb5588;overflow:hidden;cursor:pointer;display:grid;place-items:center}
+.mex-awena-medallion img{height:100%;width:100%;object-fit:cover}
+.mex-fiesta-play .mex-floating-nav{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr));width:100%;visibility:visible!important;opacity:1!important}
+.mex-fiesta-play .mex-floating-nav button{min-height:46px;position:relative;z-index:1}
+.mex-active-player{min-width:0;display:grid;grid-template-columns:68px minmax(0,1fr) 66px 36px;align-items:center;gap:9px;padding:8px;border:1px solid #f5c871aa;border-radius:17px;background:radial-gradient(circle at 16% 40%,#285b443b,transparent 45%),linear-gradient(120deg,#141921,#26151a 72%,#1d2c20);box-shadow:0 8px 22px #0006;overflow:hidden}
+.mex-active-avatar{width:64px;height:64px;border-radius:50%;border:2px solid #ffcf74;overflow:hidden;display:grid;place-items:center;background:#122b2e;box-shadow:0 0 13px #c47b3355}.mex-active-avatar img{width:100%;height:100%;object-fit:cover}.mex-active-avatar span{font-size:20px;font-weight:1000;color:#ffdf9b}
+.mex-active-description{min-width:0;display:grid;gap:2px}.mex-active-description small{font-size:9px;color:#ffcf75;font-weight:950;letter-spacing:.6px}.mex-active-description strong{font-size:clamp(15px,4vw,22px);color:#fff;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.mex-active-hearts{display:flex;flex-wrap:wrap;gap:3px}.mex-active-hearts span{color:#ff526b;font-size:17px}.mex-active-hearts .lost{color:#585159}
+.mex-active-score{text-align:center;display:grid;align-content:center}.mex-active-score strong{font-size:29px;line-height:1;color:#ffdc7c}.mex-active-score small{font-size:8px;font-weight:900;color:#e1c9a2}.mex-active-undo{height:35px;border-radius:11px;background:#151b24;border:1px solid #f5c87155;color:#ffe1a8;font-size:21px;cursor:pointer}.mex-active-undo:disabled{opacity:.35}
+.mex-target-input{min-width:0;border:1px solid #e8bb6e90;border-radius:18px;background:linear-gradient(150deg,#0c1d1c,#19131b 65%,#301a18);padding:11px;display:grid;gap:9px;box-shadow:0 7px 24px #0008}
+.mex-target-input-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#ffe1a2;font-size:11px}.mex-target-input-head span{color:#dbd4cc;font-size:10px}.mex-target-slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.mex-target-slots>div{display:grid;place-items:center;min-height:43px;border:1px solid #e1b86c40;background:#090e15;border-radius:12px;color:#aeabb4;font-size:15px;font-weight:1000}.mex-target-slots .is-filled{color:#ffdc86;border-color:#e7b963}
+.mex-target-keys{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.mex-target-keys button{min-width:0;min-height:55px;padding:8px 3px;border-radius:12px;border:1px solid #ffffff2b;color:white;font-size:clamp(12px,3vw,17px);font-weight:1100;cursor:pointer;text-shadow:0 2px 3px #0009}.mex-target-keys button small{display:block;font-size:9px;font-weight:850;margin-top:2px}.mex-target-keys button:disabled{opacity:.32;cursor:not-allowed}.mex-hit-single{background:linear-gradient(#486a64,#203d3b)}.mex-hit-double{background:linear-gradient(#246b8b,#13344f)}.mex-hit-triple{background:linear-gradient(#ad3b3b,#521922)}.mex-hit-miss{background:linear-gradient(#b77c35,#70431c)}.mex-hit-undo{background:linear-gradient(#343b4e,#1b1e2a)}.mex-hit-validate{background:linear-gradient(#e7b451,#916321);color:#15100b!important;text-shadow:none!important}
+@media(max-width:430px){.mex-active-player{grid-template-columns:55px minmax(0,1fr) 50px 30px;gap:5px;padding:6px}.mex-active-avatar{width:52px;height:52px}.mex-active-score strong{font-size:23px}.mex-active-description small{font-size:8px}.mex-active-hearts span{font-size:14px}.mex-target-keys button{min-height:48px}.mex-fiesta-play .mex-floating-nav button small{font-size:6px}}
+@media(orientation:landscape){.mex-fiesta-play [data-wave61-zone="players"] .mex-active-player{grid-template-columns:42px minmax(0,1fr) 42px 25px;padding:5px;gap:4px}.mex-fiesta-play [data-wave61-zone="players"] .mex-active-avatar{width:39px;height:39px}.mex-fiesta-play [data-wave61-zone="input"] .mex-target-keys button{min-height:40px}.mex-fiesta-play [data-wave61-zone="input"] .mex-target-slots>div{min-height:30px}}
+
+
+/* V164 — PREMIUM : monochrome BottomNav vector icons, three live coloured dart SVGs. */
+.mex-fiesta-play{--mex-green:#1fb27a;--mex-cream:#fff1d2;--mex-gold:#eac478;--mex-tomato:#c9463c}
+.mex-fiesta-play .mex-active-player{border:1px solid #d6aa6466;background:radial-gradient(ellipse at 12% 25%,#1e735333,transparent 57%),linear-gradient(110deg,#10191b,#1c171c 72%,#111e1b);box-shadow:inset 0 1px #fff5cb16,0 8px 24px #0007;border-radius:20px}
+.mex-fiesta-play .mex-active-avatar{border-color:#dfb46d;box-shadow:0 0 0 3px #a6463222,0 7px 18px #0006}
+.mex-fiesta-play .mex-active-description small{font-size:9px;letter-spacing:.9px;color:#e2b972}
+.mex-fiesta-play .mex-active-description strong{letter-spacing:.2px}
+.mex-fiesta-play .mex-active-score strong{color:#ffe0a5;font-variant-numeric:tabular-nums;text-shadow:0 0 18px #df9e4333}
+.mex-fiesta-play .mex-active-undo{display:grid;place-items:center;border-radius:11px;color:#edc98c;background:#ffffff07}
+.mex-fiesta-play .mex-floating-nav{gap:6px;padding:1px 0}
+.mex-fiesta-play .mex-floating-nav button{min-height:54px;gap:3px;padding:7px 2px 6px;border:1px solid #d1a05c40;border-radius:13px;color:#dfcfae;background:linear-gradient(165deg,#121b21,#1a171f 78%);box-shadow:inset 0 1px #ffecc915,0 5px 13px #0005;transition:border-color .18s,background .18s,transform .18s}
+.mex-fiesta-play .mex-floating-nav button:hover,.mex-fiesta-play .mex-floating-nav button[aria-expanded="true"]{color:#ffdfa2;background:linear-gradient(130deg,#1b4737,#252026 73%);border-color:#dab064aa}
+.mex-fiesta-play .mex-floating-nav button:active{transform:scale(.96)}
+.mex-fiesta-play .mex-floating-nav .mex-nav-icon{display:grid;place-items:center;height:24px;line-height:1;filter:none}
+.mex-fiesta-play .mex-floating-nav button small{font-family:inherit;font-weight:800;font-size:clamp(7px,1.2vw,9px);letter-spacing:.25px;color:inherit}
+.mex-fiesta-play .mex-compact{background:linear-gradient(130deg,#102920d9,#18161d 50%,#33201ddd);border:1px solid #d9ae644f;padding:9px 12px;box-shadow:inset 0 1px #ffeec012,0 7px 20px #0007;gap:5px}
+.mex-fiesta-play .mex-compact .mex-score-head{font-size:9px;color:#e8d3a7;letter-spacing:.5px;padding:0 2px}
+.mex-fiesta-play .mex-compact .mex-score-head span:nth-child(2){color:#9fddbd}
+.mex-fiesta-play .mex-compact .mex-target-stage{grid-template-columns:minmax(0,1fr) 38px;min-height:75px;padding:8px 14px;background:linear-gradient(98deg,#17412f 0%,#1b2d29 60%,#422320 100%);border:1px solid #d5a85c7a}
+.mex-fiesta-play .mex-compact .mex-target-stage>div:first-child{display:grid;grid-template-columns:1fr;gap:1px;justify-items:center}
+.mex-fiesta-play .mex-compact .mex-target-stage strong{font-size:clamp(33px,7vw,46px);font-weight:1100;line-height:.95}
+.mex-fiesta-play .mex-compact .mex-target-stage small{font-size:8px;letter-spacing:1px}
+.mex-fiesta-play .mex-compact .mex-target-stage em{font-size:9px;letter-spacing:.8px;color:#f1d6ab}
+.mex-fiesta-play .mex-target-mark{display:grid;place-items:center;color:#f1c878;opacity:.76;filter:drop-shadow(0 0 10px #efb65c33)}
+.mex-fiesta-play .mex-target-input{padding:10px;border:1px solid #c8a56a55;border-radius:19px;background:linear-gradient(165deg,#101920 0%,#14141b 72%,#25191b);box-shadow:inset 0 1px #fff8d31a,0 12px 25px #0008;gap:8px}
+.mex-fiesta-play .mex-target-input-head{font-size:10px;color:#f0cf8d}
+.mex-fiesta-play .mex-target-input-head b{display:flex;align-items:center;gap:7px;letter-spacing:.7px}
+.mex-fiesta-play .mex-target-input-head span{font-size:9px;letter-spacing:.7px;color:#869e9a}
+.mex-fiesta-play .mex-target-slots{gap:6px}
+.mex-fiesta-play .mex-target-slots>.mex-dart-slot{display:flex;align-items:center;justify-content:center;gap:8px;min-height:43px;background:linear-gradient(180deg,#0c1219,#0c1219);border:1px solid #ffffff19;border-radius:11px;color:#4b6065;transition:color .15s,border-color .15s,background .15s}
+.mex-fiesta-play .mex-dart-slot span{font-size:11px;letter-spacing:.6px;color:inherit;font-weight:950}
+.mex-fiesta-play .mex-dart-slot .mex-dart-svg{width:25px;height:25px;transform:rotate(-8deg)}
+.mex-fiesta-play .mex-dart-slot.mex-dart-single.is-filled{color:#65e5ad;background:#0f3129;border-color:#65e5ad80}
+.mex-fiesta-play .mex-dart-slot.mex-dart-double.is-filled{color:#70caff;background:#102b40;border-color:#70caff80}
+.mex-fiesta-play .mex-dart-slot.mex-dart-triple.is-filled{color:#ff847b;background:#3d1c26;border-color:#ff847b80}
+.mex-fiesta-play .mex-dart-slot.mex-dart-miss.is-filled{color:#f6b35c;background:#362719;border-color:#f6b35c80}
+.mex-fiesta-play .mex-target-keys button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border-radius:11px;box-shadow:inset 0 1px #ffffff22,0 3px 8px #0004;font-family:inherit;letter-spacing:.2px}
+.mex-fiesta-play .mex-target-keys button:hover:not(:disabled){filter:brightness(1.13)}
+.mex-fiesta-play .mex-target-keys button:focus-visible{outline:2px solid #fff1bd;outline-offset:2px}
+.mex-fiesta-play .mex-target-keys .mex-hit-undo{background:linear-gradient(160deg,#34313d,#201e29)}
+.mex-fiesta-play .mex-target-keys .mex-hit-validate{background:linear-gradient(160deg,#e6c17e,#b18445);color:#211712!important}
+.mex-fiesta-play .mex-floating-dialog{border:1px solid #dbb071a1;box-shadow:0 20px 60px #000c,inset 0 1px #ffefc122}
+.mex-fiesta-play .mex-floating-close{display:grid;place-items:center;border:1px solid #ffd48588;color:#ffdfa4;font-size:inherit}
+.mex-fiesta-play .mex-floating-dialog h3{letter-spacing:1px;font-size:14px;margin:9px 12px 6px}
+@media(max-width:430px){.mex-fiesta-play .mex-floating-nav{gap:3px}.mex-fiesta-play .mex-floating-nav button{min-height:48px;padding:6px 1px}.mex-fiesta-play .mex-floating-nav .mex-nav-icon svg{width:20px;height:20px}.mex-fiesta-play .mex-floating-nav button small{font-size:6.7px;letter-spacing:0}.mex-fiesta-play .mex-target-slots>.mex-dart-slot{gap:4px;min-height:38px}.mex-fiesta-play .mex-dart-slot .mex-dart-svg{width:22px;height:22px}.mex-fiesta-play .mex-target-keys button{min-height:48px}}
+@media(orientation:landscape){.mex-fiesta-play [data-wave61-zone="input"] .mex-target-slots>.mex-dart-slot{min-height:29px}.mex-fiesta-play [data-wave61-zone="input"] .mex-target-keys button{min-height:37px}.mex-fiesta-play [data-wave61-zone="mission"] .mex-compact .mex-target-stage{min-height:54px}}
+@media(prefers-reduced-motion:reduce){.mex-fiesta-play .mex-floating-nav button,.mex-fiesta-play .mex-target-slots>.mex-dart-slot{transition:none}}
+
+/* V163 reconciled: premium floating panels, without overriding latest target input */
+.mex-player-list-card{position:relative;overflow:hidden;padding:12px 14px;border:1px solid #f5c06b55;border-radius:15px;background:radial-gradient(circle at 0 0,#245d4230,transparent 40%),linear-gradient(125deg,#17151d,#121722 68%,#211c17);display:flex;justify-content:space-between;align-items:center;gap:12px;isolation:isolate;box-shadow:inset 0 1px 0 #ffe9b116,0 8px 20px #0003}
+.mex-list-avatar-bg{position:absolute;left:-12px;top:-10px;bottom:-10px;width:45%;background-repeat:no-repeat;background-position:left center;background-size:140px auto;opacity:.15;filter:grayscale(.1) saturate(.95)}
+.mex-list-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(10,12,18,.18) 0%,rgba(10,12,18,.58) 28%,rgba(10,12,18,.92) 68%)}
+.mex-list-main,.mex-list-side{position:relative;z-index:1}
+.mex-list-main{min-width:0;display:grid;gap:4px;flex:1}
+.mex-list-main span{min-width:0;display:grid;gap:3px}
+.mex-list-main b{font-size:clamp(13px,2.5vw,18px);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mex-list-main small{font-size:10px;color:#c8d0d9;font-weight:700;letter-spacing:.35px;text-transform:uppercase}
+.mex-list-main em{font-style:normal;font-size:11px;color:#f5d38b;font-weight:900}
+.mex-list-side{display:grid;justify-items:end;gap:2px;flex:none}
+.mex-list-side strong{color:#ffd877;font-size:clamp(21px,4vw,30px);line-height:1;font-weight:1150;white-space:nowrap}
+.mex-list-side small{font-size:9px;color:#f3dfb6;font-weight:900;letter-spacing:.45px}
+.mex-floating-list .mex-list-out{opacity:.52;filter:grayscale(.45)}
+.mex-heart-row{display:flex;gap:4px;align-items:center;justify-content:flex-end;color:#ff525f;font-size:14px;line-height:1;white-space:nowrap;text-shadow:0 0 10px rgba(255,82,95,.16)}
+.mex-heart-row.mex-empty{color:#cfc3a1;font-size:16px}
+.mex-floating-list button{padding:13px;background:linear-gradient(100deg,#146c4b,#c99947,#943b35);border:1px solid #e9c27d;border-radius:14px;color:white;font-weight:1000;cursor:pointer;box-shadow:0 10px 22px #0004}
+.mex-rule-card{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;align-items:start;margin:0;padding:13px 14px;border-radius:14px;background:radial-gradient(circle at 0 0,#23604620,transparent 36%),linear-gradient(120deg,#191720,#131821 72%,#231a16);border:1px solid #ffd58832;box-shadow:inset 0 1px 0 #ffe2a612}
+.mex-rule-card p{margin:0;font-size:12px;color:#f8f1df}
+.mex-rule-icon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#ffd785;background:linear-gradient(180deg,#23362d,#211b23);border:1px solid #f6c87058;box-shadow:0 4px 12px #0003}
+.mex-ranking-card .mex-list-main em{color:#ffebbf}
+
+.mex-fiesta-play .mex-player-tile{position:relative;isolation:isolate;overflow:hidden}
+.mex-fiesta-play .mex-player-avatar-bg{position:absolute;z-index:0;left:-8px;top:-8px;bottom:-8px;width:46%;background-repeat:no-repeat;background-position:left center;background-size:120px auto;opacity:.2;filter:saturate(.85)}
+.mex-fiesta-play .mex-player-tile-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(7,12,16,.08),rgba(7,12,16,.6) 40%,rgba(7,12,16,.9))}
+.mex-fiesta-play .mex-player-tile>*:not(.mex-player-avatar-bg):not(.mex-player-tile-shade){position:relative;z-index:1}
+.mex-fiesta-play .mex-floating-dialog .mex-floating-list>.mex-player-list-card{position:relative;overflow:hidden;display:flex;justify-content:space-between;align-items:center}
+.mex-fiesta-play .mex-floating-dialog .mex-floating-rules .mex-rule-card{display:grid;grid-template-columns:34px 1fr;align-items:start}
+.mex-fiesta-play .mex-floating-dialog .mex-floating-rules .mex-rule-card p{padding:0;margin:0;background:transparent;border:0}
+
+/* V164 — floating list cards: fixed compact height, avatar is a cropped backdrop. */
+.mex-fiesta-play .mex-floating-dialog .mex-floating-list>.mex-player-list-card{
+  height:94px!important;min-height:94px!important;max-height:94px!important;
+  box-sizing:border-box;display:flex!important;align-items:center!important;
+  padding:11px 14px!important;gap:8px!important;overflow:hidden!important;
+  background:linear-gradient(120deg,#102c24,#15141b 60%,#2b1718)!important;
+}
+.mex-fiesta-play .mex-floating-dialog .mex-list-avatar-bg{
+  position:absolute!important;left:0!important;top:0!important;bottom:0!important;
+  width:42%!important;height:100%!important;background-size:cover!important;
+  background-position:center 38%!important;opacity:.29!important;
+  filter:saturate(.85) contrast(1.06);pointer-events:none;
+}
+.mex-fiesta-play .mex-floating-dialog .mex-list-shade{background:linear-gradient(90deg,rgba(8,10,16,.30),rgba(9,11,17,.70) 34%,rgba(9,11,17,.95) 75%)}
+.mex-fiesta-play .mex-floating-dialog .mex-list-main{display:grid!important;align-content:center!important;gap:3px!important;min-width:0!important;flex:1!important}
+.mex-fiesta-play .mex-floating-dialog .mex-list-main span{display:grid!important;gap:3px!important}
+.mex-fiesta-play .mex-floating-dialog .mex-list-side{display:flex!important;flex-direction:column!important;align-items:flex-end!important;justify-content:center!important;gap:7px!important;min-width:106px!important;flex:0 0 auto!important}
+.mex-fiesta-play .mex-floating-dialog .mex-list-side>strong{font-size:22px!important;display:flex!important;align-items:baseline!important;gap:5px!important;line-height:1!important}
+.mex-fiesta-play .mex-floating-dialog .mex-list-side>strong small{font-size:9px!important;white-space:nowrap}
+.mex-fiesta-play .mex-floating-dialog .mex-heart-row{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:4px!important;white-space:nowrap!important;color:#ff4a5d!important;line-height:1!important}
+.mex-fiesta-play .mex-floating-dialog .mex-heart-row>span{display:inline-block!important;flex:0 0 auto!important;width:auto!important;font-size:14px!important;line-height:1!important;color:inherit!important}
+/* V164 — single numeric target on a Mexican board illustration, in both compact/detailed panels. */
+.mex-fiesta-play .mex-fiesta-scoreboard .mex-target-stage.mex-target-art,
+.mex-fiesta-play .mex-compact .mex-target-stage.mex-target-art{
+  position:relative;display:flex!important;align-items:center!important;justify-content:center!important;
+  grid-template-columns:none!important;min-height:112px!important;padding:0!important;
+  background-image:linear-gradient(90deg,rgba(4,27,20,.24),rgba(12,10,14,.25)),url('../../assets/tickers/mexicain_round_target.webp')!important;
+  background-size:100% 100%!important;background-position:center center!important;background-repeat:no-repeat!important;
+  border:1px solid #eac06b99!important;overflow:hidden;border-radius:14px!important;
+}
+.mex-fiesta-play .mex-target-stage .mex-target-number{
+  position:relative;z-index:1;display:block!important;width:auto!important;
+  font-size:clamp(48px,10vw,80px)!important;line-height:1!important;
+  font-weight:1100!important;color:#fff0c3!important;
+  text-shadow:0 3px 2px #240f0c,0 0 9px #100900,0 0 18px #060805,0 0 35px #000!important;
+  background:radial-gradient(ellipse,rgba(8,16,13,.77),rgba(8,16,13,.3) 60%,transparent 74%);
+  border-radius:50%;min-width:105px;text-align:center;padding:13px 20px!important;
+}
+.mex-fiesta-play .mex-target-input-head{display:none!important}
+.mex-fiesta-play .mex-target-input{gap:8px!important}
+@media(max-width:420px){.mex-fiesta-play .mex-floating-dialog .mex-floating-list>.mex-player-list-card{height:86px!important;min-height:86px!important;max-height:86px!important;padding:8px 10px!important}.mex-fiesta-play .mex-floating-dialog .mex-list-side{min-width:94px!important}.mex-fiesta-play .mex-floating-dialog .mex-heart-row{gap:2px!important}.mex-fiesta-play .mex-floating-dialog .mex-heart-row>span{font-size:12px!important}}
+
+/* V164 — cible compacte : la hauteur du bloc pilote le fond, jamais l'image. */
+.mex-fiesta-play .mex-fiesta-scoreboard .mex-target-stage.mex-target-art,
+.mex-fiesta-play .mex-compact .mex-target-stage.mex-target-art{
+  height:76px!important;
+  min-height:76px!important;
+  max-height:76px!important;
+  box-sizing:border-box!important;
+  flex:none!important;
+  padding:0!important;
+  background-size:100% 100%!important;
+  background-repeat:no-repeat!important;
+}
+.mex-fiesta-play .mex-target-stage.mex-target-art .mex-target-number{
+  font-size:clamp(30px,6.4vw,48px)!important;
+  line-height:1!important;
+  min-width:0!important;
+  padding:4px 15px!important;
+  margin:0!important;
+}
+@media (max-width:420px){
+  .mex-fiesta-play .mex-fiesta-scoreboard .mex-target-stage.mex-target-art,
+  .mex-fiesta-play .mex-compact .mex-target-stage.mex-target-art{
+    height:68px!important;min-height:68px!important;max-height:68px!important;
+  }
+}
+@media (orientation:landscape) and (max-height:650px){
+  .mex-fiesta-play .mex-fiesta-scoreboard .mex-target-stage.mex-target-art,
+  .mex-fiesta-play .mex-compact .mex-target-stage.mex-target-art{
+    height:60px!important;min-height:60px!important;max-height:60px!important;
+  }
+  .mex-fiesta-play .mex-target-stage.mex-target-art .mex-target-number{font-size:32px!important;padding:3px 12px!important}
+}
+
+/* V165 — bloc joueur actif premium, avatar watermark, métadonnées déplacées. */
+.mex-fiesta-play .mex-active-player.mex-active-player-premium{
+  display:flex!important;flex-direction:column!important;gap:0!important;position:relative;isolation:isolate;
+  min-height:126px!important;padding:10px 12px 11px!important;overflow:hidden;
+  border:1px solid rgba(241,193,105,.70)!important;border-radius:20px!important;
+  background:linear-gradient(113deg,#102e25 0%,#131d21 48%,#35201e 100%)!important;
+  box-shadow:0 9px 25px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,228,176,.17)!important;
+}
+.mex-fiesta-play .mex-active-player-premium .mex-active-watermark{
+  position:absolute!important;z-index:0!important;left:0;top:-40%;width:52%;height:185%;
+  background-size:cover;background-position:center 32%;background-repeat:no-repeat;
+  opacity:.16;filter:saturate(.8);pointer-events:none;
+  -webkit-mask-image:linear-gradient(90deg,#000 5%,rgba(0,0,0,.75) 40%,transparent 95%);
+  mask-image:linear-gradient(90deg,#000 5%,rgba(0,0,0,.75) 40%,transparent 95%);
+}
+.mex-fiesta-play .mex-active-player-premium .mex-active-meta{
+  position:relative;z-index:1;width:100%;display:flex;align-items:center;justify-content:space-between;gap:6px;
+  padding:0 1px 7px;border-bottom:1px solid rgba(248,206,131,.15);
+  color:#f2d29a;font-size:10px;font-weight:900;letter-spacing:.5px;
+}
+.mex-fiesta-play .mex-active-meta>span{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.mex-fiesta-play .mex-active-meta>span:nth-child(2){color:#72dcb1}
+.mex-fiesta-play .mex-active-three-darts{display:flex!important;align-items:center;gap:4px}
+.mex-fiesta-play .mex-active-three-darts img,.mex-fiesta-play .mex-score-darts img{
+  width:22px;height:15px;object-fit:contain;filter:brightness(0) saturate(100%) invert(84%) sepia(26%) saturate(510%) hue-rotate(349deg) brightness(103%);
+}
+.mex-fiesta-play .mex-active-player-premium .mex-active-identity{
+  display:grid!important;grid-template-columns:76px minmax(0,1fr) 70px 35px!important;
+  align-items:center;gap:10px;width:100%;min-width:0;padding-top:9px;position:relative;z-index:1;
+}
+.mex-fiesta-play .mex-active-player-premium .mex-active-avatar{width:71px;height:71px}
+.mex-fiesta-play .mex-active-player-premium .mex-active-description{gap:3px}
+.mex-fiesta-play .mex-active-player-premium .mex-active-description small{font-size:9px!important;color:#f4c477}
+.mex-fiesta-play .mex-active-player-premium .mex-active-description strong{font-size:clamp(17px,3.2vw,24px)!important}
+.mex-fiesta-play .mex-active-player-premium .mex-active-hearts{display:flex;flex-wrap:nowrap;white-space:nowrap;gap:3px}
+.mex-fiesta-play .mex-active-player-premium .mex-active-score strong{font-size:34px}
+.mex-fiesta-play .mex-active-player-premium .mex-active-undo{width:34px;height:38px}
+/* Target artwork is a DOM image: Vite resolves the asset URL, no fragile CSS url() overrides. */
+.mex-fiesta-play .mex-target-stage.mex-target-art{position:relative!important;isolation:isolate;min-height:108px!important;height:108px!important;max-height:108px!important;background:#0b271c!important;padding:0!important;overflow:hidden!important}
+.mex-fiesta-play .mex-target-stage.mex-target-art .mex-target-artwork{
+  position:absolute!important;inset:0!important;z-index:0!important;width:100%!important;height:100%!important;
+  display:block!important;object-fit:fill!important;opacity:1!important;filter:saturate(1.13) brightness(.82);
+}
+.mex-fiesta-play .mex-target-stage.mex-target-art::after{content:"";position:absolute;inset:0;z-index:0;background:linear-gradient(90deg,rgba(4,26,17,.13),rgba(3,11,12,.35) 48%,rgba(56,16,16,.12));pointer-events:none}
+.mex-fiesta-play .mex-target-stage.mex-target-art .mex-target-number{position:relative!important;z-index:2!important;font-size:clamp(37px,7vw,60px)!important;min-width:75px!important;padding:5px 16px!important;background:radial-gradient(ellipse,rgba(4,9,12,.84),rgba(4,9,12,.36) 66%,transparent 76%)!important}
+.mex-fiesta-play .mex-floating-dialog .mex-score-darts{display:flex;gap:3px;align-items:center}
+@media(max-width:540px){
+  .mex-fiesta-play .mex-active-player.mex-active-player-premium{min-height:116px!important;padding:8px 9px 9px!important}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-identity{grid-template-columns:60px minmax(0,1fr) 54px 30px!important;gap:5px;padding-top:7px}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-avatar{width:56px;height:56px}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-score strong{font-size:27px}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-undo{width:29px;height:33px}
+  .mex-fiesta-play .mex-active-meta{font-size:8.5px!important}
+  .mex-fiesta-play .mex-active-three-darts img{width:17px;height:13px}
+  .mex-fiesta-play .mex-target-stage.mex-target-art{height:100px!important;min-height:100px!important;max-height:100px!important}
+}
+@media(orientation:landscape) and (max-height:650px){
+  .mex-fiesta-play .mex-active-player.mex-active-player-premium{min-height:87px!important;padding:5px 8px!important}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-meta{padding-bottom:3px;font-size:8px}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-identity{grid-template-columns:43px minmax(0,1fr) 43px 25px!important;padding-top:4px;gap:4px}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-avatar{width:40px;height:40px}
+  .mex-fiesta-play .mex-active-player-premium .mex-active-score strong{font-size:21px}
+  .mex-fiesta-play .mex-target-stage.mex-target-art{height:73px!important;min-height:73px!important;max-height:73px!important}
+}
+
+/* V166 — Tableau actif compact et panneau de statistiques détaillé. */
+.mex-fiesta-play .mex-active-player-premium .mex-active-identity{grid-template-columns:76px minmax(0,1fr) minmax(65px,90px) 35px!important}
+.mex-fiesta-play .mex-active-goal{position:relative;z-index:2;display:grid;justify-items:center;align-content:center;gap:1px;min-width:0;border-radius:12px;border:1px solid #e4b86455;background:linear-gradient(160deg,#123e2d88,#51242166);padding:7px 4px;color:#ffe3a8}
+.mex-fiesta-play .mex-active-goal small{font-size:9px;font-weight:950;letter-spacing:.6px}
+.mex-fiesta-play .mex-active-goal strong{font-size:clamp(22px,5vw,34px);line-height:1.04;font-weight:1100}
+.mex-fiesta-play .mex-active-score-summary{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-height:46px;margin-top:8px;padding:7px 10px;border:1px solid #efc07477;border-radius:12px;background:linear-gradient(100deg,rgba(8,93,53,.62),rgba(255,247,214,.07) 49%,rgba(150,33,30,.45));color:#ffe9bd;text-align:left;cursor:pointer}
+.mex-fiesta-play .mex-active-score-summary>span{display:flex;flex-direction:column;gap:2px}.mex-fiesta-play .mex-active-score-summary b{font-size:12px;letter-spacing:.5px}.mex-fiesta-play .mex-active-score-summary small{font-size:9px;color:#f4d7a1}.mex-fiesta-play .mex-active-score-summary strong{font-size:22px;white-space:nowrap}.mex-fiesta-play .mex-active-score-summary strong small{font-size:10px}
+.mex-fiesta-play .mex-active-score-summary:focus-visible{outline:2px solid #ffe3a8;outline-offset:2px}
+.mex-fiesta-play .mex-target-stage.mex-target-art .mex-target-objective-label{position:absolute;top:7px;left:10px;z-index:4;color:#fff1c6;font-size:10px;font-weight:1000;letter-spacing:1px;text-shadow:0 2px 5px #000}
+.mex-score-detail{display:grid;gap:12px}.mex-score-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.mex-score-tabs button{display:grid;justify-items:center;gap:4px;padding:9px 3px;color:#ffe9c7;border:1px solid #cfa66366;border-radius:11px;background:#152321;font-size:10px;font-weight:950;cursor:pointer}.mex-score-tabs button.selected{background:linear-gradient(130deg,#185c40,#80362c);border-color:#f6c672}
+.mex-score-rows,.mex-score-history,.mex-score-evolution{display:grid;gap:8px}.mex-score-detail h4{margin:5px 0;font-size:12px;color:#ffe2a5}.mex-score-rows>div,.mex-score-history section,.mex-rank-evolution{border:1px solid #e6bb6d4a;border-radius:10px;padding:10px;background:#13181cee}.mex-score-rows>div{display:flex;justify-content:space-between}.mex-score-rows strong,.mex-score-history strong{color:#ffe2a5}.mex-score-history section>div{display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:11px}.mex-score-evolution svg{width:100%;height:auto;max-height:260px;background:#101920;border-radius:10px}.mex-chart-legend{display:flex;gap:10px;flex-wrap:wrap}.mex-chart-legend span{display:flex;align-items:center;gap:5px;font-size:10px}.mex-chart-legend i{width:9px;height:9px;border-radius:50%}.mex-rank-evolution{display:flex;flex-wrap:wrap;gap:8px;font-size:10px}.mex-rank-evolution b{color:#ffe0a0}
+.mex-fiesta-play .mex-target-keys button small{display:none!important}
+@media(max-width:540px){.mex-fiesta-play .mex-active-player-premium .mex-active-identity{grid-template-columns:60px minmax(0,1fr) 63px 30px!important}.mex-fiesta-play .mex-active-goal{padding:5px 2px}.mex-fiesta-play .mex-active-goal strong{font-size:25px}.mex-fiesta-play .mex-active-score-summary{min-height:40px;margin-top:6px}}
+@media(orientation:landscape) and (max-height:650px){.mex-fiesta-play .mex-active-player-premium .mex-active-identity{grid-template-columns:43px minmax(0,1fr) 48px 25px!important}.mex-fiesta-play .mex-active-goal strong{font-size:18px}.mex-fiesta-play .mex-active-score-summary{min-height:29px;padding:3px 7px;margin-top:3px}.mex-fiesta-play .mex-active-score-summary strong{font-size:17px}}
+
+.mex-fiesta-play .mex-active-score-summary .mex-score-summary-info,.mex-fiesta-play .mex-active-score-summary .mex-score-summary-value{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.mex-fiesta-play .mex-active-score-summary .mex-score-summary-value{align-items:flex-end;margin-left:auto}
+.mex-fiesta-play .mex-active-score-summary .mex-score-summary-info small{display:flex;align-items:center;gap:4px;color:#8de9bc;font-weight:850;white-space:nowrap}
+.mex-fiesta-play .mex-active-score-summary .mex-active-three-darts{display:flex;gap:3px;align-items:center}
+.mex-fiesta-play .mex-active-score-summary .mex-active-three-darts img{width:19px;height:14px;object-fit:contain}
+.mex-fiesta-play .mex-active-score-summary .mex-score-summary-value strong{font-size:23px;line-height:1}
+.mex-fiesta-play .mex-active-score-summary .mex-score-summary-value strong small{font-size:9px}
+
+.mex-fiesta-play .mex-related-killer{display:flex;gap:8px;justify-content:center;align-items:center;width:100%;border:1px solid #d5ae6c88;border-radius:12px;padding:12px;background:linear-gradient(90deg,#124330,#493025);color:#ffe5a6;font-weight:950;cursor:pointer;font-size:11px}
+
+/* V167 — MSS approved layout: survivors and Cricket darts above player;
+   RONDA and live score occupy the right-hand score tile. */
+.mex-fiesta-play .mex-active-player-premium.mex-active-v167{display:flex!important;flex-direction:column!important;min-height:130px!important;padding:10px 13px 12px!important;gap:7px!important}
+.mex-fiesta-play .mex-active-v167 .mex-active-topline{position:relative;z-index:2;width:100%;display:flex!important;align-items:center;justify-content:space-between;gap:8px;padding:0 2px 6px;border-bottom:1px solid rgba(243,204,131,.19);color:#86e3b6;font-size:10px;font-weight:1000;letter-spacing:.4px}
+.mex-fiesta-play .mex-active-v167 .mex-active-topline>span:first-child{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.mex-fiesta-play .mex-active-v167 .mex-active-three-darts{display:flex!important;flex-direction:row!important;align-items:center!important;gap:5px!important}
+.mex-fiesta-play .mex-active-v167 .mex-active-three-darts img{width:24px;height:18px;object-fit:contain}
+.mex-fiesta-play .mex-active-v167 .mex-active-identity{display:grid!important;grid-template-columns:76px minmax(0,1fr) minmax(100px,128px)!important;gap:10px!important;align-items:center!important;padding-top:0!important;width:100%;min-width:0}
+.mex-fiesta-play .mex-active-v167 .mex-active-avatar{width:70px;height:70px}
+.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger{position:relative;z-index:2;min-width:0;width:100%;min-height:76px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1px;cursor:pointer;border-radius:13px;border:1px solid rgba(245,200,111,.60);background:linear-gradient(145deg,rgba(6,81,53,.62),rgba(202,179,122,.13) 53%,rgba(137,34,31,.48));color:#ffe7b2;box-shadow:inset 0 1px rgba(255,239,205,.13)}
+.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger:focus-visible{outline:2px solid #f6d18b;outline-offset:2px}
+.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger small{font-size:10px!important;color:#ffe4a3!important;font-weight:1000;letter-spacing:.45px}
+.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger strong{font-size:34px;line-height:1.05;color:#fff0cb;text-shadow:0 2px 9px rgba(0,0,0,.65);font-weight:1100}
+.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger>span{font-size:9px;font-weight:1000;white-space:nowrap;color:#f9d79d;letter-spacing:.25px}
+/* MSS scoring keypad palette: S neutral grey, D blue, T red, MISS orange. */
+@media(max-width:540px){.mex-fiesta-play .mex-active-player-premium.mex-active-v167{min-height:115px!important;padding:8px 9px!important;gap:5px!important}.mex-fiesta-play .mex-active-v167 .mex-active-identity{grid-template-columns:56px minmax(0,1fr) 104px!important;gap:6px!important}.mex-fiesta-play .mex-active-v167 .mex-active-avatar{width:53px;height:53px}.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger{min-height:65px}.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger strong{font-size:28px}.mex-fiesta-play .mex-active-v167 .mex-active-three-darts img{width:20px;height:15px}}
+@media(orientation:landscape) and (max-height:650px){.mex-fiesta-play .mex-active-player-premium.mex-active-v167{min-height:80px!important;gap:3px!important;padding:5px 8px!important}.mex-fiesta-play .mex-active-v167 .mex-active-topline{padding-bottom:2px;font-size:8px}.mex-fiesta-play .mex-active-v167 .mex-active-identity{grid-template-columns:40px minmax(0,1fr) 85px!important;gap:5px!important}.mex-fiesta-play .mex-active-v167 .mex-active-avatar{width:39px;height:39px}.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger{min-height:43px}.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger strong{font-size:19px}.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger small,.mex-fiesta-play .mex-active-v167 .mex-active-score-trigger>span{font-size:7px!important}.mex-fiesta-play .mex-active-v167 .mex-active-three-darts img{width:16px;height:12px}}
+
+/* V168 — Palette X01 / Keypad.tsx : mêmes teintes, aucune recoloration par le thème.
+   S = neutre foncé, D = cyan, T = magenta, MISS = rouge, texte blanc. */
+/* BULL : couleurs de la saisie X01 — vert 25, rouge 50. */
+.mex-fiesta-play .mex-target-keys button.mex-hit-single:disabled,.mex-fiesta-play .mex-target-keys button.mex-hit-double:disabled,.mex-fiesta-play .mex-target-keys button.mex-hit-triple:disabled,.mex-fiesta-play .mex-target-keys button.mex-hit-miss:disabled{opacity:.35!important}
+
+/* MSS SOURCE UNIQUE : ne plus ajouter de valeurs hex/RGB ici pour S/D/T/MISS. */
+.mex-fiesta-play .mex-target-keys .mex-hit-single{background:var(--mss-hit-s-bg)!important;border-color:var(--mss-hit-s-border)!important;color:var(--mss-hit-s-text)!important;text-shadow:none!important}
+.mex-fiesta-play .mex-target-keys .mex-hit-double{background:var(--mss-hit-d-bg)!important;border-color:var(--mss-hit-d-border)!important;color:var(--mss-hit-d-text)!important;text-shadow:none!important}
+.mex-fiesta-play .mex-target-keys .mex-hit-triple{background:var(--mss-hit-t-bg)!important;border-color:var(--mss-hit-t-border)!important;color:var(--mss-hit-t-text)!important;text-shadow:none!important}
+.mex-fiesta-play .mex-target-keys .mex-hit-miss{background:var(--mss-hit-miss-bg)!important;border-color:var(--mss-hit-miss-border)!important;color:var(--mss-hit-miss-text)!important;text-shadow:none!important}
+
+/* V169 — OBJECTIF est une carte unique, sans bordure/cadre supplémentaire.
+   Le visuel interne mex-target-stage conserve son image, ses dimensions et son numéro. */
+.mex-fiesta-play .mex-fiesta-scoreboard.mex-compact {
+  padding:0!important;margin:0!important;gap:0!important;
+  border:0!important;border-radius:0!important;background:transparent!important;
+  box-shadow:none!important;overflow:visible!important;
+}
+.mex-fiesta-play .mex-fiesta-scoreboard.mex-compact .mex-target-stage.mex-target-art {
+  margin:0!important;border-radius:16px!important;overflow:hidden!important;
+}
+/* Couleurs officielles partagées : les anciennes surcharges locales sont neutralisées. */
+.mex-fiesta-play .mex-target-keys button.mex-hit-single{background:var(--mss-hit-s-bg)!important;border-color:var(--mss-hit-s-border)!important;color:var(--mss-hit-s-text)!important}
+.mex-fiesta-play .mex-target-keys button.mex-hit-double{background:var(--mss-hit-d-bg)!important;border-color:var(--mss-hit-d-border)!important;color:var(--mss-hit-d-text)!important}
+.mex-fiesta-play .mex-target-keys button.mex-hit-triple{background:var(--mss-hit-t-bg)!important;border-color:var(--mss-hit-t-border)!important;color:var(--mss-hit-t-text)!important}
+.mex-fiesta-play .mex-target-keys button.mex-hit-miss{background:var(--mss-hit-miss-bg)!important;border-color:var(--mss-hit-miss-border)!important;color:var(--mss-hit-miss-text)!important;text-shadow:none!important}
+.mex-fiesta-play .mex-dart-slot.mex-dart-miss.is-filled{color:var(--mss-hit-miss-tone)!important;border-color:var(--mss-hit-miss-border)!important}

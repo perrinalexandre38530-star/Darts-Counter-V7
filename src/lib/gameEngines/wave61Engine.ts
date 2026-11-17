@@ -143,7 +143,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
     teamByPlayer: raw?.teamByPlayer && typeof raw.teamByPlayer === "object" ? raw.teamByPlayer : {},
     rounds: forcedRounds ?? clamp(Number(raw?.rounds || preset.defaultRounds), 1, 60),
     goal: forcedGoal ?? Math.max(0, Number(raw?.goal ?? preset.defaultGoal) || 0),
-    lives: modeId === "mexicain" ? (raw?.modeOptions?.progressive === "survival" ? 5 : Math.max(1, Number(raw?.lives ?? 3) || 3)) : Math.max(0, Number(raw?.lives ?? preset.defaultLives) || 0),
+    lives: modeId === "mexicain" ? (raw?.modeOptions?.progressive === "survival" ? 5 : 3) : Math.max(0, Number(raw?.lives ?? preset.defaultLives) || 0),
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : raw?.scoreInputMethod === "target" && modeId === "shove_a_penny" ? "target" : raw?.scoreInputMethod === "keypad" ? "keypad" : modeId === "shove_a_penny" ? "target" : "keypad",
     randomOrder: raw?.randomOrder !== false,
     modeOptions: modeId === "shove_a_penny" ? { ruleSet: "traditional", giftTargetRule: "next", endMode: "first_finish", ...(raw?.modeOptions && typeof raw.modeOptions === "object" ? raw.modeOptions : {}) } : raw?.modeOptions && typeof raw.modeOptions === "object" ? { ...raw.modeOptions } : {},
@@ -865,7 +865,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
 
       // 60 manches indépendantes, tirage reproductible depuis la graine conservée
       // dans la sauvegarde, avec un BULL qui accepte OB et IB.
-      mexicainTargets: modeId === "mexicain" ? Array.from({length: 60}, (_, i) => (hashText(`${seedText}:mex:${i}`) % (config.modeOptions?.bullEnabled === "no" ? 20 : 21)) + 1) : [],
+      mexicainTargets: modeId === "mexicain" ? Array.from({length: 60}, (_, i) => config.modeOptions?.targetMode === "fixed" ? Math.max(1, Math.min(21, Number(config.modeOptions?.fixedTarget || 20))) : (hashText(`${seedText}:mex:${i}`) % (config.modeOptions?.bullEnabled === "no" ? 20 : 21)) + 1) : [],
       mexicainHistory: [],
       mexicainRoundScores: {},
       hotPotatoSequence: modeId === "hot_potato" ? survivalSequence(seedText, "hotpotato") : [],

@@ -1,3 +1,4 @@
+import "../styles/mss-scoring-palette.css";
 // ============================================
 // src/components/Keypad.tsx
 // Keypad stylé — boutons ANNULER & VALIDER en or
@@ -81,7 +82,7 @@ type Props = {
   onBackspace?: () => void; // supprime la dernière entrée locale (utilisé sur clic droit ANNULER)
   onCancel: () => void; // logique "Annuler" déléguée au parent
   onNumber: (n: number) => void; // 0..20 (0 = MISS)
-  /** Afficher MISS plutôt que 0 pour les modes qui distinguent explicitement la touche manquée. */
+  /** MISS affiché par défaut à la place du 0 numérique ; conserve onNumber(0). Mettre false seulement pour un cas d’usage explicite. */
   showMissOnZero?: boolean;
   onBull: () => void; // OB/DBULL (25/50)
   onValidate: () => void; // bouton Valider
@@ -192,13 +193,15 @@ const btnBase: React.CSSProperties = {
 
 const btnDouble: React.CSSProperties = {
   ...btnBase,
-  background: "rgba(46,150,193,.2)",
-  color: "#bfeaff",
+  background: "var(--mss-hit-d-bg)",
+  borderColor: "var(--mss-hit-d-border)",
+  color: "var(--mss-hit-d-text)",
 };
 const btnTriple: React.CSSProperties = {
   ...btnBase,
-  background: "rgba(179,68,151,.2)",
-  color: "#ffccff",
+  background: "var(--mss-hit-t-bg)",
+  borderColor: "var(--mss-hit-t-border)",
+  color: "var(--mss-hit-t-text)",
 };
 const btnGold: React.CSSProperties = {
   ...btnBase,
@@ -210,8 +213,9 @@ const btnGold: React.CSSProperties = {
 const btnCancel: React.CSSProperties = btnGold;
 const btnBull: React.CSSProperties = {
   ...btnBase,
-  background: "rgba(22,92,66,.35)",
-  color: "#8be0b8",
+  background: "var(--mss-hit-bull25-bg)",
+  borderColor: "var(--mss-hit-bull25-border)",
+  color: "var(--mss-hit-bull25-text)",
 };
 const cell: React.CSSProperties = { ...btnBase, width: "100%" };
 
@@ -269,7 +273,7 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
   disableSegmentNumbers = false,
   highlightSegmentNumbers = null,
   highlightColor = "#ffe46b",
-  showMissOnZero = false,
+  showMissOnZero = true,
 }: {
   onNumber: (n: number) => void;
   showMissOnZero?: boolean;
@@ -304,7 +308,7 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
                   boxShadow: `0 0 0 1px ${highlightColor}44 inset, 0 0 18px ${highlightColor}28`,
                   transform: "translateY(-1px)",
                 } : null),
-                ...(n === 0 && showMissOnZero ? { background: "linear-gradient(180deg,#b9344c,#89162d)", borderColor: "#ed6b82", color: "#fff", fontSize: "clamp(9px,2.3vw,13px)", boxShadow: "0 0 13px rgba(220,46,76,.2)" } : null),
+                ...(n === 0 && showMissOnZero ? { background: "var(--mss-hit-miss-bg)", borderColor: "var(--mss-hit-miss-border)", color: "var(--mss-hit-miss-text)", fontSize: "clamp(9px,2.3vw,13px)", boxShadow: "0 0 13px rgba(229,161,58,.20)" } : null),
                 ...(blocked ? { opacity: .28, filter: "grayscale(1)", cursor: "not-allowed", boxShadow: "none" } : null)
               }}
               onClick={() => { if (!blocked) onNumber(n); }}
@@ -359,7 +363,7 @@ export default function Keypad({
   onBackspace,
   onCancel,
   onNumber,
-  showMissOnZero = false,
+  showMissOnZero = true,
   onBull,
   onValidate,
   hidePreview = false,
@@ -573,7 +577,7 @@ export default function Keypad({
           >
             <button
               type="button"
-              style={{ ...btnDouble, borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)" }}
+              style={{ ...btnDouble, borderColor: multiplier === 2 ? "var(--mss-hit-d-border)" : "var(--mss-hit-d-border)" }}
               aria-pressed={multiplier === 2}
               onClick={onDouble}
               onMouseUp={latchMultiplier ? undefined : onSimple}
@@ -583,7 +587,7 @@ export default function Keypad({
             </button>
             <button
               type="button"
-              style={{ ...btnTriple, borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)" }}
+              style={{ ...btnTriple, borderColor: multiplier === 3 ? "var(--mss-hit-t-border)" : "var(--mss-hit-t-border)" }}
               aria-pressed={multiplier === 3}
               onClick={onTriple}
               onMouseUp={latchMultiplier ? undefined : onSimple}
@@ -688,7 +692,7 @@ export default function Keypad({
               type="button"
               style={{
                 ...btnDouble,
-                borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
+                borderColor: multiplier === 2 ? "var(--mss-hit-d-border)" : "var(--mss-hit-d-border)",
               }}
               aria-pressed={multiplier === 2}
               onClick={onDouble}
@@ -702,7 +706,7 @@ export default function Keypad({
               type="button"
               style={{
                 ...btnTriple,
-                borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
+                borderColor: multiplier === 3 ? "var(--mss-hit-t-border)" : "var(--mss-hit-t-border)",
               }}
               aria-pressed={multiplier === 3}
               onClick={onTriple}
@@ -854,7 +858,7 @@ export default function Keypad({
             type="button"
             style={{
               ...btnDouble,
-              borderColor: guideMultiplier === 2 ? `${guideColor}dd` : multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
+              borderColor: guideMultiplier === 2 ? `${guideColor}dd` : multiplier === 2 ? "var(--mss-hit-d-border)" : "var(--mss-hit-d-border)",
               boxShadow: guideMultiplier === 2 ? `0 0 18px ${guideColor}30` : undefined,
             }}
             aria-pressed={multiplier === 2}
@@ -869,7 +873,7 @@ export default function Keypad({
             type="button"
             style={{
               ...btnTriple,
-              borderColor: guideMultiplier === 3 ? `${guideColor}dd` : multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
+              borderColor: guideMultiplier === 3 ? `${guideColor}dd` : multiplier === 3 ? "var(--mss-hit-t-border)" : "var(--mss-hit-t-border)",
               boxShadow: guideMultiplier === 3 ? `0 0 18px ${guideColor}30` : undefined,
             }}
             aria-pressed={multiplier === 3}
