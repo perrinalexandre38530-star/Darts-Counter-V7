@@ -143,7 +143,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
     teamByPlayer: raw?.teamByPlayer && typeof raw.teamByPlayer === "object" ? raw.teamByPlayer : {},
     rounds: forcedRounds ?? clamp(Number(raw?.rounds || preset.defaultRounds), 1, 60),
     goal: forcedGoal ?? Math.max(0, Number(raw?.goal ?? preset.defaultGoal) || 0),
-    lives: Math.max(0, Number(raw?.lives ?? preset.defaultLives) || 0),
+    lives: modeId === "mexicain" ? (raw?.modeOptions?.progressive === "survival" ? 5 : Math.max(1, Number(raw?.lives ?? 3) || 3)) : Math.max(0, Number(raw?.lives ?? preset.defaultLives) || 0),
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : raw?.scoreInputMethod === "target" && modeId === "shove_a_penny" ? "target" : raw?.scoreInputMethod === "keypad" ? "keypad" : modeId === "shove_a_penny" ? "target" : "keypad",
     randomOrder: raw?.randomOrder !== false,
     modeOptions: modeId === "shove_a_penny" ? { ruleSet: "traditional", giftTargetRule: "next", endMode: "first_finish", ...(raw?.modeOptions && typeof raw.modeOptions === "object" ? raw.modeOptions : {}) } : raw?.modeOptions && typeof raw.modeOptions === "object" ? { ...raw.modeOptions } : {},
@@ -863,6 +863,11 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       trojanWoodByPlayer: modeId === "cheval_de_troie" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       trojanHistory: [],
 
+      // 60 manches indépendantes, tirage reproductible depuis la graine conservée
+      // dans la sauvegarde, avec un BULL qui accepte OB et IB.
+      mexicainTargets: modeId === "mexicain" ? Array.from({length: 60}, (_, i) => (hashText(`${seedText}:mex:${i}`) % (config.modeOptions?.bullEnabled === "no" ? 20 : 21)) + 1) : [],
+      mexicainHistory: [],
+      mexicainRoundScores: {},
       hotPotatoSequence: modeId === "hot_potato" ? survivalSequence(seedText, "hotpotato") : [],
       hotPotatoFuse: modeId === "hot_potato" ? hotPotatoFuseReset(config) : 0,
       hotPotatoExplosionsByPlayer: modeId === "hot_potato" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -961,6 +966,11 @@ function targetSequenceIndex(state: Wave61State) { return state.roundIndex + sta
 export function getWave61Target(state: Wave61State): Wave61Target {
   if (!state || state.phase === "finished") return null;
   if (["align_4", "demineur", "codebreaker", "face_mystere", "shove_a_penny", "golden_dart"].includes(state.modeId)) return null;
+  if (state.modeId === "mexicain") {
+    const number = Number(state.special?.mexicainTargets?.[state.roundIndex] || 20);
+    return number === 21 ? {kind: "bull", label: `🇲🇽 MANCHE ${state.roundIndex + 1} · BULL 25 / 50`}
+      : {kind: "number", value: number, label: `🇲🇽 MANCHE ${state.roundIndex + 1} · SECTEUR ${number}`};
+  }
   if (state.modeId === "colin_maillard") {
     const player = state.players[state.activePlayerIndex];
     const seq = Array.isArray(state.special?.colinSequence) ? state.special.colinSequence : [];
@@ -4178,7 +4188,16 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     if (d?.bed === "OB" || d?.bed === "IB") st.bulls += 1;
   }
 
-  if (state.modeId === "align_4") {
+  if (state.modeId === "mexicain") {
+    const number = Number(state.special?.mexicainTargets?.[state.roundIndex] || 20);
+    const valid = darts.filter(d => number === 21 ? (d?.bed === "OB" || d?.bed === "IB") : (Number(d?.number || 0) === number && ["S", "D", "T"].includes(String(d?.bed))));
+    delta = valid.reduce((sum, d) => sum + wave61DartScore(d), 0);
+    hits = valid.length;
+    state.scores[player.id] = Number(state.scores[player.id] || 0) + delta;
+    state.progress[player.id] = state.scores[player.id];
+    state.special.mexicainRoundScores[player.id] = delta;
+    events.push(`🇲🇽 ${target?.label} · ${hits}/3 touches · ${delta} points valides`);
+  } else if (state.modeId === "align_4") {
     let won = false, placed = 0;
     for (const d of darts) {
       const move = placeAlign4(state, player.id, d, events);
@@ -4761,6 +4780,40 @@ function advanceWave61Turn(state: Wave61State): Wave61State {
     if (!state.eliminated[state.players[next].id] && (!shoveFixedRounds || shoveHasOpenCases(state.players[next].id))) break;
   }
   const wrapped = next <= state.activePlayerIndex;
+  if (wrapped && state.modeId === "mexicain") {
+    const alive = state.players.filter(p => !state.eliminated[p.id]);
+    const scores = alive.map(p => ({id:p.id, score: Number(state.special?.mexicainRoundScores?.[p.id] ?? 0)}));
+    const lowest = Math.min(...scores.map(p => p.score));
+    const losers = scores.filter(p => p.score === lowest);
+    // All equal: nobody loses a life. Partial lowest ties: both lose a life.
+    const casualties = losers.length < alive.length ? losers : [];
+    const lifeLoss = state.config.modeOptions?.progressive === "progressive"
+      ? Math.min(3, 1 + Math.floor(state.roundIndex / 5)) : 1;
+    for (const p of casualties) {
+      state.lives[p.id] = Math.max(0, Number(state.lives[p.id] || 0) - lifeLoss);
+      if (state.lives[p.id] <= 0) state.eliminated[p.id] = true;
+    }
+    state.special.mexicainHistory = [...(state.special.mexicainHistory || []), {
+      round: state.roundIndex + 1, target: state.special.mexicainTargets?.[state.roundIndex],
+      scores, losers: casualties.map(p => p.id), lifeLoss,
+    }];
+    state.special.mexicainRoundScores = {};
+    const survivors = state.players.filter(p => !state.eliminated[p.id]);
+    if (survivors.length === 1) {finishWith(state, survivors[0].id); return state;}
+    if (survivors.length === 0) {
+      // A simultaneous wipe-out is a tie: prefer the previous round winner
+      // and keep the end screen deterministic.
+      const winner = [...scores].sort((a,b)=>b.score-a.score)[0]?.id;
+      if (winner) finishWith(state, winner);
+      return state;
+    }
+    // The old next index can now be eliminated: recompute from the current turn.
+    next = state.activePlayerIndex;
+    for (let i = 0; i < state.players.length; i++) {
+      next = (next + 1) % state.players.length;
+      if (!state.eliminated[state.players[next].id]) break;
+    }
+  }
   if (wrapped && state.modeId === "mafia" && mafiaPhase(state) === "DAY") resolveMafiaDay(state);
   if (state.phase !== "playing") return state;
   state.activePlayerIndex = next;
@@ -5236,6 +5289,7 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
 
 export function wave61PrimaryMetric(state: Wave61State, playerId: string): { value: number; label: string; sub: string } {
   const stats = state.statsByPlayer[playerId] || blankStats();
+  if (state.modeId === "mexicain") return { value: Number(state.lives[playerId] || 0), label: state.eliminated[playerId] ? "ÉLIMINÉ" : "VIES", sub: `${Number(state.scores[playerId] || 0)} pts valides · ${state.special?.mexicainHistory?.filter((r: any) => r.losers?.includes(playerId))?.length || 0} manches perdues` };
   if (state.modeId === "final_buzzer") return { value: Math.round(Number(state.progress[playerId] || 0)), label: "BUZZ", sub: `streak ${state.special?.finalBuzzerStreakByPlayer?.[playerId] || 0} · clutch ${state.special?.finalBuzzerClutchByPlayer?.[playerId] || 0}` };
   if (state.modeId === "jackpot") return { value: Math.round(Number(state.scores[playerId] || 0)), label: "CRÉDITS", sub: `${state.special?.jackpotJackpotsByPlayer?.[playerId] || 0} jackpot(s) · pot ${state.special?.jackpotPot || modeOptionNumber(state.config, "basePot", 250, 50, 2000)}` };
   if (state.modeId === "mafia") return { value: state.eliminated[playerId] ? 0 : 1, label: state.eliminated[playerId] ? "ÉLIMINÉ" : "EN JEU", sub: `${state.special?.mafiaVotesByPlayer?.[playerId] || 0} vote(s) · ${mafiaPhase(state) === "NIGHT" ? "nuit" : "jour"}` };

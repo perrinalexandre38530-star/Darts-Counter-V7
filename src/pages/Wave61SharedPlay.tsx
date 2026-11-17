@@ -180,6 +180,7 @@ function familyRules(spec: any, preset: any) {
     microscopia: "Isole six échantillons microscopiques tout en contrôlant la contamination. BULL désinfecte le laboratoire.",
     disjoncte: "Alimente six circuits sans faire sauter l'installation. Doubles/triples sont puissants mais font grimper la surcharge ; BULL met à la terre.",
     petit_bac: "Six catégories et une lettre liée au secteur. Touche la lettre demandée pour valider la catégorie ; BULL sert de joker. La saisie des mots sera ajoutée dans le Play dédié.",
+    mexicain: "Une cible commune (1 à 20 ou BULL) est tirée au début de chaque manche. Chaque joueur lance trois fléchettes : seules les touches sur cette cible marquent. Le plus faible score perd une vie ; une égalité générale ne coûte aucune vie. Le dernier survivant gagne.",
     hot_potato: "La mèche descend à chaque tour. Touche le secteur demandé pour transmettre proprement la patate ; une mèche à zéro provoque une explosion et coûte une vie.",
     zombie_siege: "Un camp commence infecté. Les zombies propagent la contamination, les survivants renforcent leurs barricades et les BULL permettent de réduire l'infection.",
     le_loup: "Le loup doit toucher sa cible pour attraper un joueur et transmettre le rôle. Les fuyards progressent et peuvent obtenir une protection au BULL.",
@@ -1191,6 +1192,30 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
 }
 
 
+function MexicainPanel({ state, accent }: any) {
+  const number = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
+  const target = number === 21 ? "BULL" : String(number);
+  const current = state?.special?.mexicainRoundScores || {};
+  const last = (state?.special?.mexicainHistory || []).slice(-1)[0];
+  return <section data-mexicain-panel="1" style={{...panelStyle(accent),padding:10,display:"grid",gap:7}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+      <div style={{fontSize:10,color:accent,fontWeight:1000}}>🇲🇽 LE MEXICAIN · MANCHE {Number(state?.roundIndex || 0) + 1}</div>
+      <div style={{fontSize:9,color:"#b9c1d1"}}>3 FLÉCHETTES / JOUEUR</div>
+    </div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,borderRadius:10,padding:"7px 10px",background:`${accent}15`,border:`1px solid ${accent}70`}}>
+      <span style={{fontSize:10,fontWeight:900,color:"#e6e9ef"}}>CIBLE COMMUNE</span>
+      <strong style={{fontSize:27,color:accent,lineHeight:1}}>{target}</strong>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:5}}>
+      {(state?.players || []).map((p:any) => <div key={p.id} style={{borderRadius:8,padding:"5px 7px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",opacity:state?.eliminated?.[p.id] ? .46 : 1}}>
+        <div style={{fontSize:9,fontWeight:1000,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{String(p.name || "JOUEUR").toUpperCase()}</div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:4,alignItems:"center",fontSize:10}}><span style={{color:"#ff7a8d"}}>♥ {Number(state?.lives?.[p.id] || 0)}</span><strong style={{color:accent}}>{current[p.id] == null ? "—" : `${current[p.id]} PTS`}</strong></div>
+      </div>)}
+    </div>
+    {last ? <div style={{fontSize:9,color:"#bec6d5"}}>Dernière manche : {last.losers?.length ? `${last.losers.map((id:string)=>state.players.find((p:any)=>p.id===id)?.name || id).join(", ")} · -${last.lifeLoss} vie(s)` : "égalité générale · aucune vie perdue"}</div> : null}
+  </section>;
+}
+
 function HiScorePanel({ state, accent }: any) {
   const rows = state.players.map((p:any) => {
     const visits = (state.visits || []).filter((v:any) => String(v.playerId) === String(p.id));
@@ -1921,6 +1946,7 @@ export default function Wave61SharedPlay(props: any) {
     {spec.id === "microscopia" ? <MicroscopiaPanel state={state} accent={accent} /> : null}
     {spec.id === "disjoncte" ? <DisjonctePanel state={state} accent={accent} /> : null}
     {spec.id === "petit_bac" ? <PetitBacPanel state={state} accent={accent} /> : null}
+    {spec.id === "mexicain" ? <MexicainPanel state={state} accent={accent} /> : null}
     {spec.id === "hot_potato" ? <HotPotatoPanel state={state} accent={accent} /> : null}
     {spec.id === "zombie_siege" ? <ZombieSiegePanel state={state} accent={accent} /> : null}
     {spec.id === "le_loup" ? <LoupPanel state={state} accent={accent} /> : null}
@@ -2381,7 +2407,8 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "microscopia" ? <MicroscopiaPanel state={state} accent={accent} /> : null}
       {spec.id === "disjoncte" ? <DisjonctePanel state={state} accent={accent} /> : null}
       {spec.id === "petit_bac" ? <PetitBacPanel state={state} accent={accent} /> : null}
-      {spec.id === "hot_potato" ? <HotPotatoPanel state={state} accent={accent} /> : null}
+      {spec.id === "mexicain" ? <MexicainPanel state={state} accent={accent} /> : null}
+    {spec.id === "hot_potato" ? <HotPotatoPanel state={state} accent={accent} /> : null}
       {spec.id === "zombie_siege" ? <ZombieSiegePanel state={state} accent={accent} /> : null}
       {spec.id === "le_loup" ? <LoupPanel state={state} accent={accent} /> : null}
       {spec.id === "eperviers" ? <EperviersPanel state={state} accent={accent} /> : null}
