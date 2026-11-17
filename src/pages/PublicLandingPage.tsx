@@ -83,8 +83,8 @@ const LANDING_EXPLANATION_VISUALS = {
   },
 } as const;
 
-const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "bss_king", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
-const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible", "chase", "split_score", "black_vs_white", "three_colors", "la_suite", "color_call", "bim_bam_boum", "saute_moutons", "troupeau_en_danger", "une_ptite_raclette", "top_10", "tic_tac_toe"]);
+const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "bss_king", "attrape_moi", "loterie", "menteur", "president", "kilo_de_merde", "pendu", "cargo", "ptit_hun"]);
+const NEW_PUBLIC_DARTS = new Set(["kilo_de_merde", "bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible", "chase", "split_score", "black_vs_white", "three_colors", "la_suite", "color_call", "bim_bam_boum", "saute_moutons", "troupeau_en_danger", "une_ptite_raclette", "top_10", "tic_tac_toe"]);
 const DARTS_CATEGORY_LABEL: Record<string,string> = {
   classic: "GRANDS CLASSIQUES",
   variant: "VARIANTES",
@@ -453,10 +453,10 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
     return () => { window.cancelAnimationFrame(a); window.clearTimeout(b); window.clearTimeout(c); window.clearTimeout(d); window.clearTimeout(e); };
   }, [game.id]);
   const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
-  const publicLabel = tr(`game.${game.id}.label`, game.label);
+  const publicLabel = game.id === "kilo_de_merde" && lang !== "fr" ? "The Kilo of Shit" : tr(`game.${game.id}.label`, game.label);
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
   const development = isPublicDartsDevelopment(game);
-  const objective = ptit1Copy ? ptit1Copy.principle : t(`landing.game.${game.id}.objective`, game.infoBody.split(".")[0] + ".");
+  const objective = game.id === "kilo_de_merde" ? (lang === "fr" ? "Réunis quatre cartes identiques, tape sur le tas avant les autres et évite les kilos de pénalité. Le 7 déclenche la chasse d’eau." : "Collect four matching cards, be quick to tap the pile and avoid penalty kilos. Drawing a 7 flushes your accumulated penalties.") : ptit1Copy ? ptit1Copy.principle : t(`landing.game.${game.id}.objective`, game.infoBody.split(".")[0] + ".");
   const catalogueGames = DARTS_GAMES.filter((item) => item.id !== game.id);
   const sameCategoryGames = catalogueGames.filter((item) => item.category === game.category && isPublicDartsDevelopment(item) === development).slice(0, 4);
   const currentIndex = DARTS_GAMES.findIndex((item) => item.id === game.id);
@@ -483,7 +483,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <div className="mssRuleHeroCopy">
         <div className="mssEyebrow">{exclusive ? tr("rules.exclusiveMode", "MODE EXCLUSIF MULTISPORTS SCORING") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "MODE FLÉCHETTES")}</div>
         {development && <div className="mssDevBanner">{tr("status.development", "EN DÉVELOPPEMENT")}</div>}
-        <p>{development ? tr("rules.developmentIntro", "Ce mode fait partie du catalogue MULTISPORTS SCORING mais son moteur de jeu n’est pas encore disponible dans cette version. Sa fiche présente le concept actuellement défini.") : (ptit1Copy ? ptit1Copy.principle : tr(`game.${game.id}.info`, game.infoBody))}</p>
+        <p>{development ? tr("rules.developmentIntro", "Ce mode fait partie du catalogue MULTISPORTS SCORING mais son moteur de jeu n’est pas encore disponible dans cette version. Sa fiche présente le concept actuellement défini.") : (ptit1Copy ? ptit1Copy.principle : (game.id === "kilo_de_merde" && lang !== "fr" ? "A standalone card game: exchange cards to collect four of a kind, then race to tap the pile. The last player takes a penalty; a 7 flushes their kilos." : tr(`game.${game.id}.info`, game.infoBody)))}</p>
         <div className="mssRuleBadges">
           <span>{tr("rules.players", "JOUEURS")}</span>
           {game.supportsTeams && <span>{tr("rules.teams", "ÉQUIPES")}</span>}
@@ -522,7 +522,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
     {game.id === "ptit_hun" && !development ? <Ptit1PublicRules lang={lang} /> : <>
     <section className="mssRuleContent" id="regles">
       <article><b>01</b><h2>{tr("rules.objective", "OBJECTIF")}</h2><p>{tr(`game.${game.id}.objective`, objective)}</p></article>
-      <article><b>02</b><h2>{tr("rules.principle", "PRINCIPE & RÈGLES")}</h2><p>{tr(`game.${game.id}.info`, game.infoBody)}</p></article>
+      <article><b>02</b><h2>{tr("rules.principle", "PRINCIPE & RÈGLES")}</h2><p>{(game.id === "kilo_de_merde" && lang !== "fr" ? "A standalone card game: exchange cards to collect four of a kind, then race to tap the pile. The last player takes a penalty; a 7 flushes their kilos." : tr(`game.${game.id}.info`, game.infoBody))}</p></article>
       <article><b>03</b><h2>{tr("rules.format", "FORMAT DE PARTIE")}</h2><p>{tr("rules.formatBody", "Le format est déterminé par la configuration propre à ce mode dans MULTISPORTS SCORING.")}{game.supportsTeams ? ` ${tr("rules.teamsBody", "Les équipes sont prises en charge lorsque cette option est proposée.")}` : ""}{game.supportsBots ? ` ${tr("rules.botsBody", "Les bots IA peuvent être utilisés lorsque la configuration du mode les active.")}` : ""}</p></article>
       <article className="mssRuleConfig" id="configuration"><b>04</b><h2>{tr("rules.parameters", "RÈGLES & PARAMÈTRES")}</h2>{development ? <p>{tr("rules.developmentConfig", "EN DÉVELOPPEMENT — aucun paramétrage jouable ne doit être présenté comme disponible tant que le moteur n’est pas activé.")}</p> : <p>{publicRuleConfigCopy(game, lang, tr)}</p>}</article>
       <article><b>05</b><h2>{tr("rules.status", "STATUT DANS MSS")}</h2><p>{development ? tr("rules.developmentStatusBody", "EN DÉVELOPPEMENT — le concept est référencé dans le catalogue MSS, mais la partie jouable n’est pas encore activée.") : tr("rules.availableStatusBody", "DISPONIBLE — le mode est activé dans MULTISPORTS SCORING. La configuration de partie applique les options et variantes prévues par ce moteur.")}</p></article>
@@ -751,10 +751,10 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
           const ticker = landingTickerFor(game.id, lang);
           const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
           const development = isPublicDartsDevelopment(game);
-          const publicLabel = tr(`game.${game.id}.label`, game.label);
+          const publicLabel = game.id === "kilo_de_merde" && lang !== "fr" ? "The Kilo of Shit" : tr(`game.${game.id}.label`, game.label);
           return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id} onClick={(event) => openPublicDartsRule(event, game.id)}>
             <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${publicLabel}`} loading="lazy" decoding="async"/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? tr("status.development", "EN DÉVELOPPEMENT") : exclusive ? tr("status.exclusive", "EXCLUSIF MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category])}</span>{NEW_PUBLIC_DARTS.has(game.id) && <i className="mssNewModeCorner">{tr("status.new", "NOUVEAU")}</i>}{exclusive && development && <i className="mssExclusiveCorner">{tr("status.exclusive", "EXCLUSIF MSS")}</i>}</div>
-            <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{publicLabel}</strong></div><p>{development ? tr("darts.developmentCard", "Mode référencé dans le catalogue MSS. Développement du moteur en cours.") : tr(`game.${game.id}.info`, game.infoBody)}</p><small>{development ? tr("darts.discoverConcept", "DÉCOUVRIR LE CONCEPT →") : tr("darts.fullSheet", "VOIR LA FICHE COMPLÈTE →")}</small></div>
+            <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{publicLabel}</strong></div><p>{development ? tr("darts.developmentCard", "Mode référencé dans le catalogue MSS. Développement du moteur en cours.") : (game.id === "kilo_de_merde" && lang !== "fr" ? "A standalone card game: exchange cards to collect four of a kind, then race to tap the pile. The last player takes a penalty; a 7 flushes their kilos." : tr(`game.${game.id}.info`, game.infoBody))}</p><small>{development ? tr("darts.discoverConcept", "DÉCOUVRIR LE CONCEPT →") : tr("darts.fullSheet", "VOIR LA FICHE COMPLÈTE →")}</small></div>
           </a>;
         })}
       </div>

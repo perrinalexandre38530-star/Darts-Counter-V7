@@ -417,6 +417,8 @@ const AttrapeMoiConfig = React.lazy(() => import("./pages/AttrapeMoiConfig"));
 const AttrapeMoiPlay = React.lazy(() => import("./pages/AttrapeMoiPlay"));
 const PresidentConfig = React.lazy(() => import("./pages/PresidentConfig"));
 const PresidentPlay = React.lazy(() => import("./pages/PresidentPlay"));
+const KiloDeMerdeConfig = React.lazy(() => import("./pages/KiloDeMerdeConfig"));
+const KiloDeMerdePlay = React.lazy(() => import("./pages/KiloDeMerdePlay"));
 const Game170Config = React.lazy(() => import("./pages/Game170Config"));
 const Game170Play = React.lazy(() => import("./pages/Game170Play"));
 const FootballConfig = React.lazy(() => import("./pages/FootballConfig"));
@@ -1383,6 +1385,8 @@ type Tab =
   | "attrape_moi_config"
   | "attrape_moi_play"
   | "president_config"
+  | "kilo_de_merde_config"
+  | "kilo_de_merde_play"
   | "president_play"
   | "game_170_config"
   | "game_170_play"
@@ -7464,6 +7468,13 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "kilo_de_merde_config":
+        page = <KiloDeMerdeConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("games")} />;
+        break;
+      case "kilo_de_merde_play":
+        page = <KiloDeMerdePlay store={store} go={go} setTab={go} params={routeParams} onFinish={(m: any, options?: { navigate?: boolean }) => pushHistory(enrichOnlineMatchForHistory(m, "kilo_de_merde", routeParams), options)} />;
+        break;
+
       case "president_config": {
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "president" ? "arcade" : "")));
         if (launchMode === "quick") page = <QuickPartyModeConfig modeId="president" title="PRÉSIDENT" params={routeParams} onBack={() => go("president_config")} onStart={(result) => go(result.route, result.params)} />;
@@ -8087,7 +8098,7 @@ case "babyfoot_team_edit":
     "halve_it_config", "count_up_config", "prisoner_config", "super_bull_config",
     "shooter_config", "darts_racer_config", "tic_tac_toe_config", "knockout_config",
     "bobs_27_config", "bowling_config", "scram_config", "golf_config",
-    "baseball_config", "attrape_moi_config", "president_config", "game_170_config",
+    "baseball_config", "attrape_moi_config", "president_config", "kilo_de_merde_config", "game_170_config",
     "football_config", "batard_config", "fun_gages_config", "capital_config",
     "loterie_config", "happy_mille_config", "rugby_config", "departements_config",
     "darts_firefighter_config", "darts_poker_config", "cargo_config",
@@ -8116,7 +8127,7 @@ case "babyfoot_team_edit":
     "fifty_one_by_five_config", "looper_config", "call_three_config", "steeplechase_config", "ptit_hun_config", "closest_center_config",
     "halve_it_config", "prisoner_config", "super_bull_config", "shooter_config", "darts_racer_config",
     "bobs_27_config", "bowling_config", "baseball_config", "attrape_moi_config",
-    "president_config", "capital_config", "loterie_config", "departements_config",
+    "president_config", "kilo_de_merde_config", "capital_config", "loterie_config", "departements_config",
     "football_config"
   ]);
   // Une page Partie rapide / Arcade n'est PAS une configuration : aucune

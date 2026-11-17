@@ -2110,6 +2110,28 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
   if (report.title === 'BABY-FOOT') report.tickerSrc = tickerBabyFoot;
   return report;
  }
+ if(mode === 'mexicain') {
+  const saved = summary?.mexicain || payload?.stateSnapshot?.special?.mexicainHistory && {
+   rounds: payload.stateSnapshot.special.mexicainHistory,
+   finalLives: payload.stateSnapshot.lives,
+  };
+  if(saved && Array.isArray(saved.rounds)) {
+   report.title = 'LE MEXICAIN';
+   report.rounds = saved.rounds.length;
+   report.unit = 'manches';
+   const rows = saved.rounds.flatMap((round:any) =>
+    (round.scores || []).map((sc:any) => {
+     const playerName = (entry?.players || []).find((p:any) => String(p.id)===String(sc.id))?.name || String(sc.id);
+     const lost = (round.losers || []).some((id:any) => String(id)===String(sc.id));
+     return [String(round.round), Number(round.target)===21 ? 'BULL' : String(round.target ?? '—'),
+      String(playerName), String(Number(sc.score)||0), lost ? String(Number(round.lifeLoss)||1) : '0'];
+    }));
+   report.details.push({title:'MANCHES ET PERTES DE VIES',columns:['RONDA','CIBLE','JOUEUR','POINTS','VIES PERDUES'],rows});
+   report.details.push({title:'VIES RESTANTES',columns:['JOUEUR','VIES'],
+    rows: (entry?.players||[]).map((p:any)=>[String(p.name||p.id),String(Number(saved.finalLives?.[p.id]||0))])});
+  }
+  return report;
+ }
  if(mode === 'shove_a_penny') return enrichShoveHistoryReport(report, entry);
  if(/^(capital|killer|shanghai)(?:$|_)/.test(mode)) return enrichHistoricalDartsModeReport(report,entry,mode);
  // Use the mode's own recorded units rather than treating every result as points.

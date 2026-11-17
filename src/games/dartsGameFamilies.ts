@@ -14,6 +14,10 @@ export type DartsGameFamily = {
 
 export const DARTS_GAME_FAMILIES: readonly DartsGameFamily[] = [
   {
+    id: "cartes", mainId: "president", variantIds: ["kilo_de_merde"],
+    note: "Famille de découverte CARTES : deux jeux indépendants, moteurs et classements séparés. PRÉSIDENT = plis et points de position. KILO DE MERDE = quatre cartes, tas et kilos.",
+  },
+  {
     id: "cricket", mainId: "cricket",
     variantIds: ["cricket_cut_throat", "scram", "shove_a_penny", "enculette"],
     note: "Fermeture de secteurs, stratégies de marques et jeux de pub apparentés. Chaque mode garde son propre barème.",

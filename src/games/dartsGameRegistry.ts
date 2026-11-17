@@ -36,6 +36,7 @@ export type DartsGameTab =
   | "baseball_config"
   | "attrape_moi_config"
   | "president_config"
+  | "kilo_de_merde_config"
   | "football_config"
   | "rugby_config"
   | "capital_config"
@@ -650,6 +651,23 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "PRÉSIDENT",
     infoBody:
       "Le jeu de cartes adapté aux fléchettes. Chaque joueur reçoit une main virtuelle : S joue une carte, D une paire, T un brelan. Il faut battre la combinaison précédente avec une valeur supérieure, avec 3 fléchettes maximum pour réussir. Le premier sans carte devient Président, le dernier Trou du cul. Les manches suivantes appliquent les taxes Président/Trou du cul. Variante Chaos : BULL joker, DBULL Coup d’État et T20 Révolution.",
+  },
+  {
+    id: "kilo_de_merde",
+    label: "Kilo de merde",
+    category: "fun",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "kilo_de_merde_config",
+    popularityRank: 35.8,
+    ready: true,
+    isNew: true,
+    maxPlayers: 10,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "game:kilo_de_merde",
+    infoTitle: "KILO DE MERDE",
+    infoBody: "Jeu de cartes indépendant : 3 à 10 joueurs, quatre cartes par main, échange simultané vers le voisin de gauche. Dès qu'un joueur possède quatre cartes identiques, tous tapent sur le tas : le dernier prend une pénalité. Le 7 tiré du tas déclenche la chasse d'eau et efface ses kilos. Le moins de kilos gagne. Adaptation MSS à arbitrage manuel sur appareil partagé.",
   },
   {
     id: "football",
@@ -1646,6 +1664,7 @@ const READY_IDS = new Set<string>([
   "football",
   "attrape_moi",
   "president",
+  "kilo_de_merde",
   "bobs_27",
   "bowling",
   "shooter",
