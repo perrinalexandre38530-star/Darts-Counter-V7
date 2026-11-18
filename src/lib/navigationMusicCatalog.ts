@@ -1,5 +1,14 @@
 import stadiumPulseUrl from "../assets/audio/navigation/multisports_scoring_nav.m4a";
 import victoryCircuitUrl from "../assets/audio/navigation/msamstp_nav.m4a";
+import newDarkPursuitUrl from "../assets/audio/navigation/dark_pursuit.m4a";
+import newDistantHorizonsUrl from "../assets/audio/navigation/distant_horizons.m4a";
+import newDeepBreathUrl from "../assets/audio/navigation/deep_breath.m4a";
+import newShadowSignalUrl from "../assets/audio/navigation/shadow_signal.m4a";
+import newSpaceOdysseyUrl from "../assets/audio/navigation/space_odyssey.m4a";
+import newSuspiriaNightsUrl from "../assets/audio/navigation/suspiria_nights.m4a";
+import newDarkRitualUrl from "../assets/audio/navigation/dark_ritual.m4a";
+import newDeepTactixUrl from "../assets/audio/navigation/deep_tactix.m4a";
+import newRisingSuspenseUrl from "../assets/audio/navigation/rising_suspense.m4a";
 import { contentPackAssetUrl } from "./contentPacks";
 
 const neonOverdriveUrl = contentPackAssetUrl("navigation-music", "ms_electrodyn_nav.webm");
@@ -204,6 +213,60 @@ export const NAVIGATION_MUSIC_TRACKS = [
     name: "Temporal Resolve",
     subtitle: { fr: "Cordes épiques, pulsation urbaine et progression héroïque", en: "Epic strings, urban pulse and heroic progression", es: "Cuerdas épicas, pulso urbano y progresión heroica" },
     url: temporalResolveUrl,
+  },
+  {
+    id: "dark_pursuit",
+    name: "Dark Pursuit",
+    subtitle: { fr: "Poursuite sombre et tension cinématique", en: "Dark chase and cinematic tension", es: "Persecución oscura y tensión cinematográfica" },
+    url: newDarkPursuitUrl,
+  },
+  {
+    id: "distant_horizons",
+    name: "Distant Horizons",
+    subtitle: { fr: "Horizons ouverts et atmosphère immersive", en: "Wide horizons and immersive atmosphere", es: "Horizontes abiertos y atmósfera envolvente" },
+    url: newDistantHorizonsUrl,
+  },
+  {
+    id: "deep_breath",
+    name: "Deep Breath",
+    subtitle: { fr: "Respiration profonde et ambiance enveloppante", en: "Deep breath and enveloping ambience", es: "Respiración profunda y ambiente envolvente" },
+    url: newDeepBreathUrl,
+  },
+  {
+    id: "shadow_signal",
+    name: "Shadow Signal",
+    subtitle: { fr: "Ombres mystérieuses et pulsation discrète", en: "Mysterious shadows and subtle pulse", es: "Sombras misteriosas y pulso sutil" },
+    url: newShadowSignalUrl,
+  },
+  {
+    id: "space_odyssey",
+    name: "Space Odyssey",
+    subtitle: { fr: "Évasion spatiale et textures cosmiques", en: "Space escape and cosmic textures", es: "Evasión espacial y texturas cósmicas" },
+    url: newSpaceOdysseyUrl,
+  },
+  {
+    id: "suspiria_nights",
+    name: "Suspiria Nights",
+    subtitle: { fr: "Suspense nocturne et atmosphère inquiétante", en: "Night suspense and unsettling atmosphere", es: "Suspenso nocturno y atmósfera inquietante" },
+    url: newSuspiriaNightsUrl,
+  },
+  {
+    id: "dark_ritual",
+    name: "Dark Ritual",
+    subtitle: { fr: "Énergie obscure et tension dramatique", en: "Dark energy and dramatic tension", es: "Energía oscura y tensión dramática" },
+    url: newDarkRitualUrl,
+  },
+  {
+    id: "deep_tactix",
+    name: "Deep Tactix",
+    subtitle: { fr: "Percussions profondes et rythme tactique", en: "Deep percussion and tactical rhythm", es: "Percusión profunda y ritmo táctico" },
+    url: newDeepTactixUrl,
+  },
+  {
+    id: "rising_suspense",
+    name: "Rising Suspense",
+    subtitle: { fr: "Suspense progressif et ambiance cinématique", en: "Building suspense and cinematic atmosphere", es: "Suspenso creciente y atmósfera cinematográfica" },
+    url: newRisingSuspenseUrl,
   },
 ] as const;
 

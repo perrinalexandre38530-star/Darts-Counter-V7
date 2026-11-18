@@ -1,6 +1,7 @@
 import React from "react";
 import { useLang } from "../contexts/LangContext";
 import BackDot from "./BackDot";
+import GameDifficultyStars from "./GameDifficultyStars";
 import DartsModeFamilyBridge from "./DartsModeFamilyBridge";
 import DartsRelatedModesPanel from "./DartsRelatedModesPanel";
 import tickerArcade from "../assets/tickers/ticker_arcade.png";
@@ -159,6 +160,11 @@ export default function GameModeEntryChoice({ title, tickerId, onQuick, onArcade
           <div />
         </div>
       )}
+
+      {/* Difficulty belongs to the MODE ticker, not to the Quick/Arcade buttons. */}
+      <div data-mss-entry-difficulty="1" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 18, margin: "0 auto 4px" }}>
+        <GameDifficultyStars game={gameId || tickerId || tickerAliases[String(title || '').trim().toLowerCase()] || String(title || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')} compact showValue={false} />
+      </div>
 
       <div
         style={{

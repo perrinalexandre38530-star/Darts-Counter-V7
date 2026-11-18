@@ -183,7 +183,7 @@ export default function PageHeader(props: {
         </div>
       ) : null}
 
-      {hasTicker && difficultyGameId ? <div data-mss-config-difficulty="1" style={{height:18,display:"flex",alignItems:"center",justifyContent:"center",paddingTop:3}}><GameDifficultyStars game={difficultyGameId} compact/></div> : null}
+      {hasTicker && difficultyGameId ? <div data-mss-config-difficulty="1" style={{height:18,display:"flex",alignItems:"center",justifyContent:"center",paddingTop:3}}><GameDifficultyStars game={difficultyGameId} compact showValue={false}/></div> : null}
       <div
         style={{
           display: hasTicker ? "none" : "grid",

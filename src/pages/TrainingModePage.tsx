@@ -286,7 +286,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   const labConfigProps = { ...configProps, accountProfile: currentProfile || null, initialDetailExerciseId: id === "training_lab" ? String(config?.returnExerciseDetailId || "") || null : null };
   const playProps = { config: activePlayConfig, onExit: finishOrAdvance };
 
-  if (id === "training_finish_do" || id === "training_finish_challenge") return <FinishDoTraining key={id} onExit={exitAndSync} challenge={id === "training_finish_challenge"} />;
+  if (id === "training_finish_do" || id === "training_finish_challenge") return <FinishDoTraining key={id} onExit={exitAndSync} challenge={id === "training_finish_challenge"} participantId={currentProfile?.id ? String(currentProfile.id) : null} />;
 
   if (phase === "summary" && summary) {
     return <TrainingComparisonSummary group={summary} tickerId={id} onExit={exitAndSync} onReplay={() => beginRun(config)} />;

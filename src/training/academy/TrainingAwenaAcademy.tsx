@@ -15,6 +15,8 @@ import {
   loadAcademyQuizStats, saveAcademyQuizRound, type AcademyQuizStats,
 } from "./academyStore";
 import "./trainingAwenaAcademy.css";
+import { loadFinishDoProgress, getFinishDoPriority, finishDoLessonForAim } from "../modes/finish/finishDoProgress";
+import FinishDoWeeklyPanel from "../modes/finish/FinishDoWeeklyPanel";
 
 type AcademyScreen = "learn" | "practice" | "quiz" | "review" | "progress";
 type LessonPhase = "intro" | "quiz" | "practice" | "result";
@@ -60,6 +62,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const [lessonPage, setLessonPage] = React.useState(0);
   const [progressPage, setProgressPage] = React.useState(0);
   const [finishOnly, setFinishOnly] = React.useState(false);
+  const [finishProgress, setFinishProgress] = React.useState(() => loadFinishDoProgress(participantId));
   const [round, setRound] = React.useState<AcademyQuizItem[]>([]);
   const [roundIndex, setRoundIndex] = React.useState(0);
   const [roundAnswers, setRoundAnswers] = React.useState<number[]>([]);
@@ -71,6 +74,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
 
   React.useEffect(() => {
     setProgress(loadAcademyProgress(participantId));
+    setFinishProgress(loadFinishDoProgress(participantId));
     setQuizStats(loadAcademyQuizStats(participantId));
     setReviewJournal(loadAcademyReviews(participantId));
     setLesson(null);
@@ -100,6 +104,13 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     CATALOGUE.find(item => item.id === reviewInsights.focusLessonId) ||
     CATALOGUE.find(item => !progress[item.id] || progress[item.id].best < 80) || CATALOGUE[0]!,
     [progress, reviewInsights.focusLessonId]);
+  React.useEffect(() => {
+    const refresh = () => setFinishProgress(loadFinishDoProgress(participantId));
+    window.addEventListener("mss-finish-do-progress", refresh);
+    return () => window.removeEventListener("mss-finish-do-progress", refresh);
+  }, [participantId]);
+  const finishPriority = getFinishDoPriority(finishProgress);
+  const finishSuggestedLesson = finishPriority ? CATALOGUE.find(item => item.id === finishDoLessonForAim(finishPriority.label)) : null;
   const mastered = CATALOGUE.filter(item => (progress[item.id]?.best || 0) >= 80).length;
   const attempted = CATALOGUE.filter(item => (progress[item.id]?.attempts || 0) > 0).length;
   const attempts = CATALOGUE.reduce((total, item) => total + (progress[item.id]?.attempts || 0), 0);
@@ -308,6 +319,12 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
         <div><small>PARCOURS DOUBLE OUT</small><strong>FINISHS DO · COMBINAISONS & PLANS B</strong><span>Des sorties à mémoriser, des solutions après un raté et des quiz avec Awena.</span></div>
         <button type="button" onClick={() => openFinishCourse(screen === "practice")}>DÉCOUVRIR ›</button>
       </div>
+      {finishPriority && finishSuggestedLesson && <div className="mssAcademyFinishSpotlight mssAcademyFinishPersonal">
+        <div className="mssAcademyFinishIcon"><BottomNavIcon name="stats" size={22} /></div>
+        <div><small>AWENA · RÉVISION D'APRÈS TRAINING</small><strong>{finishPriority.label} · {finishPriority.hits}/{finishPriority.attempts} TOUCHES</strong>
+          <span>Prochaine leçon conseillée : {finishSuggestedLesson.title}. Statistiques locales basées sur les doubles annoncés.</span></div>
+        <button type="button" onClick={() => beginLesson(finishSuggestedLesson, screen === "practice")}>RÉVISER ›</button>
+      </div>}
       <div className="mssAcademyBanner">
         <div className="mssAcademyBannerIcon" aria-hidden="true"><BottomNavIcon name={screen === "practice" ? "games" : "home"} size={22} /></div>
         <div><small>PARCOURS PERSONNALISÉ</small><strong>{attempted} / {CATALOGUE.length} leçons explorées</strong>
@@ -438,6 +455,10 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     </div>}
 
     {screen === "progress" && !lesson && <div className="mssAcademyProgress">
+      <FinishDoWeeklyPanel progress={finishProgress} onReview={(aim) => {
+        const selected = CATALOGUE.find(item => item.id === finishDoLessonForAim(aim));
+        if (selected) beginLesson(selected);
+      }} />
       <div className="mssAcademyStats"><div><small>LEÇONS EXPLORÉES</small><strong>{attempted}/{CATALOGUE.length}</strong></div><div><small>MAÎTRISÉES (80+)</small><strong>{mastered}</strong></div><div><small>EXERCICES</small><strong>{attempts}</strong></div></div>
       <div className="mssAcademyStats mssAcademyQuizStats"><div><small>QUIZ EXPRESS</small><strong>{quizStats.rounds}</strong></div><div><small>MEILLEUR QUIZ</small><strong>{quizStats.best}%</strong></div><div><small>RÉPONSES JUSTES</small><strong>{quizStats.correct}/{quizStats.questions}</strong></div></div>
       <button type="button" className="mssAcademyReviewFocus" onClick={() => switchScreen("review")}>

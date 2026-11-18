@@ -280,3 +280,225 @@
   .mss-combat-band-copy strong { font-size: 14px; }
   .mss-combat-band-copy small { font-size: 11px; }
 }
+
+/* V219 — composition LOTERIE : identité à gauche, objectif à droite.
+   Aucun renseignement n'est répété et aucune saisie n'est déplacée. */
+.mss-combat-active-card-v219 .mss-combat-active-main {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(154px,40%);
+  min-height:146px;
+  padding:8px;
+  gap:8px;
+  align-items:stretch;
+}
+.mss-combat-active-card-v219 .mss-combat-active-identity {
+  position:relative;
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  justify-content:flex-start;
+  gap:10px;
+  padding:9px;
+  overflow:hidden;
+  text-align:left;
+}
+.mss-combat-active-card-v219 .mss-combat-active-avatar {
+  flex:0 0 64px;
+  width:64px;
+  height:64px;
+  border:2px solid var(--combat-accent);
+  box-shadow:0 0 0 4px rgba(255,255,255,.035),0 0 16px color-mix(in srgb,var(--combat-accent) 20%,transparent);
+  font-size:23px;
+}
+.mss-combat-active-card-v219 .mss-combat-active-copy {
+  display:grid;
+  justify-items:start;
+  align-content:center;
+  gap:5px;
+  min-width:0;
+}
+.mss-combat-active-card-v219 .mss-combat-active-copy small {font-size:10px;line-height:1.25;}
+.mss-combat-active-card-v219 .mss-combat-active-copy strong {font-size:17px;line-height:1.18;}
+.mss-combat-active-result {display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;}
+.mss-combat-active-card-v219 .mss-combat-active-value {font-size:clamp(27px,4vw,38px);white-space:nowrap;}
+.mss-combat-active-card-v219 .mss-combat-active-detail {font-size:10px;line-height:1.2;}
+.mss-combat-active-card-v219 .mss-combat-active-goal {padding:10px;gap:6px;}
+.mss-combat-active-card-v219 .mss-combat-goal-main strong {font-size:clamp(27px,4vw,38px);}
+.mss-combat-active-card-v219 .mss-combat-active-goal p {font-size:11px;line-height:1.35;max-width:28ch;}
+.mss-combat-active-card-v219 .mss-combat-goal-detail {font-size:10px;}
+.mss-combat-active-card-v219 .mss-combat-darts {margin-top:5px;}
+
+/* BATTLE ROYALE : préserver la grande carte illustrée, enrichir les avatars
+   par les noms et les vies, sans la transformer en bouton minimal. */
+.mss-br-classic-players {border-radius:17px!important;isolation:isolate;}
+.mss-br-classic-title {font-weight:1000;font-size:17px;letter-spacing:.04em;text-transform:uppercase;text-shadow:0 2px 8px #000;}
+.mss-br-classic-roster {display:flex;flex:1;align-items:center;gap:7px;overflow-x:auto;scrollbar-width:thin;min-width:0;padding-bottom:2px;}
+.mss-br-classic-player {display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:112px;max-width:210px;padding:5px 9px 5px 5px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(5,7,13,.68);color:#fff;box-shadow:0 2px 9px rgba(0,0,0,.24);}
+.mss-br-classic-player.is-active {border-color:var(--mss-accent);background:color-mix(in srgb,var(--mss-accent) 14%,rgba(5,7,13,.78));}
+.mss-br-classic-player.is-eliminated {opacity:.5;filter:grayscale(1);}
+.mss-br-classic-avatar {height:37px;width:37px;flex:0 0 37px;border-radius:50%;border:1px solid rgba(255,255,255,.23);overflow:hidden;display:grid;place-items:center;background:#272936;font-weight:900;}
+.mss-br-classic-avatar img {width:100%;height:100%;object-fit:cover;display:block;}
+.mss-br-classic-identity {display:grid;gap:2px;min-width:0;}
+.mss-br-classic-identity strong {font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mss-br-classic-identity small {color:#ffcb68;font-size:11px;font-weight:850;white-space:nowrap;}
+.mss-br-classic-turn {color:var(--mss-accent);font-size:9px;font-weight:1000;}
+
+/* WARFARE : deux territoires côte à côte dès que l'écran le permet. */
+@media (min-width:500px) {
+ .mss-war-armies {grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+ .mss-war-army {min-width:0;padding:8px!important;}
+ .mss-war-soldiers {gap:4px!important;}
+ .mss-war-soldiers > div {height:32px!important;}
+}
+@media (max-width:499px) {
+ .mss-war-armies {grid-template-columns:1fr!important;}
+}
+@media (max-width:540px) {
+ .mss-combat-active-card-v219 .mss-combat-active-main {grid-template-columns:minmax(0,1fr) minmax(138px,42%);min-height:138px;gap:5px;padding:6px;}
+ .mss-combat-active-card-v219 .mss-combat-active-identity {gap:6px;padding:4px;}
+ .mss-combat-active-card-v219 .mss-combat-active-avatar {flex-basis:43px;width:43px;height:43px;}
+ .mss-combat-active-card-v219 .mss-combat-active-copy strong {font-size:14px;}
+ .mss-combat-active-card-v219 .mss-combat-active-value {font-size:27px;}
+ .mss-combat-active-card-v219 .mss-combat-active-goal {padding:6px;}
+ .mss-combat-active-card-v219 .mss-combat-active-goal p {font-size:10px;}
+ .mss-br-classic-player {min-width:102px;}
+}
+
+/* V225 — finition du terrain : lecture directe, sans ajouter de panneaux ni de scroll latéral. */
+.mss-combat-active-card-v219 {
+  background:linear-gradient(115deg,#1b1c26 0%,#0d0f17 64%,#090b12 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 20px rgba(0,0,0,.22);
+}
+.mss-combat-active-card-v219 .mss-combat-active-main { min-height:122px; }
+.mss-combat-active-card-v219 .mss-combat-active-identity { background:radial-gradient(circle at 15% 50%,color-mix(in srgb,var(--combat-accent) 10%,transparent),transparent 65%);border-radius:13px; }
+.mss-combat-active-card-v219 .mss-combat-active-goal { background:linear-gradient(155deg,#181a25,#0d0f17); }
+.mss-combat-active-card-v219 .mss-combat-active-goal p { max-width:30ch; }
+.mss-combat-band {border-radius:15px;}
+.mss-combat-band-scroll {scroll-snap-type:x proximity;}
+.mss-combat-band-segment {scroll-snap-align:start;min-width:0;}
+.mss-combat-band-segment:focus-visible,.mss-combat-nav-item:focus-visible,.mss-br-classic-players:focus-visible {outline:2px solid var(--roster-accent,var(--mss-accent,#ffc857));outline-offset:-2px;}
+.mss-combat-bottomnav {border-radius:14px;background:linear-gradient(180deg,#171925,#10121d);}
+.mss-combat-nav-item {min-width:0;min-height:44px;}
+.mss-combat-nav-item.is-selected {box-shadow:inset 0 -2px 0 var(--roster-accent);}
+.mss-war-army {position:relative;overflow:hidden;}
+.mss-war-army::before {content:'';position:absolute;inset:0 0 auto 0;height:3px;background:rgba(255,255,255,.09);}
+.mss-war-army.is-active::before {background:var(--mss-accent);box-shadow:0 0 12px var(--mss-accent);}
+.mss-war-army-progress {width:100%;height:6px;overflow:hidden;background:rgba(0,0,0,.42);border:1px solid rgba(255,255,255,.1);border-radius:99px;margin:8px 0 2px;}
+.mss-war-army-progress-fill {height:100%;background:linear-gradient(90deg,#c67f21,var(--mss-accent));border-radius:99px;transition:width .28s ease;}
+.mss-war-soldiers .mss-war-soldier {font-variant-numeric:tabular-nums;transition:opacity .2s ease,background .2s ease;}
+.mss-war-soldiers .mss-war-soldier.is-alive {background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.025))!important;border-color:rgba(255,255,255,.18)!important;color:#f6f3e9!important;}
+.mss-war-army.is-active .mss-war-soldier.is-alive {border-color:color-mix(in srgb,var(--mss-accent) 35%,rgba(255,255,255,.15))!important;}
+.mss-war-soldiers .mss-war-soldier.is-out {opacity:.38;text-decoration:line-through!important;filter:grayscale(1);}
+.mss-br-classic-players {box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 8px 20px rgba(0,0,0,.3);}
+.mss-br-classic-player {min-width:0;max-width:none;flex:0 0 auto;}
+.mss-br-classic-player.is-active {box-shadow:0 0 0 1px color-mix(in srgb,var(--mss-accent) 28%,transparent);}
+.mss-br-classic-roster {scroll-snap-type:x proximity;}
+.mss-br-classic-player {scroll-snap-align:start;}
+@media(max-width:650px){
+ .mss-combat-active-card-v219 .mss-combat-active-main {min-height:120px;}
+ .mss-combat-band-segment {flex:0 0 auto;min-width:133px;}
+ .mss-war-armies {grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;}
+ .mss-war-army {padding:7px!important;}
+ .mss-war-soldiers {gap:3px!important;}
+ .mss-war-soldiers .mss-war-soldier {height:30px!important;font-size:13px!important;}
+}
+@media(max-width:370px){
+ .mss-war-armies {grid-template-columns:1fr!important;}
+ .mss-combat-active-card-v219 .mss-combat-active-main {grid-template-columns:minmax(0,1fr) minmax(115px,43%);gap:4px;}
+ .mss-combat-active-card-v219 .mss-combat-active-avatar {width:38px;height:38px;flex-basis:38px;}
+ .mss-combat-active-card-v219 .mss-combat-active-value {font-size:24px;}
+ .mss-combat-goal-main strong {font-size:26px!important;}
+}
+@media (prefers-reduced-motion:reduce){
+ .mss-war-army-progress-fill,.mss-war-soldier {transition:none!important;}
+}
+
+
+/* V226 — finition terrain, suppression des anciennes contraintes contradictoires.
+   Les informations essentielles restent à l'écran, sans toucher au moteur. */
+.mss-war-content,.mss-br-content { scrollbar-gutter:stable; }
+.mss-war-armies { gap:10px!important; }
+.mss-war-army {
+  padding:11px!important;
+  background:linear-gradient(160deg,#1c2030,#10121d 70%)!important;
+  border:1px solid rgba(255,255,255,.15)!important;
+  box-shadow:0 7px 24px rgba(0,0,0,.25)!important;
+}
+.mss-war-army.is-active {
+  border-color:var(--mss-accent)!important;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mss-accent) 25%,transparent),0 7px 24px rgba(0,0,0,.32)!important;
+}
+.mss-war-army-label {display:flex;align-items:center;gap:5px;font-size:clamp(14px,2.4vw,19px);font-weight:1000;letter-spacing:.04em;}
+.mss-war-strength {font-size:18px;font-weight:1000;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.mss-war-strength small {font-size:12px;color:#aeb5c8;}
+.mss-war-army-progress {height:8px;margin-block:8px 10px;}
+.mss-war-soldiers {gap:5px!important;}
+.mss-war-soldiers .mss-war-soldier {position:relative;min-width:0;height:clamp(34px,4.8vh,44px)!important;border-radius:10px!important;font-size:clamp(13px,2vw,17px)!important;}
+.mss-war-soldiers .mss-war-soldier.is-out {text-decoration:none!important;background:rgba(0,0,0,.42)!important;opacity:.7;}
+.mss-war-soldier.is-out > span:first-child {opacity:.28;text-decoration:line-through;}
+.mss-war-fallen-mark {position:absolute;inset:0;display:grid;place-items:center;color:#ff7775;font-size:25px;font-weight:700;opacity:.9;line-height:1;}
+.mss-combat-active-card-v219 .mss-combat-active-main {align-items:stretch;}
+.mss-combat-active-card-v219 .mss-combat-active-identity {min-width:0;}
+.mss-combat-active-card-v219 .mss-combat-active-goal {min-width:0;}
+.mss-combat-active-card-v219 .mss-combat-active-goal p {margin:0;color:#d9dfeb;}
+.mss-br-classic-players {overflow:hidden!important;min-height:122px;}
+.mss-br-classic-players .mss-br-classic-roster {flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-block:4px;}
+.mss-br-classic-players .mss-br-classic-player {background:rgba(8,10,18,.83);border-color:rgba(255,255,255,.26);}
+.mss-br-classic-players .mss-br-classic-player.is-active {border-color:var(--mss-accent);background:color-mix(in srgb,var(--mss-accent) 18%,rgba(8,10,18,.84));}
+.mss-br-classic-player.is-eliminated {opacity:.6;}
+.mss-br-classic-players .mss-br-classic-avatar {width:42px;height:42px;flex-basis:42px;}
+.mss-br-classic-players .mss-br-classic-identity strong {font-size:13px;}
+.mss-br-classic-players .mss-br-classic-identity small {font-size:12px;}
+/* On ne force plus deux armées dans une largeur insuffisante : les soldats étaient illisibles. */
+@media(max-width:619px) {
+  .mss-war-armies {grid-template-columns:minmax(0,1fr)!important;gap:8px!important;}
+  .mss-war-soldiers {grid-template-columns:repeat(5,minmax(0,1fr));}
+  .mss-war-soldiers .mss-war-soldier {height:34px!important;font-size:15px!important;}
+  .mss-war-army {padding:9px!important;}
+  .mss-br-classic-players .mss-br-classic-avatar {width:36px;height:36px;flex-basis:36px;}
+}
+@media(min-width:620px) {
+  .mss-war-armies {grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+}
+@media(max-width:450px) {
+  .mss-combat-active-card-v219 .mss-combat-active-main {grid-template-columns:minmax(0,1fr) minmax(126px,42%);}
+  .mss-combat-active-card-v219 .mss-combat-active-avatar {width:40px;height:40px;flex-basis:40px;}
+  .mss-combat-active-card-v219 .mss-combat-goal-main strong {font-size:29px;}
+  .mss-br-classic-players .mss-br-classic-player {min-width:104px;}
+}
+
+
+/* V227 — lecture tactique nette, sans nouveau panneau et sans duplication. */
+.mss-war-army.is-top { --army-side:#d1a44a; }
+.mss-war-army.is-bottom { --army-side:#7ab8ce; }
+.mss-war-army {
+  isolation:isolate;
+  background:
+    radial-gradient(ellipse at 95% 8%,color-mix(in srgb,var(--army-side) 12%,transparent),transparent 55%),
+    linear-gradient(145deg,#1b1e2b 0%,#0e111a 82%)!important;
+  border-color:color-mix(in srgb,var(--army-side) 35%,#323849)!important;
+}
+.mss-war-army.is-active {
+  border-color:var(--army-side)!important;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--army-side) 15%,transparent),0 10px 28px #0006!important;
+}
+.mss-war-army::before {background:var(--army-side)!important;opacity:.48;}
+.mss-war-army.is-active::before {opacity:1;box-shadow:0 0 9px var(--army-side);}
+.mss-war-army-label {color:var(--army-side)!important;}
+.mss-war-army-progress-fill {background:linear-gradient(90deg,color-mix(in srgb,var(--army-side) 55%,#242833),var(--army-side))!important;}
+.mss-war-army-side {display:flex;gap:7px;align-items:center;justify-content:flex-end;min-width:0;}
+.mss-war-current-indicator {color:var(--army-side);font-size:10px;font-weight:1000;letter-spacing:.035em;white-space:nowrap;}
+.mss-war-soldiers .mss-war-soldier.is-alive {background:linear-gradient(160deg,color-mix(in srgb,var(--army-side) 10%,#222733),#181b25)!important;}
+.mss-war-army.is-active .mss-war-soldier.is-alive {border-color:color-mix(in srgb,var(--army-side) 38%,#404757)!important;}
+.mss-war-soldiers .mss-war-soldier.is-out {background:#090b11!important;filter:grayscale(.55);}
+.mss-br-round-track {height:4px;background:rgba(255,255,255,.1);overflow:hidden;}
+.mss-br-round-track > span {display:block;height:100%;background:var(--mss-accent,#ffc857);border-radius:0 99px 99px 0;transition:width .22s ease;}
+/* Plateau lisible avant le keypad, avec un scroll contenu seulement dans la zone de partie. */
+.mss-war-content,.mss-br-content {overscroll-behavior-y:contain;scrollbar-width:thin;}
+.mss-war-armies {align-items:start;}
+@media (max-width:619px) {
+ .mss-war-armies {grid-template-columns:minmax(0,1fr)!important;}
+ .mss-war-army-side {gap:5px;}
+ .mss-war-current-indicator {font-size:9px;}
+}
+@media (prefers-reduced-motion:reduce) {.mss-br-round-track > span {transition:none;}}

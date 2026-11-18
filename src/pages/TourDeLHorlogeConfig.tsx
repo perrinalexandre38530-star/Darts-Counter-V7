@@ -6,7 +6,7 @@ import InfoDot from "../components/InfoDot";
 export default function TourDeLHorlogeConfig() {
   return (
     <div className="page">
-      <PageHeader title="TOURDELHORLOGE" left={<BackDot />} right={<InfoDot />} />
+      <PageHeader difficultyGameId="tour_horloge" title="TOURDELHORLOGE" left={<BackDot />} right={<InfoDot />} />
       <div className="content">
         <p>Configuration par défaut basée sur RoundTargetEngine.</p>
       </div>

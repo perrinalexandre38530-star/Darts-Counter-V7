@@ -909,10 +909,14 @@ export default function Games({ setTab, params }: Props) {
     setActiveSubCat("all");
   }, [activeCat]);
 
+  // Recherche et niveau sont des filtres GLOBAUX sur tout le catalogue.
+  // Sans filtre, les onglets et sous-onglets retrouvent leur comportement habituel.
+  const globalModeFilter = Boolean(difficultyQuery.trim()) || difficultyFilter > 0;
   const gamesForCat = React.useMemo(() => {
     const search = difficultyQuery.trim().toLocaleLowerCase();
+    const global = Boolean(search) || difficultyFilter > 0;
     return filterDartsGamesForCurrentRuntime(DARTS_GAMES)
-      .filter((g) => search ? true : g.category === activeCat)
+      .filter((g) => global || g.category === activeCat)
       .filter((g) => !difficultyFilter || mssGameDifficulty(g) === difficultyFilter)
       .filter((g) => !search || `${g.id} ${g.label} ${g.infoTitle || ''}`.toLocaleLowerCase().includes(search))
       .slice().sort((a,b) => mssGameDifficulty(a) - mssGameDifficulty(b) || sortByPopularity(a,b));
@@ -1209,7 +1213,7 @@ export default function Games({ setTab, params }: Props) {
           {label}
         </div>
 
-        {g ? <div style={{position:"absolute",right:64,top:"50%",transform:"translateY(-50%)",zIndex:4,pointerEvents:"none"}}><GameDifficultyStars game={g} compact /></div> : null}
+        {g ? <div style={{position:"absolute",right:64,top:"50%",transform:"translateY(-50%)",zIndex:4,pointerEvents:"none"}}><GameDifficultyStars game={g} compact showValue={false} /></div> : null}
         {g ? (
           <div
             style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 4 }}
@@ -2041,29 +2045,39 @@ export default function Games({ setTab, params }: Props) {
             <input type="search" value={difficultyQuery} onChange={e=>setDifficultyQuery(e.target.value)} placeholder="Rechercher un mode…" aria-label="Rechercher un jeu" style={{minWidth:0,padding:"9px 10px",borderRadius:10,background:"#121723",color:"#fff",border:"1px solid rgba(255,255,255,.15)",fontSize:11}} />
 <GameDifficultyFilter label="Niveau de difficulté" value={difficultyFilter} onChange={setDifficultyFilter} />
           </section>
+          {globalModeFilter && (
+            <div role="status" style={{ margin: '0 2px 10px', color: theme.textSoft, fontSize: 11, fontWeight: 800 }}>
+              {gamesForCat.length} mode{gamesForCat.length > 1 ? 's' : ''} · toutes catégories
+            </div>
+          )}
           {/* Cartes de jeux (liste) */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {(() => {
-              const ordered = difficultyQuery.trim() ? [] : (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
-
+              // En filtrage global, conserver la catégorie dans la clé pour éviter
+              // de mélanger deux sous-catégories portant le même identifiant.
+              const ordered = globalModeFilter ? [] : (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
               const groups: Record<string, typeof gamesForCat> = {};
-              const sourceGames = difficultyQuery.trim() || activeSubCat === "all"
+              const sourceGames = globalModeFilter || activeSubCat === "all"
                 ? gamesForCat
                 : gamesForCat.filter((g) => subCategoryKeyForGame(g) === activeSubCat);
               for (const g of sourceGames) {
-                const key = subCategoryKeyForGame(g);
+                const key = globalModeFilter ? `${g.category}::${subCategoryKeyForGame(g)}` : subCategoryKeyForGame(g);
                 (groups[key] ||= []).push(g);
               }
-
               const keys = Array.from(new Set([...ordered, ...Object.keys(groups)])).filter(
                 (k) => (groups[k] || []).length > 0
               );
 
               const labelFor = (k: string) => {
-                const def = (difficultyQuery.trim() ? GAME_CATEGORIES.flatMap((c) => GAME_SUBCATEGORIES?.[c.id] || []) : GAME_SUBCATEGORIES?.[activeCat] || []).find((s) => s.id === k);
-                if (def?.label) return localizedSubcategoryLabel(String(activeCat), k, String(def.label), lang);
-                if (k === "other") return t("games.subcat.other", "Autres");
-                return k;
+                const [category, subKey] = globalModeFilter ? k.split('::') : [String(activeCat), k];
+                const cat = GAME_CATEGORIES.find(c => String(c.id) === category);
+                const def = (GAME_SUBCATEGORIES?.[category as GameCategory] || []).find(s => s.id === subKey);
+                const subLabel = def?.label
+                  ? localizedSubcategoryLabel(category, subKey, String(def.label), lang)
+                  : subKey === "other" ? t("games.subcat.other", "Autres") : subKey;
+                if (!globalModeFilter) return subLabel;
+                const catLabel = cat ? localizedCategoryLabel(category, String(cat.label), lang) : category;
+                return subKey === "classic" || !def ? catLabel : `${catLabel} · ${subLabel}`;
               };
 
               return keys.map((k) => (
@@ -2175,7 +2189,7 @@ export default function Games({ setTab, params }: Props) {
                         </div>
 
                         <div style={{position:"absolute",zIndex:2,right:64,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
-                          <GameDifficultyStars game={g} compact />
+                          <GameDifficultyStars game={g} compact showValue={false} />
                         </div>
                         <div
                           style={{

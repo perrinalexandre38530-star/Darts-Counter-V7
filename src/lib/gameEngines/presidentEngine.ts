@@ -377,23 +377,25 @@ export function presidentResolvePlayedTarget(
   state: PresidentState,
   darts: GameDart[],
   preferred: PresidentTarget | null = null,
-  strictSelection = false,
+  _strictSelection = false,
 ): PresidentTarget | null {
   const hand = state.hands[state.activePlayerId] || [];
   const legal = presidentLegalTargets(hand, state.currentTarget, state.revolutionActive);
   if (!legal.length) return null;
   const same = (a: PresidentTarget, b: PresidentTarget) => a.value === b.value && a.size === b.size;
   for (const dart of (darts || []).slice(0, state.rules.dartsPerAttempt || 3)) {
-    // Preserve the selection on ambiguous CHAOS joker hits, but never let an
-    // obsolete or illegal selection override an actual legal shot.
-    if (preferred && legal.some(t => same(t, preferred)) && dartMatchesTarget(dart, preferred, state).ok) {
-      return preferred;
-    }
-    if (strictSelection) continue; // Manuel : une autre cible légale ne remplace jamais le choix explicite.
-    const exact = legal.find(t => t.value === 50 && dart.bed === "IB" ||
-      t.value === 25 && dart.bed === "OB" ||
-      t.value < 25 && dart.bed === (t.size === 1 ? "S" : t.size === 2 ? "D" : "T") && Number(dart.number) === presidentSegmentForCard(state, t.value));
+    // Priorité à la carte physiquement touchée, même en sélection MANUELLE.
+    // La cible pré-sélectionnée n'est qu'un conseil de visée.
+    const exact = legal.find(t =>
+      (t.value === 50 && dart.bed === "IB") ||
+      (t.value === 25 && dart.bed === "OB") ||
+      (t.value < 25 && dart.bed === (t.size === 1 ? "S" : t.size === 2 ? "D" : "T") &&
+       Number(dart.number) === presidentSegmentForCard(state, t.value)));
     if (exact) return exact;
+    // CHAOS : un joker peut correspondre à plusieurs cibles légales. Dans
+    // ce seul cas, respecter la cible choisie explicitement par le joueur.
+    if (preferred && legal.some(t => same(t, preferred)) && dartMatchesTarget(dart, preferred, state).ok)
+      return preferred;
     const special = legal.find(t => dartMatchesTarget(dart, t, state).ok);
     if (special) return special;
   }
@@ -738,7 +740,7 @@ export function playPresidentTurn(state: PresidentState, target: PresidentTarget
   // The physical hit takes precedence over an obsolete selection. Resolve
   // against the live hand before checking legality; otherwise a stale S3
   // blocks an actual, legal S4 when the table has changed.
-  const actualTarget = presidentResolvePlayedTarget(next, normalizedDarts, target, next.rules.selectionMode === "manual");
+  const actualTarget = presidentResolvePlayedTarget(next, normalizedDarts, target);
   const candidate = actualTarget || target;
   const legal = presidentLegalTargets(hand, next.currentTarget, next.revolutionActive)
     .some((t) => t.value === candidate.value && t.size === candidate.size);

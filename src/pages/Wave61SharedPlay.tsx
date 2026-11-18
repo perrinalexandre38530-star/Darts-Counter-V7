@@ -3,6 +3,8 @@ import "./wave61/MexicainFiesta.css";
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
 import { buildMexicainRoundStandings } from "../lib/gameEngines/mexicainStandings";
+import { getMexicainContract } from "../lib/gameEngines/wave61Engine";
+import { mexicainScoreDarts, mariachiAccepts, type MariachiContract } from "../lib/gameEngines/mexicainMariachi";
 import { shouldShowWave61VisitRecap, isWave61VisitRecapBlocking, releaseMexicainPendingBotRecap } from "../lib/gameEngines/mexicainTurnFlow";
 import { resolveBotGameDifficulty, resolveBotStars } from "../lib/botSkillLevel";
 import { createPortal } from "react-dom";
@@ -185,7 +187,7 @@ function familyRules(spec: any, preset: any) {
     microscopia: "Isole six échantillons microscopiques tout en contrôlant la contamination. BULL désinfecte le laboratoire.",
     disjoncte: "Alimente six circuits sans faire sauter l'installation. Doubles/triples sont puissants mais font grimper la surcharge ; BULL met à la terre.",
     petit_bac: "Six catégories et une lettre liée au secteur. Touche la lettre demandée pour valider la catégorie ; BULL sert de joker. La saisie des mots sera ajoutée dans le Play dédié.",
-    mexicain: "Une cible commune (1 à 20 ou BULL) est tirée au début de chaque manche. En variante MEXICO, la cible change à chaque manche sans répétition jusqu'à avoir parcouru les secteurs disponibles. Chaque joueur lance trois fléchettes sur la même cible ; seules les touches correspondantes marquent. Le plus faible score perd une vie ; une égalité générale ne coûte aucune vie. Le dernier survivant gagne.",
+    mexicain: "CLASSIQUE : un secteur commun par manche (1 à 20 ou BULL). MEXICO : nouveau secteur sans répétition. MARIACHI : contrat commun personnalisable (plusieurs secteurs, doubles, triples, couleurs, pairs/impairs, ou FIESTA). Seuls les impacts conformes comptent ; les autres valent 0. Bonus facultatifs : TORTILLA (D + T sur le même numéro valide, +1 × numéro), ENCHILADAS (S + D + T, +4 × numéro), non cumulables. Chacun lance 3 fléchettes. Si tous ont le même score, personne ne perd de vie ; sinon tous les derniers ex æquo perdent une vie. Le dernier survivant gagne.",
     hot_potato: "La mèche descend à chaque tour. Touche le secteur demandé pour transmettre proprement la patate ; une mèche à zéro provoque une explosion et coûte une vie.",
     zombie_siege: "Un camp commence infecté. Les zombies propagent la contamination, les survivants renforcent leurs barricades et les BULL permettent de réduire l'infection.",
     le_loup: "Le loup doit toucher sa cible pour attraper un joueur et transmettre le rôle. Les fuyards progressent et peuvent obtenir une protection au BULL.",
@@ -1237,23 +1239,47 @@ function MexHeartLives({ lives = 0 }: { lives?: number }) {
 function MexicainTargetInput({ state, currentThrow, setCurrentThrow, onValidate, accent }: any) {
   const targetNumber = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
   const bull = targetNumber === 21;
+  const contract:MariachiContract|null = getMexicainContract(state);
+  const [selectedMultiplier,setSelectedMultiplier]=React.useState<1|2|3>(1);
   const locked = currentThrow.length >= 3 || state.phase !== "playing";
-  const append = (mult: number, isMiss = false) => {
+  const combo=mexicainScoreDarts((currentThrow||[]).map(uiToGameDart),targetNumber,contract,state?.config?.modeOptions?.mexicainBonus==='yes');
+  const append = (mult: number, isMiss = false, selectedNumber?:number) => {
     if (locked) return;
-    setCurrentThrow((previous: UIDart[]) => previous.length >= 3 ? previous : [...previous, isMiss ? {v:0,mult:1} : {v:bull?25:targetNumber,mult}]);
+    setCurrentThrow((previous: UIDart[]) => previous.length >= 3 ? previous : [...previous, isMiss ? {v:0,mult:1} : {v:selectedNumber ?? (bull?25:targetNumber),mult}]);
   };
   const dartText = (d: any) => !d ? "" : Number(d.v) === 0 ? "MISS" : Number(d.v) === 25 ? (Number(d.mult) === 2 ? "BULL50" : "BULL25") : `${Number(d.mult) === 3 ? "T" : Number(d.mult) === 2 ? "D" : "S"}${d.v}`;
-  const dartTone = (d: any) => !d ? "empty" : Number(d.v) === 0 ? "miss" : Number(d.mult) === 3 ? "triple" : Number(d.mult) === 2 ? "double" : "single";
-  return <section className="mex-target-input" data-mexicain-target-input="1" aria-label="Saisie sur la cible tirée au sort">
+  const dartTone = (d: any) => !d ? "empty" : Number(d.v) === 0 ? "miss" : Number(d.v) === 25 ? (Number(d.mult)===2?"bull50":"bull25") : Number(d.mult) === 3 ? "triple" : Number(d.mult) === 2 ? "double" : "single";
+  return <section className={`mex-target-input ${contract?'mex-mariachi-input':''}`} data-mexicain-target-input="1" aria-label={contract?'Saisie du contrat MARIACHI':'Saisie sur la cible tirée au sort'}>
     <div className="mex-target-slots" role="group" aria-label={`${currentThrow.length} impacts sur 3`}>
       {[0,1,2].map(i => <div key={i} className={`mex-dart-slot ${currentThrow[i] ? "is-filled" : ""} mex-dart-${dartTone(currentThrow[i])}`} aria-label={`Fléchette ${i+1} : ${dartText(currentThrow[i]) || "à jouer"}`}><MexDart/><span>{dartText(currentThrow[i]) || `D${i+1}`}</span></div>)}
     </div>
-    <div className="mex-target-keys">
+    {combo.bonusName ? <div className="mex-combo-notice" role="status" aria-live="polite"><strong>{combo.bonusName}</strong><span>+{combo.bonus} POINTS BONUS</span></div> : null}
+    {contract ? <>
+      <div className="mex-mariachi-keytop">
+        <span aria-label="Contrat MARIACHI en cours">🎺 {contract.label}</span>
+        <div className="mex-mariachi-multipliers" role="group" aria-label="Multiplicateur de l'impact">
+          {([1,2,3] as const).map(m=><button key={m} type="button" className={`mex-hit-${m===1?'single':m===2?'double':'triple'}`} aria-pressed={selectedMultiplier===m} onClick={()=>setSelectedMultiplier(m)}>{m===1?'S':m===2?'D':'T'}</button>)}
+        </div>
+      </div>
+      <div className="mex-mariachi-numgrid" role="group" aria-label="Numéros 1 à 20 — les impacts hors contrat valent zéro">
+        {Array.from({length:20},(_,i)=>i+1).map(n=>{
+          const valid=mariachiAccepts({number:n,bed:selectedMultiplier===3?'T':selectedMultiplier===2?'D':'S'},contract);
+          return <button key={n} type="button" disabled={locked} aria-label={`${selectedMultiplier===3?'Triple':selectedMultiplier===2?'Double':'Simple'} ${n} ${valid?'autorisé':'hors contrat'}`} className={`mex-hit-${selectedMultiplier===3?'triple':selectedMultiplier===2?'double':'single'} ${valid?'is-in-contract':'is-out-contract'}`} onClick={()=>append(selectedMultiplier,false,n)}>{n}</button>;
+        })}
+      </div>
+      <div className="mex-target-keys mex-mariachi-actions">
+        <button className={`mex-hit-bull25 ${mariachiAccepts({bed:'OB'},contract)?'is-in-contract':'is-out-contract'}`} disabled={locked} onClick={()=>append(1,false,25)}>BULL25</button>
+        <button className={`mex-hit-bull50 ${mariachiAccepts({bed:'IB'},contract)?'is-in-contract':'is-out-contract'}`} disabled={locked} onClick={()=>append(2,false,25)}>BULL50</button>
+        <button className="mex-hit-miss" disabled={locked} onClick={()=>append(1,true)}>MISS</button>
+        <button className="mex-hit-undo" disabled={!currentThrow.length} onClick={()=>setCurrentThrow((previous:UIDart[])=>previous.slice(0,-1))}><MexIcon name="undo" size={16}/> ANNULER</button>
+        <button className="mex-hit-validate" disabled={currentThrow.length!==3||state.phase!=="playing"} onClick={onValidate}><MexIcon name="check" size={16}/> VALIDER</button>
+      </div>
+    </> : <div className="mex-target-keys">
       {bull ? <><button type="button" className="mex-hit-bull25" disabled={locked} onClick={()=>append(1)}>BULL 25</button><button type="button" className="mex-hit-bull50" disabled={locked} onClick={()=>append(2)}>BULL 50</button></> : <><button type="button" className="mex-hit-single" disabled={locked} onClick={()=>append(1)}>S{targetNumber}</button><button type="button" className="mex-hit-double" disabled={locked} onClick={()=>append(2)}>D{targetNumber}</button><button type="button" className="mex-hit-triple" disabled={locked} onClick={()=>append(3)}>T{targetNumber}</button></>}
       <button type="button" className="mex-hit-miss" disabled={locked} onClick={()=>append(1,true)}><MexIcon name="miss" size={17}/> MISS</button>
       <button type="button" className="mex-hit-undo" disabled={!currentThrow.length} onClick={()=>setCurrentThrow((previous:UIDart[])=>previous.slice(0,-1))}><MexIcon name="undo" size={17}/> ANNULER</button>
       <button type="button" className="mex-hit-validate" disabled={currentThrow.length !== 3 || state.phase!=="playing"} onClick={onValidate}><MexIcon name="check" size={18}/> VALIDER</button>
-    </div>
+    </div>}
   </section>;
 }
 
@@ -1266,13 +1292,9 @@ function MexicainActivePlayer({player,profile,state,currentThrow,onOpenScore}:an
   const round=Number(state?.roundIndex||0)+1;
   const survivors=(state?.players||[]).filter((p:any)=>!state?.eliminated?.[p.id]).length;
   // The live total includes the impacts currently being entered, before VALIDATE.
-  const pending=(currentThrow||[]).reduce((sum:number, dart:any)=> {
-    const value=Number(dart?.v||0);
-    const mult=Number(dart?.mult||1);
-    if (!value) return sum;
-    if (targetNumber===21) return value===25 ? sum+25*mult : sum;
-    return value===targetNumber ? sum+value*mult : sum;
-  },0);
+  const contract=getMexicainContract(state);
+  const pending=mexicainScoreDarts((currentThrow||[]).map(uiToGameDart),targetNumber,contract,
+    state?.config?.modeOptions?.mexicainBonus==='yes').total;
   const liveScore=confirmed+pending;
   return <section className="mex-active-player mex-active-player-premium mex-active-v167" data-mexicain-active-player="1">
     {portrait ? <div className="mex-active-watermark" style={{backgroundImage:`url(${portrait})`}} aria-hidden="true"/> : null}
@@ -1299,11 +1321,9 @@ function MexicainScoreDetail({ state, currentThrow, tab, onTabChange }: any) {
   const round=Number(state?.roundIndex||0)+1;
   const roundTarget=Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20);
   const activeId=state?.players?.[state?.activePlayerIndex]?.id;
-  const pendingScore=(currentThrow||[]).reduce((total:number,dart:any)=>{
-    const value=Number(dart?.v||0), mult=Number(dart?.mult||1);
-    if (!value) return total;
-    return roundTarget===21 ? (value===25 ? total+25*mult : total) : (value===roundTarget ? total+value*mult : total);
-  },0);
+  const pendingResult=mexicainScoreDarts((currentThrow||[]).map(uiToGameDart),roundTarget,getMexicainContract(state),
+    state?.config?.modeOptions?.mexicainBonus==='yes');
+  const pendingScore=pendingResult.total;
   const tabs=[{id:"round",label:"MANCHE",icon:"objective"},{id:"recap",label:"RÉCAP",icon:"history"},{id:"evolution",label:"ÉVOLUTION",icon:"ranking"},{id:"survival",label:"VIES",icon:"players"}];
   const lines=players.map((p:any,i:number)=>({
     player:p,
@@ -1328,8 +1348,8 @@ function MexicainScoreDetail({ state, currentThrow, tab, onTabChange }: any) {
   const maxValue=Math.max(1,...lines.flatMap((l:any)=>l.values));
   return <div className="mex-score-detail">
     <nav className="mex-score-tabs" aria-label="Détails des scores">{tabs.map(t=><button type="button" key={t.id} className={tab===t.id?"selected":""} onClick={()=>onTabChange(t.id)}><MexIcon name={t.icon} size={17}/><span>{t.label}</span></button>)}</nav>
-    {tab==="round"?<div className="mex-score-rows"><h4>RONDA {round} · CIBLE {Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20)===21?"BULL":state?.special?.mexicainTargets?.[state?.roundIndex]}</h4>{players.map(p=><div key={p.id}><b>{p.name}</b><strong>{activeScores[p.id]==null?(String(p.id)===String(activeId)&&currentThrow?.length?`${pendingScore} PTS · SAISIE EN COURS`:"EN ATTENTE"):`${Number(activeScores[p.id])} PTS VALIDÉS`}</strong></div>)}</div>:null}
-    {tab==="recap"?<div className="mex-score-history">{history.length?history.slice().reverse().map((h:any,i:number)=><section key={i}><h4>RONDA {h.round} · CIBLE {h.target===21?"BULL":h.target}</h4>{(h.scores||[]).map((sc:any)=><div key={sc.id}><span>{players.find((p:any)=>String(p.id)===String(sc.id))?.name||sc.id}</span><strong>{sc.score} PTS {h.losers?.includes(sc.id)?`· −${h.lifeLoss} ♥`:""}</strong></div>)}</section>):<p>Aucune manche terminée pour le moment.</p>}</div>:null}
+    {tab==="round"?<div className="mex-score-rows"><h4>RONDA {round} · {getMexicainContract(state)?.label || `CIBLE ${Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20)===21?"BULL":state?.special?.mexicainTargets?.[state?.roundIndex]}`}</h4>{players.map(p=><div key={p.id}><b>{p.name}</b><strong>{activeScores[p.id]==null?(String(p.id)===String(activeId)&&currentThrow?.length?`${pendingScore} PTS · ${pendingResult.bonusName ? pendingResult.bonusName + ' +' + pendingResult.bonus : 'SAISIE EN COURS'}`:"EN ATTENTE"):`${Number(activeScores[p.id])} PTS VALIDÉS`}</strong></div>)}</div>:null}
+    {tab==="recap"?<div className="mex-score-history">{history.length?history.slice().reverse().map((h:any,i:number)=><section key={i}><h4>RONDA {h.round} · {h.contractLabel||`CIBLE ${h.target===21?"BULL":h.target}`}</h4>{(h.scores||[]).map((sc:any)=><div key={sc.id}><span>{players.find((p:any)=>String(p.id)===String(sc.id))?.name||sc.id}</span><strong>{sc.score} PTS {h.bonuses?.[sc.id]?.name?`· ${h.bonuses[sc.id].name} +${h.bonuses[sc.id].points}`:''} {h.losers?.includes(sc.id)?`· −${h.lifeLoss} ♥`:""}</strong></div>)}</section>):<p>Aucune manche terminée pour le moment.</p>}</div>:null}
     {tab==="survival"?<div className="mex-score-evolution">
       <h4>ÉVOLUTION DES VIES · SURVIE</h4>
       {history.length ? <>
@@ -1348,7 +1368,8 @@ function MexicainScoreDetail({ state, currentThrow, tab, onTabChange }: any) {
 
 function MexicainPanel({ state, accent, detailed = false, avatarFor }: any) {
   const n = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
-  const target = n === 21 ? "BULL" : String(n);
+  const contract=getMexicainContract(state);
+  const target = contract ? "MARIACHI" : n === 21 ? "BULL" : String(n);
   const current = state?.special?.mexicainRoundScores || {};
   const last = (state?.special?.mexicainHistory || []).slice(-1)[0];
   const active = state?.players?.[state?.activePlayerIndex]?.id;
@@ -1357,7 +1378,7 @@ function MexicainPanel({ state, accent, detailed = false, avatarFor }: any) {
   const min = scores.length ? Math.min(...scores) : null;
   return <section className={`mex-fiesta-scoreboard ${detailed ? "mex-detailed" : "mex-compact"}`} data-mexicain-panel="1" aria-label="Tableau de manche du Mexicain">
     {detailed ? <div className="mex-score-head"><span><b>RONDA {Number(state?.roundIndex || 0)+1}</b></span><span>{living.length} SURVIVANTS</span><span className="mex-score-darts">{[0,1,2].map(i=><img key={i} src={cricketDartSvg} alt=""/>)}</span></div> : null}
-    <div className="mex-target-stage mex-target-art" role="img" aria-label={`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">{state?.config?.modeOptions?.targetMode === "mexico" ? "MEXICO · OBJECTIF" : "OBJECTIF"}</span><strong className="mex-target-number">{target}</strong></div>
+    <div className={`mex-target-stage mex-target-art ${contract?'mex-target-is-mariachi':''}`} role="group" aria-label={contract?`Contrat commun : ${contract.label}`:`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">{contract ? "🎺 CONTRAT MARIACHI" : state?.config?.modeOptions?.targetMode === "mexico" ? "MEXICO · OBJECTIF" : "OBJECTIF"}</span><strong className="mex-target-number">{target}</strong>{contract ? <small className="mex-target-contract-label">{contract.label}</small> : null}</div>
     {detailed ? <div className="mex-player-grid">{(state?.players||[]).map((p:any)=>{
       const out=!!state?.eliminated?.[p.id]; const hearts=Math.max(0,Number(state?.lives?.[p.id]||0));
       const value=current[p.id];const isLow=value!=null && min!=null && Number(value)===min && scores.length>1 && !scores.every(s=>s===min);
@@ -1643,7 +1664,7 @@ export default function Wave61SharedPlay(props: any) {
         };
       }),
       game: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION, resumeRoute: "wave61_play" },
-      summary: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config, series, mexicain: spec.id === "mexicain" ? { rounds: [...(s.special?.mexicainHistory || [])].map((r:any)=>({round:r.round,target:r.target,scores:(r.scores||[]).map((x:any)=>({id:x.id,score:x.score})),losers:[...(r.losers||[])],lifeLoss:r.lifeLoss})), startingLives:s.config?.modeOptions?.progressive === "survival" ? 5 : 3, finalLives:{...s.lives} } : undefined, shoveAPenny: spec.id === "shove_a_penny" ? { ruleSet: s.config?.modeOptions?.ruleSet, endMode: s.config?.modeOptions?.endMode, marksPerBox: s.config?.modeOptions?.marksPerBox || 3, finishOrder: [...(s.special?.shoveFinishOrder || [])], marksByPlayer: { ...(s.special?.shoveMarksByPlayer || {}) } } : undefined, outcome: s.special?.troupeauSoloDefeat ? "defeat" : (status === "finished" ? "victory" : null) },
+      summary: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config, series, mexicain: spec.id === "mexicain" ? { rounds: [...(s.special?.mexicainHistory || [])].map((r:any)=>({round:r.round,target:r.target,contractLabel:r.contractLabel,bonuses:r.bonuses,scores:(r.scores||[]).map((x:any)=>({id:x.id,score:x.score})),losers:[...(r.losers||[])],lifeLoss:r.lifeLoss})), startingLives:s.config?.modeOptions?.progressive === "survival" ? 5 : 3, finalLives:{...s.lives} } : undefined, shoveAPenny: spec.id === "shove_a_penny" ? { ruleSet: s.config?.modeOptions?.ruleSet, endMode: s.config?.modeOptions?.endMode, marksPerBox: s.config?.modeOptions?.marksPerBox || 3, finishOrder: [...(s.special?.shoveFinishOrder || [])], marksByPlayer: { ...(s.special?.shoveMarksByPlayer || {}) } } : undefined, outcome: s.special?.troupeauSoloDefeat ? "defeat" : (status === "finished" ? "victory" : null) },
       resume: { mode: "wave61", modeId: spec.id, variantId: s.config?.variantId, config: s.config, state: cloneWave61State(s), route: "wave61_play", currentThrow: currentThrow.slice(0, 3), multiplier, updatedAt: Date.now() },
       payload: { kind: spec.id, mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, sport: "darts", winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, config: s.config, stateSnapshot: cloneWave61State(s), currentThrow: currentThrow.slice(0, 3), multiplier, visits: s.visits, series, stats: { players: playerStats, match: matchStats } },
     };

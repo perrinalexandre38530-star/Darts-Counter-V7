@@ -6,9 +6,18 @@
 import React from "react";
 import { TrainingStore } from "../lib/TrainingStore";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
+import FinishDoWeeklyPanel from "../training/modes/finish/FinishDoWeeklyPanel";
+import { loadFinishDoProgress } from "../training/modes/finish/finishDoProgress";
 
 export default function TrainingStatsPage() {
   const profile = useCurrentProfile();
+  const [finishProgress, setFinishProgress] = React.useState(() => loadFinishDoProgress(profile?.id));
+  React.useEffect(() => {
+    const refresh = () => setFinishProgress(loadFinishDoProgress(profile?.id));
+    refresh();
+    window.addEventListener("mss-finish-do-progress", refresh);
+    return () => window.removeEventListener("mss-finish-do-progress", refresh);
+  }, [profile?.id]);
 
   const [sessions, setSessions] = React.useState(() =>
     TrainingStore.getSessionsForProfile(profile ? profile.id : null)
@@ -24,6 +33,7 @@ export default function TrainingStatsPage() {
   return (
     <div className="container" style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 6 }}>Évolution Training</h2>
+      <FinishDoWeeklyPanel progress={finishProgress} />
 
       <p style={{ opacity: 0.7, fontSize: 13, marginBottom: 16 }}>
         Historique des sessions et précision globale.

@@ -4,7 +4,7 @@ export type NavigationPlaybackMode = "random" | "ordered";
 export type AudioSfxCategory = "gameplay" | "impact" | "arcade" | "ui";
 
 export type AudioPreferences = {
-  version: 9;
+  version: 10;
   masterEnabled: boolean;
   navigationMusicEnabled: boolean;
   navigationVolume: number;
@@ -79,8 +79,12 @@ const VERSION_8_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
   "scoring_overture",
 ];
 
+// V9 playlist: preserve existing users’ selection while enabling the newly appended tracks
+// only when they previously had every available track enabled.
+const VERSION_9_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = NAVIGATION_MUSIC_TRACK_IDS.slice(0, -9);
+
 export const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = {
-  version: 9,
+  version: 10,
   masterEnabled: true,
   navigationMusicEnabled: true,
   navigationVolume: 0.22,
@@ -142,12 +146,15 @@ export function sanitizeAudioPreferences(value: unknown): AudioPreferences {
   const hadVersion8DefaultPlaylist = rawVersion === 8
     && storedEnabledTrackIds.length === VERSION_8_DEFAULT_TRACK_IDS.length
     && VERSION_8_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
-  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist || hadVersion5DefaultPlaylist || hadVersion6DefaultPlaylist || hadVersion7DefaultPlaylist || hadVersion8DefaultPlaylist
+  const hadVersion9DefaultPlaylist = rawVersion === 9
+    && storedEnabledTrackIds.length === VERSION_9_DEFAULT_TRACK_IDS.length
+    && VERSION_9_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist || hadVersion5DefaultPlaylist || hadVersion6DefaultPlaylist || hadVersion7DefaultPlaylist || hadVersion8DefaultPlaylist || hadVersion9DefaultPlaylist
     ? [...NAVIGATION_MUSIC_TRACK_IDS]
     : storedEnabledTrackIds;
 
   return {
-    version: 9,
+    version: 10,
     masterEnabled: raw.masterEnabled !== false,
     navigationMusicEnabled: raw.navigationMusicEnabled !== false,
     navigationVolume: clamp01(raw.navigationVolume, DEFAULT_AUDIO_PREFERENCES.navigationVolume),

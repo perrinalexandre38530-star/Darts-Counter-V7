@@ -893,7 +893,13 @@ function PresidentStandardPlay(props: any) {
   }, [activeId, state.history.length, state.trickNo, state.roundNo, state.currentTarget?.value, state.currentTarget?.size, state.revolutionActive]);
 
   React.useEffect(() => {
-    if (state.roundResults.length > roundCountRef.current) {
+    // An UNDO can return to a previous round. Do not retain the old count:
+    // otherwise winning that same round again would never show its summary.
+    if (state.roundResults.length < roundCountRef.current) {
+      roundCountRef.current = state.roundResults.length;
+      setShowRound(false);
+      setShowEnd(false);
+    } else if (state.roundResults.length > roundCountRef.current) {
       roundCountRef.current = state.roundResults.length;
       if (!state.finished) setShowRound(true);
     }
@@ -914,9 +920,9 @@ function PresidentStandardPlay(props: any) {
       return;
     }
     const normalized = darts.map(toGameDart);
-    const realTarget = config.selectionMode === "manual"
-      ? target
-      : presidentResolvePlayedTarget(snapshot, normalized, target);
+    // The physical impact is authoritative in both MANUAL and ASSISTED modes.
+    // Manual selection controls the suggested shot, not which legal card was hit.
+    const realTarget = presidentResolvePlayedTarget(snapshot, normalized, target);
     const candidate = realTarget || target;
     const stillLegal = presidentLegalTargets(snapshot.hands[snapshot.activePlayerId] || [], snapshot.currentTarget, snapshot.revolutionActive)
       .some((allowed) => allowed.size === candidate.size && allowed.value === candidate.value);
@@ -949,7 +955,7 @@ function PresidentStandardPlay(props: any) {
     // suggested shot was highlighted. Example: S3 highlighted, S4 hit, 4 held:
     // play S4 instead of falsely recording a failed S3 and passing the turn.
     // Restrict auto-resolution to legal targets from this player's real hand.
-    const matchingLegal = presidentResolvePlayedTarget(state, [toGameDart(d)], selectedTarget, config.selectionMode === "manual");
+    const matchingLegal = presidentResolvePlayedTarget(state, [toGameDart(d)], selectedTarget);
     if (matchingLegal) { commitAttempt(next, matchingLegal); return; }
     if (next.length >= (config.dartsPerAttempt || 3)) { commitAttempt(next, selectedTarget); }
   }
@@ -969,6 +975,24 @@ function PresidentStandardPlay(props: any) {
     setState(next);
     setThrowDarts([]); setMultiplier(1); setNotice("PASSÉ");
   }
+  function confirmTaxExchange(indices: number[]) {
+    const snapshot = liveStateRef.current;
+    // A delayed click from the previous tax dialog must not change the next
+    // exchange or pollute UNDO. The engine is the final validator.
+    if (snapshot !== state || !snapshot.pendingTaxes?.length || botTurnRef.current !== turnKey) return;
+    const next = resolvePresidentTax(snapshot, indices);
+    if (next === snapshot) {
+      setNotice("Échange refusé : choisis exactement le nombre de cartes demandé.");
+      return;
+    }
+    liveStateRef.current = next;
+    botTurnRef.current = "tax-pending";
+    setUndo(u => [...u.slice(-49), clonePresidentState(snapshot)]);
+    setState(next);
+    setSelectedTarget(null);
+    setThrowDarts([]);
+    setNotice("");
+  }
   function undoTurn() {
     if (throwDarts.length) { setThrowDarts([]); setMultiplier(1); setNotice(""); return; }
     if (!undo.length || state.finished) return;
@@ -976,6 +1000,13 @@ function PresidentStandardPlay(props: any) {
     // Invalidate any scheduled bot action before restoring a previous turn.
     botTurnRef.current = "undo-pending";
     liveStateRef.current = prev;
+    // Also invalidate transitions and the round-announcement cursor. Undoing
+    // the final move of a round must permit that round to finish again.
+    roundCountRef.current = Math.min(roundCountRef.current, prev.roundResults.length);
+    setShowRound(false);
+    setShowEnd(false);
+    setTrickTransition(null);
+    setRevealedTurnKey(null);
     setUndo((u)=>u.slice(0,-1)); setState(prev); setNotice("Dernier tour annulé.");
   }
   function back() {
@@ -1373,7 +1404,7 @@ function PresidentStandardPlay(props: any) {
       <div style={{ ...panel(), marginTop:8, padding:9 }}><div style={{ color:"#c45cff",fontSize:10,fontWeight:1100,marginBottom:6 }}>COMPARATIF JOUEURS</div>{standingsLive.map((row:any,i:number)=>{const st=state.statsByPlayer[row.id];const rate=formatPct(st.successfulPlays,st.visits);return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"24px 32px minmax(0,1fr) repeat(3,auto)",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid rgba(255,255,255,.05)" }}><div style={{ color:i===0?"#ffd45c":"rgba(255,255,255,.55)",fontWeight:1100 }}>{i+1}</div><ProfileAvatar profile={profilesById.get(row.id)} size={28}/><div style={{ minWidth:0,fontWeight:1000,fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:"#c45cff",fontWeight:1100,fontSize:10 }}>{row.powerPoints} pts</div><div style={{ color:"#43d8ff",fontWeight:1000,fontSize:9 }}>{st.tricksWon} plis</div><div style={{ color:"#72efad",fontWeight:1000,fontSize:9 }}>{rate}%</div></div>})}</div>
     </ModalShell>:null}
 
-    {!showRound && !state.finished && Boolean(state.pendingTaxes?.length) ? <TaxExchangeOverlay key={`${state.roundNo}-${state.pendingTaxes?.[0]?.highId}`} state={state} profilesById={profilesById} primary={primary} onConfirm={(indices:number[])=>{setUndo(u=>[...u.slice(-49),clonePresidentState(state)]);setState(prev=>resolvePresidentTax(prev,indices));setSelectedTarget(null);setThrowDarts([]);}}/> : null}
+    {!showRound && !state.finished && Boolean(state.pendingTaxes?.length) ? <TaxExchangeOverlay key={`${state.roundNo}-${state.pendingTaxes?.[0]?.kind}-${state.pendingTaxes?.[0]?.highId}-${state.pendingTaxes?.[0]?.lowId}`} state={state} profilesById={profilesById} primary={primary} onConfirm={confirmTaxExchange}/> : null}
     {showRound && latestRound && !state.finished ? <RoundOverlay result={latestRound} state={state} profilesById={profilesById} primary={primary} onClose={()=>setShowRound(false)} /> : null}
     {trickTransition && !showRound && !showEnd ? <PresidentTrickTransition data={trickTransition} profilesById={profilesById} primary={primary} onContinue={()=>setTrickTransition(null)}/> : null}
     {showEnd && state.finished ? <EndOverlay state={state} profilesById={profilesById} primary={primary} onClose={()=>setShowEnd(false)} onReplay={replay} onHistory={()=>{ try { onFinish?.(buildHistoryRecord(),{navigate:true}); } catch { if(typeof go==="function") go("statsHub",{tab:"history"}); } }} /> : null}

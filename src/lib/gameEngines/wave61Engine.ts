@@ -4,6 +4,7 @@ import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Famil
 import { SHOVE_TARGETS, shoveNextTarget, shoveMarkForDart, projectShoveMarks, shoveTargets, shoveRuleSet, shoveClosedCases, shoveTotalMarks } from "./shoveAPennyTargets";
 import { rollShoveBotDart, rollShoveBotVisitForm, shoveBotFallbackStars } from "./shoveBotAccuracy";
 import { rankShovePlayers } from "./shoveAPennyRanking";
+import { mariachiContract, mariachiLegalDarts, mexicainScoreDarts, type MariachiContract } from "./mexicainMariachi";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
 export const WAVE61_ENGINE_VERSION = 25;
@@ -897,8 +898,11 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
           ? mexicainMexicoTargets(seedText, config.modeOptions?.bullEnabled !== "no")
           : Array.from({length: 60}, (_, i) => config.modeOptions?.targetMode === "fixed" ? Math.max(1, Math.min(21, Number(config.modeOptions?.fixedTarget || 20))) : (hashText(`${seedText}:mex:${i}`) % (config.modeOptions?.bullEnabled === "no" ? 20 : 21)) + 1)
       ) : [],
+      mexicainContracts: modeId === "mexicain" && config.modeOptions?.mariachiEnabled === "yes"
+        ? Array.from({length:60},(_,i)=>mariachiContract(config.modeOptions,seedText,i)) : [],
       mexicainHistory: [],
       mexicainRoundScores: {},
+      mexicainRoundBonuses: {},
       hotPotatoSequence: modeId === "hot_potato" ? survivalSequence(seedText, "hotpotato") : [],
       hotPotatoFuse: modeId === "hot_potato" ? hotPotatoFuseReset(config) : 0,
       hotPotatoExplosionsByPlayer: modeId === "hot_potato" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -992,12 +996,21 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
 
 export function cloneWave61State(state: Wave61State): Wave61State { return clone(state); }
 
+/** All players see precisely the same contract for an entire RONDA. */
+export function getMexicainContract(state: Wave61State): MariachiContract | null {
+  if(state?.modeId!=="mexicain"||state?.config?.modeOptions?.mariachiEnabled!=="yes")return null;
+  return state.special?.mexicainContracts?.[state.roundIndex]
+    || mariachiContract(state.config.modeOptions,String(state.startedAt),state.roundIndex);
+}
+
 function targetSequenceIndex(state: Wave61State) { return state.roundIndex + state.activePlayerIndex + state.turnIndex; }
 
 export function getWave61Target(state: Wave61State): Wave61Target {
   if (!state || state.phase === "finished") return null;
   if (["align_4", "demineur", "codebreaker", "face_mystere", "shove_a_penny", "golden_dart"].includes(state.modeId)) return null;
   if (state.modeId === "mexicain") {
+    const contract = getMexicainContract(state);
+    if (contract) return null; // Multi-sector/color contracts are scored separately.
     const number = Number(state.special?.mexicainTargets?.[state.roundIndex] || 20);
     return number === 21 ? {kind: "bull", label: `🇲🇽 MANCHE ${state.roundIndex + 1} · BULL 25 / 50`}
       : {kind: "number", value: number, label: `🇲🇽 MANCHE ${state.roundIndex + 1} · SECTEUR ${number}`};
@@ -4221,13 +4234,17 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
 
   if (state.modeId === "mexicain") {
     const number = Number(state.special?.mexicainTargets?.[state.roundIndex] || 20);
-    const valid = darts.filter(d => number === 21 ? (d?.bed === "OB" || d?.bed === "IB") : (Number(d?.number || 0) === number && ["S", "D", "T"].includes(String(d?.bed))));
-    delta = valid.reduce((sum, d) => sum + wave61DartScore(d), 0);
-    hits = valid.length;
+    const contract = getMexicainContract(state);
+    const result = mexicainScoreDarts(darts,number,contract,
+      state.config.modeOptions?.mexicainBonus === "yes");
+    delta = result.total;
+    hits = result.hits;
     state.scores[player.id] = Number(state.scores[player.id] || 0) + delta;
     state.progress[player.id] = state.scores[player.id];
     state.special.mexicainRoundScores[player.id] = delta;
-    events.push(`🇲🇽 ${target?.label} · ${hits}/3 touches · ${delta} points valides`);
+    state.special.mexicainRoundBonuses ||= {};
+    state.special.mexicainRoundBonuses[player.id] = {name:result.bonusName,points:result.bonus};
+    events.push(`🇲🇽 ${contract?.label || target?.label} · ${hits}/3 touches · ${result.base} pts${result.bonusName ? ` · ${result.bonusName} +${result.bonus}` : ""} · total ${delta}`);
   } else if (state.modeId === "align_4") {
     let won = false, placed = 0;
     for (const d of darts) {
@@ -4826,9 +4843,12 @@ function advanceWave61Turn(state: Wave61State): Wave61State {
     }
     state.special.mexicainHistory = [...(state.special.mexicainHistory || []), {
       round: state.roundIndex + 1, target: state.special.mexicainTargets?.[state.roundIndex],
+      contractLabel: getMexicainContract(state)?.label || null,
+      bonuses: {...(state.special.mexicainRoundBonuses || {})},
       scores, losers: casualties.map(p => p.id), lifeLoss,
     }];
     state.special.mexicainRoundScores = {};
+    state.special.mexicainRoundBonuses = {};
     const survivors = state.players.filter(p => !state.eliminated[p.id]);
     if (survivors.length === 1) {finishWith(state, survivors[0].id); return state;}
     if (survivors.length === 0) {
@@ -4968,6 +4988,14 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
   const target = getWave61Target(state);
   const chance = level === "hard" ? 0.86 : level === "easy" ? 0.50 : 0.69;
   const activeId = state.players[state.activePlayerIndex]?.id;
+  if (state.modeId === "mexicain" && getMexicainContract(state)) {
+    const eligible = mariachiLegalDarts(getMexicainContract(state)!);
+    return Array.from({length:3},()=> {
+      if(!eligible.length || Math.random() >= chance) return Math.random() < 0.6 ? {bed:"MISS"} as GameDart : {bed:"S",number:1+Math.floor(Math.random()*20)} as GameDart;
+      const selection = eligible[Math.floor(Math.random()*eligible.length)];
+      return {...selection} as GameDart;
+    });
+  }
   if (state.modeId === "shove_a_penny") {
     const marks = state.special?.shoveMarksByPlayer?.[activeId] || {};
     const rule = shoveRuleSet(state.config?.modeOptions?.ruleSet);

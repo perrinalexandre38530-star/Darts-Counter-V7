@@ -3861,8 +3861,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           );
         })()}
       </header>
+      <div data-mss-config-difficulty="1" style={{display:"flex",justifyContent:"center",marginTop:0,marginBottom:7}}><GameDifficultyStars game="x01" compact showValue={false} /></div>
       <DartsRelatedModesPanel gameId="x01" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
-      <div data-mss-config-difficulty="1" style={{display:"flex",justifyContent:"center",marginTop:-4,marginBottom:7}}><GameDifficultyStars game="x01" compact /></div>
 
       {/* CONTENU SCROLLABLE */}
       <div ref={contentRef} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>

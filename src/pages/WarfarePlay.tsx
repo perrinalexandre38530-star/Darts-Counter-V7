@@ -551,7 +551,7 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
         const stats = getStats(activePlayer?.id);
         return <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
           label={activeArmy} value={`${ownAlive}/10`} detail={`SOLDATS · ${activeArmy}`}
-          objective={`Éliminer les ${enemyAlive} soldats encore en jeu dans l'armée adverse.`}
+          objective={`Il reste ${enemyAlive} cible${enemyAlive > 1 ? 's' : ''} ennemie${enemyAlive > 1 ? 's' : ''}.`}
           rightTitle="ENNEMIS À ÉLIMINER" rightValue={enemyAlive}
           rightDetail={<span>🎯 Zones {zonesLabel} · {stats.kills||0} élimination(s) · {stats.darts||0} flèche(s)</span>} />;
       })()}
@@ -573,7 +573,7 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
           return (
             <div
               key={army}
-              className={`mss-war-army ${isActiveArmy ? "is-active" : ""}`}
+              className={`mss-war-army ${army === "TOP" ? "is-top" : "is-bottom"} ${isActiveArmy ? "is-active" : ""}`}
               style={{
                 padding: 14,
                 borderRadius: 18,
@@ -584,12 +584,18 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <div style={{ fontWeight: 950, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.7 }}>
-                    {title}
+                  <div className="mss-war-army-label" style={{ color: theme.primary }}>
+                    <span aria-hidden="true">{army === "TOP" ? "▲" : "▼"}</span> {title}
                   </div>
-                  <div style={{ color: theme.textSoft, fontWeight: 900, fontSize: 12 }}>{aliveCount}/10</div>
+                  <span className="mss-war-strength" aria-label={`${aliveCount} soldats sur 10`}>{aliveCount}<small>/10</small></span>
                 </div>
-                {renderMedallions(players, army)}
+                <div className="mss-war-army-side">
+                  {isActiveArmy && <span className="mss-war-current-indicator">EN ACTION</span>}
+                  {renderMedallions(players, army)}
+                </div>
+              </div>
+              <div className="mss-war-army-progress" role="progressbar" aria-valuemin={0} aria-valuemax={10} aria-valuenow={aliveCount} aria-label={`${title} : soldats survivants`}>
+                <div className="mss-war-army-progress-fill" style={{width:`${aliveCount * 10}%`}} />
               </div>
               <div className="mss-war-soldiers">
                 {nums.map((n) => {
@@ -597,6 +603,8 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
                   return (
                     <div
                       key={n}
+                      className={`mss-war-soldier${alive ? " is-alive" : " is-out"}`}
+                      title={`${title} · soldat ${n} · ${alive ? "en vie" : "éliminé"}`}
                       style={{
                         height: 42,
                         borderRadius: 14,
@@ -610,7 +618,7 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
                         textDecoration: alive ? "none" : "line-through",
                       }}
                     >
-                      {n}
+                      <span>{n}</span>{!alive && <span className="mss-war-fallen-mark" aria-hidden="true">×</span>}
                     </div>
                   );
                 })}

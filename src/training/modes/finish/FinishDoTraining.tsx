@@ -2,6 +2,7 @@ import React from "react";
 import "./finishDoTraining.css";
 import { useLang } from "../../../contexts/LangContext";
 import { recordTrainingSession } from "../../stats/trainingStatsHub";
+import { loadFinishDoProgress, saveFinishDoAttempt, getFinishDoPriority } from "./finishDoProgress";
 
 /** A deterministic DO checkout tutor. All scores are derived from actual darts, never intended targets. */
 type Dart = { label: string; value: number; finish: boolean; kind: "S" | "D" | "T" | "MISS" };
@@ -165,6 +166,18 @@ export function aimedDoubleStats(shots: Shot[]): AimedDoubleStat[] {
   }
   return [...rows.values()].sort((a, b) => a.rate - b.rate || b.attempts - a.attempts || a.label.localeCompare(b.label));
 }
+/** Short checkout revision based on explicitly observed target errors only. */
+export function checkoutRevisionForAim(label: string) {
+  const target = label === "BULL50" ? 50 : /^D(?:[1-9]|1[0-9]|20)$/.test(label) ? Number(label.slice(1)) * 2 : 0;
+  if (!target || label === "D1") return null;
+  const hit = label === "BULL50" ? "BULL25" : `S${label.slice(1)}`;
+  const remain = label === "BULL50" ? 25 : target / 2;
+  const answer = remain % 2 === 0 ? `D${remain / 2}` : `S1 → D${(remain - 1) / 2}`;
+  const alternatives = [label === "BULL50" ? "BULL50" : `D${label.slice(1)}`, `D${Math.min(20, Math.max(1, Math.floor(remain / 2) + 1))}`];
+  const options = [answer, ...alternatives.filter(option => option !== answer)].slice(0, 3);
+  return { label, hit, remain, answer, options };
+}
+
 const AIMABLE_DOUBLES = [...Array.from({ length: 20 }, (_, i) => `D${i + 1}`), "BULL50"];
 const doubleValue = (label: string) => label === "BULL50" ? 50 : Number(label.slice(1)) * 2;
 
@@ -180,7 +193,7 @@ const labelMap = {
   random: { fr: "Mixte", en: "Mixed" },
 } as const;
 
-export default function FinishDoTraining({ onExit, challenge = false }: { onExit: () => void; challenge?: boolean }) {
+export default function FinishDoTraining({ onExit, challenge = false, participantId }: { onExit: () => void; challenge?: boolean; participantId?: string | null }) {
   const { lang } = useLang();
   const en = String(lang).toLowerCase().startsWith("en");
   const [score, setScore] = React.useState(40);
@@ -203,6 +216,10 @@ export default function FinishDoTraining({ onExit, challenge = false }: { onExit
   const [completedShots, setCompletedShots] = React.useState<Shot[]>([]);
   const [trackAim, setTrackAim] = React.useState(false);
   const [aimedDouble, setAimedDouble] = React.useState("D20");
+  const [revisionChoice, setRevisionChoice] = React.useState<string | null>(null);
+  const [showRevision, setShowRevision] = React.useState(false);
+  const [career, setCareer] = React.useState(() => loadFinishDoProgress(participantId));
+  React.useEffect(() => { setCareer(loadFinishDoProgress(participantId)); }, [participantId]);
 
   const pendingResult = React.useRef<{ score: number; won: boolean; darts: number; shots: Shot[] } | null>(null);
   const savePending = () => {
@@ -211,11 +228,13 @@ export default function FinishDoTraining({ onExit, challenge = false }: { onExit
     pendingResult.current = null;
     const hits = result.shots.filter((s) => s.dart.kind !== "MISS").length;
     setCompletedShots((prev) => [...prev, ...result.shots]);
+    setCareer(saveFinishDoAttempt(participantId, result.shots.map(s => ({ aimedDouble: s.aimedDouble, actual: s.dart.label }))));
     recordTrainingSession(
       challenge ? "training_finish_challenge" : "training_finish_do",
       result.darts,
       result.shots.reduce((sum, s) => sum + s.dart.value, 0),
       {
+        participantId: participantId || "guest",
         checkoutScore: result.score,
         success: result.won,
         checkoutSuccess: result.won,
@@ -253,6 +272,10 @@ export default function FinishDoTraining({ onExit, challenge = false }: { onExit
   const aimStats = React.useMemo(() => aimedDoubleStats([...completedShots, ...shots]), [completedShots, shots]);
   const aimLastShot = lastShot?.aimedDouble ? lastShot : null;
   const aimHit = !!aimLastShot && aimLastShot.dart.label === aimLastShot.aimedDouble;
+  const weakestAim = aimStats.find(item => item.misses > 0 && checkoutRevisionForAim(item.label)) ?? null;
+  const careerPriority = getFinishDoPriority(career);
+  const revisionAim = weakestAim || (careerPriority ? { label: careerPriority.label, attempts: careerPriority.attempts, hits: careerPriority.hits, misses: careerPriority.attempts - careerPriority.hits, rate: Math.round(careerPriority.hits * 100 / careerPriority.attempts) } : null);
+  const revision = revisionAim ? checkoutRevisionForAim(revisionAim.label) : null;
   const nextScore = () => {
     const pool = level === "basic" ? BASIC_SCORES : level === "advanced" ? ADVANCED_SCORES : DEFAULT_SCORES;
     return pool[Math.floor(Math.random() * pool.length)];
@@ -695,6 +718,13 @@ export default function FinishDoTraining({ onExit, challenge = false }: { onExit
                   <span><small>{en ? "Best checkout" : "Meilleur finish"}</small><strong>{bestFinish || "—"}</strong></span>
                   <span><small>{en ? "Fewest darts" : "Minimum fléchettes"}</small><strong>{Number.isFinite(fastestFinish) ? fastestFinish : "—"}</strong></span>
                 </div>
+                <div className="mss-finish-career" aria-label={en ? "Double-out precision over sessions" : "Précision DO entre les séances"}>
+                  <div className="mss-finish-career-title"><strong>{en ? "OVER MULTIPLE SESSIONS" : "PROGRESSION ENTRE LES SÉANCES"}</strong><small>{career.sessions} {en ? "saved attempts" : "tentatives enregistrées"} · {career.darts} {en ? "darts" : "fléchettes"}</small></div>
+                  {Object.values(career.aims).length ? Object.values(career.aims).sort((a,b) => a.hits/a.attempts - b.hits/b.attempts).slice(0,5).map(item => <div className="mss-finish-career-item" key={item.label}>
+                    <b>{item.label}</b><span>{item.hits}/{item.attempts} · {Math.round(item.hits * 100 / item.attempts)}%</span>
+                  </div>) : <small>{en ? "Validate an attempt with announced doubles to start tracking." : "Valide une tentative avec des doubles annoncés pour commencer le suivi."}</small>}
+                  {careerPriority && <button type="button" style={btn} onClick={() => { setAimedDouble(careerPriority.label); setTrackAim(true); selectFinish(doubleValue(careerPriority.label)); setShowSessionDetails(false); }}>{en ? "Practice priority" : "Travailler en priorité"} {careerPriority.label}</button>}
+                </div>
                 <div className="mss-finish-aim-progress">
                   <strong>{en ? "Intended double accuracy" : "Précision par double visé"}</strong>
                   <small>{en ? "Only targets explicitly selected before the dart are measured." : "Seules les cibles annoncées avant le lancer sont mesurées."}</small>
@@ -714,6 +744,43 @@ export default function FinishDoTraining({ onExit, challenge = false }: { onExit
                     </div>
                   )) : <em>{en ? "Enable target tracking, pick a double and record a dart." : "Active le suivi de visée, choisis un double et saisis une fléchette."}</em>}
                 </div>
+                {revision && (
+                  <section className="mss-finish-revision" aria-label={en ? "Personal checkout revision" : "Révision checkout personnalisée"}>
+                    <div className="mss-finish-revision-head">
+                      <div><strong>AWENA • {en ? "Targeted revision" : "Révision ciblée"}</strong>
+                        <small>{en ? "Based on explicitly recorded misses" : "D'après tes cibles annoncées et manquées"}</small></div>
+                      <button type="button" style={btn} onClick={() => { setShowRevision(v => !v); setRevisionChoice(null); }}>
+                        {showRevision ? (en ? "Hide" : "Masquer") : (en ? "Review" : "Réviser")}
+                      </button>
+                    </div>
+                    <div className="mss-finish-revision-focus">
+                      <b>{revision.label}</b> <span>{revisionAim!.hits}/{revisionAim!.attempts} · {revisionAim!.rate}%</span>
+                      <button type="button" style={btn} onClick={() => {
+                        setAimedDouble(revision.label);
+                        setTrackAim(true);
+                        selectFinish(doubleValue(revision.label));
+                        setShowSessionDetails(false);
+                      }}>{en ? "Practice this double" : "Travailler ce double"}</button>
+                    </div>
+                    {showRevision && (
+                      <div className="mss-finish-revision-quiz">
+                        <p>{en
+                          ? `You aim at ${revision.label} but hit ${revision.hit}. ${revision.remain} remain: what is a valid DO recovery?`
+                          : `Tu vises ${revision.label}, mais touches ${revision.hit}. Il reste ${revision.remain} : quel plan B est valide en DO ?`}</p>
+                        <div className="mss-finish-revision-options">
+                          {revision.options.map(option => (
+                            <button type="button" key={option} style={btn} aria-pressed={revisionChoice === option} onClick={() => setRevisionChoice(option)}>{option}</button>
+                          ))}
+                        </div>
+                        {revisionChoice && <p aria-live="polite" className={revisionChoice === revision.answer ? "correct" : "incorrect"}>
+                          {revisionChoice === revision.answer
+                            ? (en ? "Correct! Recalculate after the actual hit." : "Bien joué ! Recalcule toujours après la touche réelle.")
+                            : (en ? `Not quite: ${revision.answer} is a valid route.` : `Pas tout à fait : ${revision.answer} est une route valide.`)}
+                        </p>}
+                      </div>
+                    )}
+                  </section>
+                )}
                 <div className="mss-finish-double-progress">
                   <strong>{en ? "Doubles recorded" : "Doubles saisis"}</strong>
                   <small>{en ? "Only actual D / Bull50 inputs are counted, not aimed-but-missed doubles." : "Seuls les D / BULL50 réellement saisis sont comptés, pas les doubles visés et manqués."}</small>

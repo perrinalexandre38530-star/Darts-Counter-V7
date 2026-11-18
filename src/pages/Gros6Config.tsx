@@ -16,6 +16,7 @@ import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import BackDot from "../components/BackDot";
+import GameDifficultyStars from "../components/GameDifficultyStars";
 import InfoDot from "../components/InfoDot";
 import ProfileAvatar from "../components/ProfileAvatar";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
@@ -804,6 +805,7 @@ export default function Gros6Config({ store, go }: any) {
           </div>
         </div>
       </header>
+      <div data-mss-config-difficulty="1" style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 8 }}><GameDifficultyStars game="gros_6" compact showValue={false} /></div>
 
       <DartsRelatedModesPanel gameId="gros_6" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
       <div className="msc-mode-config-body gros6-config-content" style={{ width: "100%", maxWidth: 1180, margin: "0 auto" }}>

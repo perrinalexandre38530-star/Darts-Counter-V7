@@ -907,8 +907,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           <TacticalMatchPanels placement="players" kind="battle" players={players} activeId={activePlayer?.id} round={roundIndex+1} target={fmtTarget(target)}
             objective="Survivre jusqu'au dernier round" rules={[]} configuration={[]} accent={theme.primary} />
           <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
-            label={`ROUND ${roundIndex+1}/${TARGETS.length}`} value={fmtTarget(target)} detail="CIBLE DU ROUND"
-            objective={`Atteindre ${fmtTarget(target)} pendant cette volée pour rester en jeu.`}
+            label={`ROUND ${roundIndex+1}/${TARGETS.length}`} value={`${currentThrow.length}/${dartsPerTurn}`} detail="FLÉCHETTES DE LA VOLÉE"
+            objective={`Touche ${fmtTarget(target)} avant de valider.`}
             rightTitle="CIBLE À TOUCHER" rightValue={fmtTarget(target)}
             rightDetail={<><span>♥ {activePlayer?.lives??0} vie(s) · {aliveCount}/{players.length} survivants</span><div className="mss-combat-darts"><ThrowBlocks total={dartsPerTurn} darts={currentThrow}/></div></>}>
             {ended&&<span>{players.find(p=>p.alive)?.name||'Partie'} · {t('common.finished','Partie terminée')}</span>}
@@ -920,11 +920,13 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
           {/* ✅ Carte Joueurs : ticker2 en fond (transparence) */}
           <div
+            className="mss-br-classic-players"
+            aria-label="Ouvrir la liste complète des joueurs et leur ordre"
             role="button"
             tabIndex={0}
             onClick={() => setPlayersPanelOpen(true)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setPlayersPanelOpen(true);
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPlayersPanelOpen(true); }
             }}
             style={{
               ...cardShell,
@@ -949,12 +951,12 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 flexWrap: "wrap",
               }}
             >
-              <div style={{ fontWeight: 1100, letterSpacing: 0.4 }}>
+              <div className="mss-br-classic-title">
                 {t("common.players", "Joueurs")}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={miniBadge}>
-                  {aliveCount}/{players.length}
+                <span style={miniBadge} aria-label={`${aliveCount} survivants sur ${players.length} joueurs`}>
+                  {aliveCount}/{players.length} survivants
                 </span>
                 {!ended && (
                 <span
@@ -971,6 +973,11 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               </div>
             </div>
 
+            {/* Avancement global de l'arène : indicateur discret, sans second bloc de statistiques. */}
+            <div className="mss-br-round-track" role="progressbar" aria-label="Progression des rounds" aria-valuemin={0} aria-valuemax={TARGETS.length} aria-valuenow={Math.min(roundIndex + 1, TARGETS.length)}>
+              <span style={{ width: `${Math.min(100, ((roundIndex + 1) / TARGETS.length) * 100)}%` }} />
+            </div>
+
             {/* Aperçu avatars */}
             <div
               style={{
@@ -983,36 +990,19 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 background: "rgba(0,0,0,0.10)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
-                {players.slice(0, 6).map((p) => (
-                  <div
-                    key={p.id}
-                    title={p.name}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      border: `1px solid ${p.alive ? theme.borderSoft : "rgba(255,80,80,.35)"}`,
-                      opacity: p.alive ? 1 : 0.5,
-                      background: "rgba(0,0,0,0.25)",
-                      display: "grid",
-                      placeItems: "center",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    {p.avatarDataUrl ? (
-                      <img
-                        src={p.avatarDataUrl}
-                        alt=""
-                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: 11, fontWeight: 1000 }}>{avatarFallback(p.name)}</span>
-                    )}
+              <div className="mss-br-classic-roster" aria-label="Joueurs présents dans l'arène">
+                {players.map((p, index) => (
+                  <div key={p.id} className={`mss-br-classic-player${index === activeIndex && !ended ? " is-active" : ""}${!p.alive ? " is-eliminated" : ""}`}>
+                    <div className="mss-br-classic-avatar">
+                      {p.avatarDataUrl ? <img src={p.avatarDataUrl} alt="" draggable={false} /> : <span>{avatarFallback(p.name)}</span>}
+                    </div>
+                    <div className="mss-br-classic-identity">
+                      <strong title={p.name}>{p.name}</strong>
+                      <small>{!p.alive ? "ÉLIMINÉ" : eliminationRule === "life_system" ? `♥ ${p.lives}/${baseLives}` : eliminationRule === "miss_x" ? `✕ ${p.misses}/${missLimit}` : "EN JEU"}</small>
+                    </div>
+                    {index === activeIndex && !ended && <span className="mss-br-classic-turn">TOUR</span>}
                   </div>
                 ))}
-                {players.length > 6 && <div style={{ ...miniBadge, padding: "6px 10px" }}>+{players.length - 6}</div>}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
