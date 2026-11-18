@@ -3,6 +3,7 @@ import "./wave61/MexicainFiesta.css";
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
 import { buildMexicainRoundStandings } from "../lib/gameEngines/mexicainStandings";
+import { shouldShowWave61VisitRecap, isWave61VisitRecapBlocking, releaseMexicainPendingBotRecap } from "../lib/gameEngines/mexicainTurnFlow";
 import { resolveBotGameDifficulty, resolveBotStars } from "../lib/botSkillLevel";
 import { createPortal } from "react-dom";
 import BackDot from "../components/BackDot";
@@ -1431,9 +1432,13 @@ export default function Wave61SharedPlay(props: any) {
   const profiles = React.useMemo(() => resolveModeProfiles(config, store), [config, store]);
   const players = React.useMemo(() => profiles.map((p: any, i: number) => ({ id: String(p.id || `p${i+1}`), name: playerName(p, i) })), [profiles]);
   const restored = resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot || null;
-  const [state, setState] = React.useState<Wave61State>(() => normalizeWave61EightModeRestoredState(
-    restored?.mode === "wave61" && restored?.modeId === spec.id ? cloneWave61State(restored) : createWave61State(players, spec.id, config)
-  ));
+  const [state, setState] = React.useState<Wave61State>(() => {
+    const initial = normalizeWave61EightModeRestoredState(
+      restored?.mode === "wave61" && restored?.modeId === spec.id ? cloneWave61State(restored) : createWave61State(players, spec.id, config)
+    );
+    // Répare aussi les parties restaurées avec un ancien récap BOT invisible.
+    return releaseMexicainPendingBotRecap(initial);
+  });
   const restoredThrow = resumeRecord?.resume?.currentThrow || resumeRecord?.payload?.currentThrow || [];
   const restoredMultiplier = Number(resumeRecord?.resume?.multiplier ?? resumeRecord?.payload?.multiplier ?? 1);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(restoredThrow) ? restoredThrow.slice(0, 3) : []);
@@ -1443,7 +1448,7 @@ export default function Wave61SharedPlay(props: any) {
   const [notice, setNotice] = React.useState("");
   // V193: un récap BOT en attente doit survivre à un rechargement depuis History.
   // Un récap humain reste éphémère; seul CONTINUER peut débloquer le BOT.
-  const [visitRecap, setVisitRecap] = React.useState<any>(() => getWave61PendingBotVisitRecap(state));
+  const [visitRecap, setVisitRecap] = React.useState<any>(() => shouldShowWave61VisitRecap(spec.id) ? getWave61PendingBotVisitRecap(state) : null);
   const [adviceText, setAdviceText] = React.useState("");
   const [shoveOverlay, setShoveOverlay] = React.useState<any>(null);
   const shoveAnnouncedTurnRef = React.useRef("");
@@ -1744,7 +1749,9 @@ export default function Wave61SharedPlay(props: any) {
     const last = next.visits[next.visits.length - 1];
     const recapPlayerId = String(last?.playerId || previous.players?.[previous.activePlayerIndex]?.id || "");
     const recapPlayer:any = profileById.get(recapPlayerId) || previous.players?.find((p:any)=>String(p.id)===recapPlayerId) || null;
-    if (last && recapPlayerId) {
+    // Pas de popup bloquante pour le Mexicain : la manche et les scores sont
+    // visibles dans l'interface dédiée. Les autres modes gardent leur récap.
+    if (last && recapPlayerId && shouldShowWave61VisitRecap(spec.id)) {
       const color = spec.id === "green_vs_red" ? String(next.special?.greenRedColorByPlayer?.[recapPlayerId] || previous.special?.greenRedColorByPlayer?.[recapPlayerId] || "GREEN") : spec.id === "black_vs_white" ? String(next.special?.blackWhiteColorByPlayer?.[recapPlayerId] || previous.special?.blackWhiteColorByPlayer?.[recapPlayerId] || "BLACK") : "";
       const tone = spec.id === "green_vs_red" ? (color === "RED" ? GVR_RED : GVR_GREEN) : spec.id === "black_vs_white" ? (color === "WHITE" ? BW_WHITE : BW_BLACK) : accent;
       const beforePenalty = Number(spec.id==="black_vs_white"?previous.special?.blackWhitePenaltyPointsByPlayer?.[recapPlayerId]:previous.special?.greenRedPenaltyByPlayer?.[recapPlayerId] || 0);
@@ -1831,7 +1838,12 @@ export default function Wave61SharedPlay(props: any) {
     setState(committed);
     setCurrentThrow([]);
     setMultiplier(1);
-    setNotice(seriesNotice || (committed.phase === "finished" ? `🏆 ${next.players.find((p) => p.id === next.winnerId)?.name || "Victoire"} remporte ${spec.label}` : (last?.events || []).join(" · ")));
+    const mexCompletedRound = spec.id === "mexicain" && Number(next.special?.mexicainHistory?.length || 0) > Number(previous.special?.mexicainHistory?.length || 0)
+      ? next.special.mexicainHistory[next.special.mexicainHistory.length - 1] : null;
+    const mexRoundNotice = !mexCompletedRound ? "" : !mexCompletedRound.losers?.length
+      ? "🇲🇽 ÉGALITÉ GÉNÉRALE · aucune vie perdue"
+      : `🇲🇽 ${mexCompletedRound.losers.map((id:string) => next.players.find((p) => p.id === id)?.name || id).join(", ")} : −${mexCompletedRound.lifeLoss} vie(s)`;
+    setNotice(seriesNotice || (committed.phase === "finished" ? `🏆 ${next.players.find((p) => p.id === next.winnerId)?.name || "Victoire"} remporte ${spec.label}` : mexRoundNotice || (last?.events || []).join(" · ")));
     playWave61FeedbackTone(wave61ToneForVisit(next, last), wave61SfxEnabled);
     if (awenaCommentaryEnabled && spec.id !== "shove_a_penny") {
       const comment = buildWave61VisitComment(next, last);
@@ -1844,8 +1856,9 @@ export default function Wave61SharedPlay(props: any) {
   }, [state, spec.id, spec.label, config, players, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena, profileById, botIds, accent]);
 
   const validate = () => {
-    if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap || (spec.id === "shove_a_penny" && shoveOverlay) || state.special?.seriesIntermission) return;
-    if (state.special?.pendingBotVisitRecap) return;
+    if (!currentThrow.length || state.phase !== "playing" || activeIsBot
+      || isWave61VisitRecapBlocking(spec.id, visitRecap, state.special?.pendingBotVisitRecap)
+      || (spec.id === "shove_a_penny" && shoveOverlay) || state.special?.seriesIntermission) return;
     if (spec.id === "shove_a_penny" && state.config?.modeOptions?.giftTargetRule === "shooter_choice" && shoveGiftCandidates.length > 1) {
       const beforeThrow = cloneWave61State(state);
       beforeThrow.config.modeOptions = { ...(beforeThrow.config.modeOptions || {}), giftRecipientId: shoveActualGiftRecipientId };
@@ -1934,8 +1947,9 @@ export default function Wave61SharedPlay(props: any) {
   }, [visitRecap?.visitId, visitRecap?.isBot, spec.id]);
 
   React.useEffect(() => {
-    if (!activeIsBot || state.phase === "finished" || visitRecap || (spec.id === "shove_a_penny" && shoveOverlay) || state.special?.seriesIntermission) return;
-    if (state.special?.pendingBotVisitRecap) return;
+    if (!activeIsBot || state.phase === "finished"
+      || isWave61VisitRecapBlocking(spec.id, visitRecap, state.special?.pendingBotVisitRecap)
+      || (spec.id === "shove_a_penny" && shoveOverlay) || state.special?.seriesIntermission) return;
     let cancelled = false;
     const scheduledPlayerId = String(activePlayer?.id || "");
     const timer = window.setTimeout(() => {
@@ -2286,7 +2300,7 @@ export default function Wave61SharedPlay(props: any) {
         {quickPanel === "ranking" ? <div className="mex-floating-list">{[...state.players].sort((a:any,b:any) => Number(state.lives?.[b.id]||0)-Number(state.lives?.[a.id]||0) || Number(state.scores?.[b.id]||0)-Number(state.scores?.[a.id]||0)).map((player:any,index:number) => { const avatar = mexAvatarFor(player.id); const lives = Number(state.lives?.[player.id]||0); const score = Number(state.scores?.[player.id]||0); return <div key={player.id} className="mex-player-list-card mex-ranking-card">{avatar ? <div className="mex-list-avatar-bg" style={{backgroundImage:`url(${avatar})`}} aria-hidden="true"/> : null}<div className="mex-list-shade" aria-hidden="true"/><div className="mex-list-main"><span><b>#{index+1} · {player.name}</b><small>{score} points validés</small></span><em>{state.eliminated?.[player.id] ? "ÉLIMINÉ" : lives > 0 ? "EN COURSE" : "OUT"}</em></div><div className="mex-list-side"><strong>{lives} <small>VIES</small></strong><MexHeartLives lives={lives} /></div></div>})}</div> : null}
         {quickPanel === "history" ? <><VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="VOLÉES JOUÉES" limit={15}/>{(state.special?.mexicainHistory||[]).slice(-8).reverse().map((entry:any,index:number) => <div key={index} className="mex-history-line">RONDA {entry.round} · CIBLE {entry.target===21?"BULL":entry.target} · {entry.losers?.length ? `${entry.losers.map((id:string)=>state.players.find((p:any)=>p.id===id)?.name||id).join(", ")} : −${entry.lifeLoss} vie(s)` : "Égalité générale"}</div>)}</> : null}
         {quickPanel === "settings" ? <div className="mex-floating-list"><div><span>Variante</span><strong>{({classic:"CLASSIQUE",survival:"SURVIE",progressive:"PROGRESSIF"} as Record<string,string>)[String(config?.modeOptions?.progressive||"classic")]||"CLASSIQUE"}</strong></div><div><span>BULL au tirage</span><strong>{config?.modeOptions?.bullEnabled==="no"?"NON":"OUI"}</strong></div><div><span>Participants</span><strong>{state.players.length}</strong></div><div><span>Manches maximales</span><strong>{config.rounds}</strong></div><button type="button" onClick={()=>{setQuickPanel(null);go?.("wave61_config",{gameId:spec.id});}}>MODIFIER LA CONFIGURATION</button></div> : null}
-        {quickPanel === "rules" ? <div className="mex-floating-rules"><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="objective" size={18} /></span><p>Chaque manche tire une cible commune parmi les secteurs 1 à 20, et éventuellement le BULL.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="rules" size={18} /></span><p>Chaque joueur lance trois fléchettes. Seules les touches de la cible demandée comptent : simple, double et triple conservent leur valeur.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="players" size={18} /></span><p>Le plus faible score de la manche perd une vie ; une égalité générale ne retire aucune vie.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="ranking" size={18} /></span><p>Le dernier joueur encore en vie remporte la partie.</p></div><button type="button" className="mex-related-killer" onClick={()=>{setQuickPanel(null);go?.("killer_config",{gameId:"killer"});}}><MexIcon name="players" size={19}/> DÉCOUVRIR LE KILLER · MODE APPARENTÉ</button></div> : null}
+        {quickPanel === "rules" ? <div className="mex-floating-rules"><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="objective" size={18} /></span><p>Chaque manche tire une cible commune parmi les secteurs 1 à 20, et éventuellement le BULL.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="rules" size={18} /></span><p>Chaque joueur lance trois fléchettes. Seules les touches de la cible demandée comptent : simple, double et triple conservent leur valeur.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="players" size={18} /></span><p>ÉGALITÉS : si tous les joueurs ont le même score, personne ne perd de vie. Sinon, tous les joueurs à égalité sur le score le plus faible perdent chacun une vie. Aucune égalité ne bloque une volée.</p></div><div className="mex-rule-card"><span className="mex-rule-icon"><MexIcon name="ranking" size={18} /></span><p>Le dernier joueur encore en vie remporte la partie.</p></div><button type="button" className="mex-related-killer" onClick={()=>{setQuickPanel(null);go?.("killer_config",{gameId:"killer"});}}><MexIcon name="players" size={19}/> DÉCOUVRIR LE KILLER · MODE APPARENTÉ</button></div> : null}
       </div>
     </section>
   </div> : null;

@@ -210,3 +210,88 @@ console.log('✅ MEXICAIN V178 : classement historique de survie, égalités et 
   assert.notEqual(bot.special.mexicainTargets[bot.roundIndex],botFirstTarget);
 }
 console.log('✅ MEXICO : secteur renouvelé à chaque manche sans répétition, mêmes chances, bots, sauvegarde et rétrocompatibilité OK');
+
+// V184 — Critique : un bot jouait sa volée, puis le bouton VALIDER de l'humain
+// restait sans effet à cause d'un récap BOT enregistré mais invisible dans
+// l'interface du Mexicain. La règle d'égalité, elle, doit rester inchangée.
+{
+  const {
+    releaseMexicainPendingBotRecap,
+    shouldShowWave61VisitRecap,
+    isWave61VisitRecapBlocking,
+  } = require('../src/lib/gameEngines/mexicainTurnFlow.ts');
+  assert.equal(shouldShowWave61VisitRecap('mexicain'), false);
+  assert.equal(shouldShowWave61VisitRecap('shove_a_penny'), true, 'autres modes inchangés');
+  assert.equal(isWave61VisitRecapBlocking('mexicain', {isBot:true}, {visitId:1}), false);
+  assert.equal(isWave61VisitRecapBlocking('shove_a_penny', {isBot:true}, {visitId:1}), true);
+
+  const participants = [{id:'cpu',name:'Robot'}, {id:'human',name:'Humain'}];
+  const config = {
+    selectedIds: participants.map(p=>p.id), players: 2, playersList: participants,
+    randomOrder: false, rounds: 20,
+    modeOptions: {targetMode:'fixed', fixedTarget:16, bullEnabled:'no', progressive:'classic'}
+  };
+  let s = createWave61State(participants, 'mexicain', config);
+  assert.equal(s.players[s.activePlayerIndex].id, 'cpu', 'le bot joue avant l’humain');
+  s = playWave61Visit(s, [hit(16), {bed:'MISS'}, {bed:'MISS'}]);
+  assert.equal(s.players[s.activePlayerIndex].id, 'human');
+  assert.equal(s.special.mexicainRoundScores.cpu, 16);
+
+  // Simulation d'une partie Historique V4 créée avant le correctif.
+  const stranded = JSON.parse(JSON.stringify(s));
+  stranded.special.pendingBotVisitRecap = {visitId:'bot-old', isBot:true};
+  const restored = releaseMexicainPendingBotRecap(stranded);
+  assert.equal(restored.special.pendingBotVisitRecap, undefined, 'ancien verrou BOT effacé');
+  assert.equal(stranded.special.pendingBotVisitRecap.visitId, 'bot-old', 'snapshot original intact');
+  assert.equal(restored.activePlayerIndex, s.activePlayerIndex, 'joueur actif préservé');
+  assert.equal(restored.special.mexicainRoundScores.cpu, 16, 'score BOT préservé');
+  s = playWave61Visit(restored, [hit(16), {bed:'MISS'}, {bed:'MISS'}]);
+  assert.equal(s.roundIndex, 1, 'la volée humaine se valide après le bot');
+  assert.deepEqual(s.special.mexicainHistory[0].losers, [], 'égalité parfaite après un bot : 0 pénalité');
+  assert.deepEqual([s.lives.cpu,s.lives.human],[3,3]);
+
+  const trio = [{id:'cpu',name:'Robot'},{id:'a',name:'A'},{id:'b',name:'B'}];
+  let t = createWave61State(trio, 'mexicain', {
+    selectedIds:trio.map(p=>p.id),players:3,playersList:trio,randomOrder:false,
+    rounds:20, modeOptions:{targetMode:'fixed',fixedTarget:16,bullEnabled:'no',progressive:'classic'}
+  });
+  t = playWave61Visit(t, [hit(16,'T'),hit(16),hit(16)]); // robot 80
+  t = playWave61Visit(t, misses); // joueur A 0
+  t = playWave61Visit(t, misses); // joueur B 0
+  assert.deepEqual(t.special.mexicainHistory[0].losers, ['a','b'], 'deux derniers ex æquo perdent une vie');
+  assert.deepEqual([t.lives.cpu,t.lives.a,t.lives.b],[3,2,2]);
+
+  // Passage réel d'un BOT IA vers un humain (couvert quel que soit son score).
+  {
+    const {pickWave61BotDarts} = require('../src/lib/gameEngines/wave61Engine.ts');
+    let b = createWave61State(participants, 'mexicain', config);
+    const botDarts = pickWave61BotDarts(b, 'normal', 3);
+    assert.equal(botDarts.length, 3);
+    b = playWave61Visit(b, botDarts);
+    assert.equal(b.players[b.activePlayerIndex].id, 'human');
+    const botPoints = Number(b.special.mexicainRoundScores.cpu || 0);
+    const units = botPoints / 16;
+    assert.equal(Number.isInteger(units), true);
+    const multipliers = [3,2,1,0];
+    const combo = multipliers.flatMap(x => multipliers.flatMap(y => multipliers.map(z => [x,y,z])))
+      .find(([x,y,z]) => x+y+z === units);
+    assert(combo, 'tout score BOT sur cette cible est reproductible par un humain');
+    const same = combo.map(mult => mult===0 ? {bed:'MISS'} : hit(16, mult===3?'T':mult===2?'D':'S'));
+    b = playWave61Visit(b, same);
+    assert.equal(b.roundIndex, 1);
+    assert.deepEqual(b.special.mexicainHistory[0].losers, [], 'égalité réelle avec BOT généré');
+    assert.deepEqual([b.lives.cpu,b.lives.human], [3,3]);
+  }
+
+  // Le garde-fou est réellement câblé dans le composant PLAY.
+  const playSource = fs.readFileSync(require('node:path').join(__dirname,'../src/pages/Wave61SharedPlay.tsx'),'utf8');
+  assert.match(playSource,/releaseMexicainPendingBotRecap\(initial\)/);
+  assert.match(playSource,/if \(last && recapPlayerId && shouldShowWave61VisitRecap\(spec.id\)\)/);
+  assert.match(playSource,/isWave61VisitRecapBlocking\(spec.id, visitRecap, state.special\?\.pendingBotVisitRecap\)/);
+  const syntax = ts.transpileModule(playSource, {
+    fileName:'Wave61SharedPlay.tsx', reportDiagnostics:true,
+    compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}
+  });
+  assert.equal((syntax.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error).length,0,'syntaxe TSX');
+  console.log('✅ MEXICAIN V184 : BOT → humain, reprise verrouillée, égalités et gardes PLAY OK');
+}
