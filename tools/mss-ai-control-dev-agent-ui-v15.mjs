@@ -20,20 +20,21 @@ function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/
 async function body(req){let s='';for await(const c of req){s+=c;if(s.length>8000)throw Error('Requête trop grande');}return JSON.parse(s);}
 createServer(async(req,res)=>{
  try{
+  const pathname=new URL(req.url||'/',`http://${host}:${port}`).pathname;
   if(req.headers.host!==host+':'+port)return json(res,403,{error:'Hôte refusé'});
-  if(req.method==='GET'&&req.url==='/'){const nonce=randomBytes(16).toString('base64');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':`default-src 'none'; connect-src 'self'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`});return res.end(page.replace('__NONCE__',nonce).replace('__TOKEN__',token));}
-  if(req.method==='GET'&&req.url==='/api/inbox'){if(req.headers['x-mss-token']!==token)return json(res,403,{error:'Session refusée'});return json(res,200,queueSnapshot(root));}
-  if(req.method==='GET'&&req.url==='/api/report'){if(req.headers['x-mss-token']!==token)return json(res,403,{error:'Session refusée'});if(!latestPublicReport)return json(res,404,{error:'Aucun rapport disponible'});res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="MSS_DEV_RAPPORT_V19.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(JSON.stringify(latestPublicReport,null,2));}
-  if(req.method!=='POST'||!['/api/plan','/api/run','/api/recover'].includes(req.url))return json(res,404,{error:'Route absente'});
+  if(req.method==='GET'&&pathname==='/'){const nonce=randomBytes(16).toString('base64');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':`default-src 'none'; connect-src 'self'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`});return res.end(page.replace('__NONCE__',nonce).replace('__TOKEN__',token));}
+  if(req.method==='GET'&&pathname==='/api/inbox'){if(req.headers['x-mss-token']!==token)return json(res,403,{error:'Session refusée'});return json(res,200,queueSnapshot(root));}
+  if(req.method==='GET'&&pathname==='/api/report'){if(req.headers['x-mss-token']!==token)return json(res,403,{error:'Session refusée'});if(!latestPublicReport)return json(res,404,{error:'Aucun rapport disponible'});res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="MSS_DEV_RAPPORT_V19.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(JSON.stringify(latestPublicReport,null,2));}
+  if(req.method!=='POST'||!['/api/plan','/api/run','/api/recover'].includes(pathname))return json(res,404,{error:'Route absente'});
   if(req.headers['x-mss-token']!==token||(req.headers.origin&&req.headers.origin!==`http://${host}:${port}`))return json(res,403,{error:'Session refusée'});
   if(busy)return json(res,409,{error:'Mission déjà en cours'});
   const data=await body(req);
-  if(req.url==='/api/recover'){
+  if(pathname==='/api/recover'){
    if(pending) return json(res,409,{error:'Préparation active : annuler ou terminer avant le déblocage'});
    const result=recoverInterruptedMission(root,data.requestId,{confirm:data.confirm,active:busy});
    return json(res,200,result);
   }
-  if(req.url==='/api/plan'){
+  if(pathname==='/api/plan'){
    if(data.requestId!==null&&data.requestId!==undefined&&!/^[A-Za-z0-9_-]{1,64}$/.test(data.requestId))throw Error('Référence de mission invalide');
    if(data.queueId!==undefined&&typeof data.queueId!=='boolean')throw Error('Origine de mission invalide');
    if(data.queueId){const m=getIncomingForPlan(root,data.requestId);if(m.description!==String(data.description||'').trim())throw Error('Description reçue différente du dossier de mission');}

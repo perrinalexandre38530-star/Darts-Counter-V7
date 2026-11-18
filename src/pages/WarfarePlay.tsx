@@ -14,6 +14,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ScoreInputHub from "../components/ScoreInputHub";
 import TacticalMatchPanels from "../components/TacticalMatchPanels";
+import MssCombatActiveCard from "../components/MssCombatActiveCard";
 import tickerWarfare from "../assets/tickers/ticker_warfare.png";
 import "./mssBattleLayouts.css";
 import BackDot from "../components/BackDot";
@@ -541,131 +542,25 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
         <InfoDot onClick={() => setInfoOpen(true)} />
       </header>
       <div className="mss-war-content">
-      {/* Joueur actif : priorité visuelle */}
-      <div className="mss-war-active"
-        style={{
-          marginTop: 12,
-          padding: 7,
-          borderRadius: 16,
-          border: `1px solid ${theme.borderSoft}`,
-          background: CARD_BG,
-          boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
-        }}
-      >
-      <TacticalMatchPanels kind="warfare" activeId={activePlayer?.id} round={Math.max(cursorTop,cursorBottom)+1} logs={visitHistoryRef.current} accent={theme.primary}
+      <TacticalMatchPanels placement="players" kind="warfare" activeId={activePlayer?.id} round={Math.max(cursorTop,cursorBottom)+1} logs={visitHistoryRef.current} accent={theme.primary}
+        players={[...teams.TOP.map(p=>({...p,alive:aliveTop.length>0,team:'TOP',score:aliveTop.length})),...teams.BOTTOM.map(p=>({...p,alive:aliveBottom.length>0,team:'BOTTOM',score:aliveBottom.length}))]}
+        objective="Éliminer les soldats adverses" rules={[]} configuration={[]} />
+      {(() => {
+        const ownAlive = activeArmy === 'TOP' ? aliveTop.length : aliveBottom.length;
+        const enemyAlive = activeArmy === 'TOP' ? aliveBottom.length : aliveTop.length;
+        const stats = getStats(activePlayer?.id);
+        return <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
+          label={activeArmy} value={`${ownAlive}/10`} detail={`SOLDATS · ${activeArmy}`}
+          objective={`Éliminer les ${enemyAlive} soldats encore en jeu dans l'armée adverse.`}
+          rightTitle="ENNEMIS À ÉLIMINER" rightValue={enemyAlive}
+          rightDetail={<span>🎯 Zones {zonesLabel} · {stats.kills||0} élimination(s) · {stats.darts||0} flèche(s)</span>} />;
+      })()}
+      <TacticalMatchPanels placement="actions" kind="warfare" activeId={activePlayer?.id} round={Math.max(cursorTop,cursorBottom)+1} logs={visitHistoryRef.current} accent={theme.primary}
         players={[...teams.TOP.map(p=>({...p,alive:aliveTop.length>0,team:'TOP',score:aliveTop.length})),...teams.BOTTOM.map(p=>({...p,alive:aliveBottom.length>0,team:'BOTTOM',score:aliveBottom.length}))]}
         mapEnabled={!!(config as any)?.tacticalMapEnabled}
-        objective={`Éliminer les ${activeArmy === 'TOP' ? aliveBottom.length : aliveTop.length} soldats de l’armée adverse. Ton camp conserve ${activeArmy === 'TOP' ? aliveTop.length : aliveBottom.length} soldats.`}
-        rules={["Une volée comprend jusqu’à trois fléchettes.","Une touche valide sur le numéro d’un soldat adverse l’élimine.",`Zones autorisées : ${zonesLabel}.`,normalized.friendlyFire ? "Attention : le tir allié est activé." : "Le tir allié est désactivé.","L’armée qui conserve des soldats remporte la partie."]}
-        configuration={[`Zones : ${zonesLabel}`,`Tirs alliés : ${normalized.friendlyFire?'oui':'non'}`,`Handicap : ${normalized.handicapP1Harder?'oui':'non'}`,`Carte tactique : ${(config as any)?.tacticalMapEnabled?'activée':'désactivée'}`,`Saisie : ${(config as any)?.inputMethod || 'keypad'}`]}>
-        <span style={{fontSize:11,fontWeight:850,color:theme.primary}}>JOUEUR ACTIF · {activePlayer?.name||'—'}</span>
-      </TacticalMatchPanels>
-        {(() => {
-          const s = getStats(activePlayer?.id);
-          const ownAlive = activeArmy === "TOP" ? aliveTop.length : aliveBottom.length;
-          const oppAlive = activeArmy === "TOP" ? aliveBottom.length : aliveTop.length;
-          const hits = (s.kills || 0) + (s.friendlyKills || 0);
-          const acc = s.darts ? Math.round((hits / s.darts) * 100) : 0;
-
-          const statRow = (label: string, value: string | number) => (
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 900, color: theme.textSoft, textTransform: "uppercase" }}>{label}</div>
-              <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>{value}</div>
-            </div>
-          );
-
-          return (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {/* left: avatar + name */}
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 999,
-                  border: `2px solid ${theme.primary}`,
-                  boxShadow: `0 0 0 4px ${theme.primary}22, 0 0 18px ${theme.primary}66`,
-                  overflow: "hidden",
-                  background: "rgba(255,255,255,.06)",
-                  flex: "0 0 auto",
-                }}
-              >
-                {activePlayer?.avatarDataUrl ? (
-                  <img src={activePlayer.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : null}
-              </div>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontWeight: 950,
-                    color: theme.primary,
-                    textShadow: `0 0 14px ${theme.primary}55`,
-                    letterSpacing: 0.3,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {activePlayer?.name || "Joueur"}
-                </div>
-                <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <div
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      border: `1px solid ${theme.primary}55`,
-                      background: `${theme.primary}18`,
-                      color: theme.text,
-                      fontWeight: 900,
-                      fontSize: 12,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.6,
-                    }}
-                  >
-                    {activeArmy}
-                  </div>
-                  <div
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      border: `1px solid rgba(255,255,255,.16)`,
-                      background: "rgba(0,0,0,.25)",
-                      color: theme.text,
-                      fontWeight: 900,
-                      fontSize: 12,
-                    }}
-                  >
-                    {t("warfare.kpi.soldiers", "Soldats")}: <span style={{ color: theme.primary }}>{ownAlive}/10</span>
-                    <span style={{ marginLeft: 10, color: theme.textSoft }}>{t("warfare.kpi.enemy", "Ennemis")}:</span>{" "}
-                    <span style={{ color: theme.primary }}>{oppAlive}/10</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Mini statistiques réorganisées en grille pour préserver le champ de bataille. */}
-              <div className="mss-war-kpis"
-                style={{
-                  width: "auto",
-                  padding: 7,
-                  borderRadius: 16,
-                  border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(0,0,0,.22)",
-                }}
-              >
-                {statRow(t("warfare.kpi.kills", "Kills"), s.kills || 0)}
-                <div className="mss-war-kpi-separator" style={{ height: 6 }} />
-                {statRow(t("warfare.kpi.ff", "Friendly"), s.friendlyKills || 0)}
-                <div className="mss-war-kpi-separator" style={{ height: 6 }} />
-                {statRow(t("warfare.kpi.darts", "Flèches"), s.darts || 0)}
-                <div className="mss-war-kpi-separator" style={{ height: 6 }} />
-                {statRow(t("warfare.kpi.accuracy", "Précision"), `${acc}%`)}
-
-
-              </div>
-            </div>
-          );
-        })()}
-      </div>
+        objective={`Éliminer les ${activeArmy==='TOP'?aliveBottom.length:aliveTop.length} soldats de l'armée adverse.`}
+        rules={["Une volée comprend jusqu'à trois fléchettes.","Une touche valide sur un soldat adverse l'élimine.",`Zones autorisées : ${zonesLabel}.`,normalized.friendlyFire?'Le tir allié est activé.':'Le tir allié est désactivé.',"L'armée qui conserve des soldats gagne."]}
+        configuration={[`Zones : ${zonesLabel}`,`Tirs alliés : ${normalized.friendlyFire?'oui':'non'}`,`Handicap : ${normalized.handicapP1Harder?'oui':'non'}`,`Carte tactique : ${(config as any)?.tacticalMapEnabled?'activée':'désactivée'}`,`Saisie : ${(config as any)?.inputMethod||'keypad'}`]} />
 
       {/* Les deux camps partagent une grille adaptative. */}
       <div className="mss-war-armies">
@@ -783,9 +678,9 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
             if (mult !== 1) setMult(1);
           }}
           preferredMethod={(config as any)?.inputMethod || "keypad"}
-          switcherMode="drawer"
-          hideSwitcher={false}
-          hideTabs={false}
+          switcherMode="hidden"
+          hideSwitcher={true}
+          hideTabs={true}
           hidePreview
           hideTotal
         />

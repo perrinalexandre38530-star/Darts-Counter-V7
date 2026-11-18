@@ -22,6 +22,7 @@ import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import ScoreInputHub from "../components/ScoreInputHub";
 import TacticalMatchPanels from "../components/TacticalMatchPanels";
+import MssCombatActiveCard from "../components/MssCombatActiveCard";
 import "./mssBattleLayouts.css";
 import type { Dart as UIDart } from "../lib/types";
 import { History } from "../lib/history";
@@ -903,251 +904,135 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         }}
       >
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: 860, margin: "0 auto" }}>
-          <div style={{ ...cardShell, width: "100%", padding: 5 }}>
-          <TacticalMatchPanels kind="battle" players={players} activeId={activePlayer?.id} round={roundIndex+1} target={fmtTarget(target)} logs={visitHistoryRef.current} mapEnabled={!!cfg?.tacticalMapEnabled} accent={theme.primary}
-            objective={`Atteindre ${fmtTarget(target)} pendant cette volée pour rester dans l’arène. ${eliminationRule === 'life_system' ? `Sans touche, perte d’une vie (${activePlayer?.lives??0} restante(s)).` : eliminationRule === 'miss_x' ? `Éviter ${missLimit} ratés cumulés.` : 'Sans point sur la cible, élimination.'}`}
-            rules={["À chaque round, une nouvelle cible de 20 vers 1 puis BULL.",`Chaque joueur dispose de ${dartsPerTurn} fléchette(s) par tour.`, "Seules les touches sur la cible du round permettent de survivre.", "Le dernier survivant remporte la partie."]}
-            configuration={[`Élimination : ${eliminationRule}`,`Vies initiales : ${baseLives}`,`Fléchettes par tour : ${dartsPerTurn}`,`Carte tactique : ${cfg?.tacticalMapEnabled ? 'activée' : 'désactivée'}`,`Saisie : ${cfg?.inputMethod || 'keypad'}`]}>
-            <span style={{fontSize:11,fontWeight:850,color:theme.primary}}>JOUEUR ACTIF · {activePlayer?.name||'—'}</span>
-          </TacticalMatchPanels>
+          <TacticalMatchPanels placement="players" kind="battle" players={players} activeId={activePlayer?.id} round={roundIndex+1} target={fmtTarget(target)}
+            objective="Survivre jusqu'au dernier round" rules={[]} configuration={[]} accent={theme.primary} />
+          <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
+            label={`ROUND ${roundIndex+1}/${TARGETS.length}`} value={fmtTarget(target)} detail="CIBLE DU ROUND"
+            objective={`Atteindre ${fmtTarget(target)} pendant cette volée pour rester en jeu.`}
+            rightTitle="CIBLE À TOUCHER" rightValue={fmtTarget(target)}
+            rightDetail={<><span>♥ {activePlayer?.lives??0} vie(s) · {aliveCount}/{players.length} survivants</span><div className="mss-combat-darts"><ThrowBlocks total={dartsPerTurn} darts={currentThrow}/></div></>}>
+            {ended&&<span>{players.find(p=>p.alive)?.name||'Partie'} · {t('common.finished','Partie terminée')}</span>}
+          </MssCombatActiveCard>
+          <TacticalMatchPanels placement="actions" kind="battle" players={players} activeId={activePlayer?.id} round={roundIndex+1} target={fmtTarget(target)} logs={visitHistoryRef.current} mapEnabled={!!cfg?.tacticalMapEnabled} accent={theme.primary}
+            objective={`Atteindre ${fmtTarget(target)} pendant cette volée pour rester dans l'arène. ${eliminationRule==='life_system'?`Sans touche, perte d'une vie (${activePlayer?.lives??0} restante(s)).`:eliminationRule==='miss_x'?`Éviter ${missLimit} ratés cumulés.`:'Sans point sur la cible, élimination.'}`}
+            rules={["À chaque round, une nouvelle cible de 20 vers 1 puis BULL.",`Chaque joueur dispose de ${dartsPerTurn} fléchette(s) par tour.`,"Seules les touches sur la cible du round permettent de survivre.","Le dernier survivant gagne."]}
+            configuration={[`Élimination : ${eliminationRule}`,`Vies initiales : ${baseLives}`,`Fléchettes par tour : ${dartsPerTurn}`,`Carte tactique : ${cfg?.tacticalMapEnabled?'activée':'désactivée'}`,`Saisie : ${cfg?.inputMethod||'keypad'}`]} />
 
+          {/* ✅ Carte Joueurs : ticker2 en fond (transparence) */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setPlayersPanelOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setPlayersPanelOpen(true);
+            }}
+            style={{
+              ...cardShell,
+              padding: 0,
+              cursor: "pointer",
+              overflow: "hidden",
+              backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.58), rgba(0,0,0,0.58)), url(${tickerBattleRoyale2})`,
+              backgroundSize: "cover",
+              backgroundPosition: "62% center",
+            }}
+          >
+            {/* Ticker header */}
             <div
               style={{
-                padding: 6,
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                gap: 8,
-                alignItems: "stretch",
-                }}
+                padding: "10px 12px",
+                borderBottom: `1px solid ${theme.borderSoft}`,
+                background: `linear-gradient(90deg, ${theme.primary}22, rgba(0,0,0,0.10), ${theme.primary}18)`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
             >
-              {/* gauche (reprend ShanghaiPlay) */}
-              <div
-                style={{
-                  borderRadius: 16,
-                  border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(0,0,0,0.18)",
-                  padding: 8,
-                  display: "grid",
-                  gap: 8,
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div
-                    style={{
-                      flex: 1,
-                      borderRadius: 0,
-                      border: `1px solid ${theme.primary}44`,
-                      background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
-                      boxShadow: `0 0 18px ${theme.primary}22`,
-                      padding: "5px 10px",
-                      display: "grid",
-                      placeItems: "center",
-                      minHeight: 36,
-                    }}
-                  >
-                    <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
-                      {t("common.round", "Round")}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "clamp(14px, 4.2vw, 16px)",
-                        fontWeight: 1000,
-                        color: theme.primary,
-                        textShadow: `0 0 10px ${theme.primary}55`,
-                        lineHeight: 1,
-                        marginTop: 1,
-                      }}
-                    >
-                      {roundIndex + 1}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      flex: 1,
-                      borderRadius: 0,
-                      border: `1px solid ${theme.primary}44`,
-                      background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
-                      boxShadow: `0 0 18px ${theme.primary}22`,
-                      padding: "5px 10px",
-                      display: "grid",
-                      placeItems: "center",
-                      minHeight: 36,
-                    }}
-                  >
-                    <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
-                      {t("common.target", "Cible")}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "clamp(14px, 4.2vw, 16px)",
-                        fontWeight: 1000,
-                        color: theme.primary,
-                        textShadow: `0 0 10px ${theme.primary}55`,
-                        lineHeight: 1,
-                        marginTop: 1,
-                      }}
-                    >
-                      {fmtTarget(target)}
-                    </div>
-                  </div>
-                </div>
-
-                <div
+              <div style={{ fontWeight: 1100, letterSpacing: 0.4 }}>
+                {t("common.players", "Joueurs")}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={miniBadge}>
+                  {aliveCount}/{players.length}
+                </span>
+                {!ended && (
+                <span
                   style={{
-                    borderRadius: 16,
-                    border: `1px solid ${theme.borderSoft}`,
-                    background: "rgba(0,0,0,0.14)",
-                    padding: 8,
-                    display: "grid",
-                    placeItems: "center",
+                    ...miniBadge,
+                    borderColor: theme.primary + "66",
+                    color: theme.text,
+                    background: theme.primary + "1a",
                   }}
                 >
+                  {t("common.round", "Round")} {roundIndex + 1}/{TARGETS.length}
+                </span>
+              )}
+              </div>
+            </div>
+
+            {/* Aperçu avatars */}
+            <div
+              style={{
+                padding: 10,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+                background: "rgba(0,0,0,0.10)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
+                {players.slice(0, 6).map((p) => (
                   <div
+                    key={p.id}
+                    title={p.name}
                     style={{
-                      width: 60,
-                      height: 60,
-                      borderRadius: 999,
+                      width: 34,
+                      height: 34,
+                      borderRadius: "50%",
                       overflow: "hidden",
-                      background: "rgba(0,0,0,0.22)",
-                      border: `1px solid ${theme.borderSoft}`,
-                      boxShadow: `0 0 16px rgba(0,0,0,.35)`,
+                      border: `1px solid ${p.alive ? theme.borderSoft : "rgba(255,80,80,.35)"}`,
+                      opacity: p.alive ? 1 : 0.5,
+                      background: "rgba(0,0,0,0.25)",
                       display: "grid",
                       placeItems: "center",
+                      flex: "0 0 auto",
                     }}
                   >
-                    {activePlayer?.avatarDataUrl ? (
+                    {p.avatarDataUrl ? (
                       <img
-                        src={activePlayer.avatarDataUrl}
+                        src={p.avatarDataUrl}
                         alt=""
-                        draggable={false}
                         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                       />
                     ) : (
-                      <span style={{ opacity: 0.75, fontWeight: 950, fontSize: 22 }}>
-                        {avatarFallback(activePlayer?.name || "J")}
-                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 1000 }}>{avatarFallback(p.name)}</span>
                     )}
                   </div>
-                </div>
-
-                {/* ✅ Nom sous médaillon */}
-                <div
-                  style={{
-                    textAlign: "center",
-                    fontWeight: 1100,
-                    fontSize: "clamp(13px, 4vw, 14px)",
-                    color: theme.primary,
-                    textShadow: `0 0 10px ${theme.primary}55`,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {activePlayer?.name || "—"}
-                </div>
+                ))}
+                {players.length > 6 && <div style={{ ...miniBadge, padding: "6px 10px" }}>+{players.length - 6}</div>}
               </div>
 
-              {/* droite */}
-              <div
-                style={{
-                  borderRadius: 16,
-                  border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(0,0,0,0.18)",
-                  padding: 8,
-                  display: "grid",
-                  gap: 8,
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "clamp(6px, 2vw, 10px)", flexWrap: "wrap", width: "100%", maxWidth: "100%", minWidth: 0 }}>
-                  {eliminationRule === "life_system" ? (
-                    <HeartKpi value={activePlayer?.lives ?? 0} />
-                  ) : (
-                    <div style={miniBadge}>
-                      {t("common.misses", "Ratés")}: {activePlayer?.misses ?? 0}/{missLimit}
-                    </div>
-                  )}
-                  <SurvivorKpi value={aliveCount} />
-                </div>
-
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "clamp(8px, 2.5vw, 10px)",
-                    flexWrap: "wrap",
-                    minWidth: 0,
-                    borderRadius: 0,
+                    width: 30,
+                    height: 30,
+                    borderRadius: 999,
                     border: `1px solid ${theme.borderSoft}`,
-                    background: "rgba(0,0,0,0.14)",
-                    padding: "8px 10px",
+                    background: "rgba(0,0,0,0.22)",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 1100,
                   }}
                 >
-<DartsIcons total={dartsPerTurn} used={currentThrow.length} />
+                  ↗
                 </div>
-
-                {/* ✅ Saisie de volée (déplacée ici) */}
-                <div style={{ marginTop: 6 }}>
-                  <ThrowBlocks total={dartsPerTurn} darts={currentThrow} />
-                </div>
-
-                {ended && (
-                  <div
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 16,
-                      border: `1px solid ${theme.primary}55`,
-                      background: `${theme.primary}18`,
-                      fontWeight: 1000,
-                    }}
-                  >
-                    {(() => {
-                      const winner = players.find((p) => p.alive);
-                      return winner
-                        ? `${t("common.winner", "Vainqueur")} : ${winner.name}`
-                        : t("common.finished", "Partie terminée");
-                    })()}
-                  </div>
-                )}
               </div>
             </div>
           </div>
-
-          {/* Carte Joueurs restaurée : comme les cartes de suivi KILLER/5 VIES,
-              l'état de tous les participants reste visible sans ouvrir de modale. */}
-          <section className="mss-br-players-card" aria-label="Joueurs et ordre de passage"
-            style={{ borderColor: theme.borderSoft,
-              backgroundImage: `linear-gradient(90deg, rgba(9,11,20,.95), rgba(9,11,20,.72)), url(${tickerBattleRoyale2})` }}>
-            <button type="button" className="mss-br-players-card-head"
-              onClick={() => setPlayersPanelOpen(true)}
-              aria-label="Afficher le classement complet et l'ordre de passage">
-              <span className="mss-br-players-card-title">{t("common.players", "Joueurs")}</span>
-              <span className="mss-br-players-card-count">{aliveCount}/{players.length} survivants</span>
-              <span className="mss-br-players-card-round">{t("common.round", "Round")} {roundIndex + 1}/{TARGETS.length}</span>
-              <span aria-hidden="true">↗</span>
-            </button>
-            <div className="mss-br-players-card-list">
-              {players.map((p, idx) => {
-                const selected = idx === activeIndex && p.alive && !ended;
-                return <button type="button" key={p.id}
-                  className={`mss-br-player-tile${selected ? " is-active" : ""}${!p.alive ? " is-eliminated" : ""}`}
-                  onClick={() => setPlayersPanelOpen(true)}
-                  aria-label={`${p.name}, ${p.alive ? "en jeu" : "éliminé"}, ${p.lives} vies`}>
-                  <span className="mss-br-player-avatar">
-                    {p.avatarDataUrl ? <img src={p.avatarDataUrl} alt=""/> : avatarFallback(p.name)}
-                  </span>
-                  <span className="mss-br-player-details">
-                    <strong>{p.name}</strong>
-                    <small>{!p.alive ? "ÉLIMINÉ" : eliminationRule === "life_system" ? `♥ ${p.lives}/${baseLives}` : eliminationRule === "miss_x" ? `✕ ${p.misses}/${missLimit}` : "EN JEU"}</small>
-                  </span>
-                  {selected && <span className="mss-br-player-turn">TOUR</span>}
-                </button>;
-              })}
-            </div>
-          </section>
 
           {/* ✅ Overlay centré : liste complète joueurs (ordre du tour) */}
           {playersPanelOpen && (
@@ -1330,9 +1215,9 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             hidePreview={true}
             hideTotal={true}
             preferredMethod={cfg?.inputMethod || "keypad"}
-            switcherMode="drawer"
-            hideSwitcher={false}
-            hideTabs={false}
+            switcherMode="hidden"
+            hideSwitcher={true}
+            hideTabs={true}
             centerSlot={
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontWeight: 1000, fontSize: 12, color: "rgba(255,255,255,.7)" }}>

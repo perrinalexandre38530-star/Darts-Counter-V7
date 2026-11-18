@@ -1,25 +1,63 @@
-import React from 'react';
+import React from "react";
 
 type Combatant = { id: string; name: string; avatarDataUrl?: string | null; alive?: boolean; lives?: number; misses?: number; team?: string; score?: number };
 type Panel = 'stats' | 'ranking' | 'logs' | 'map' | 'objective' | 'rules' | 'config';
-type Props = { kind: 'battle' | 'warfare'; players: Combatant[]; activeId?: string; round?: number; target?: string | number; logs?: any[]; mapEnabled?: boolean; objective: string; rules: string[]; configuration: string[]; accent?: string; children?: React.ReactNode };
+type Props = { placement?: 'players' | 'actions'; kind: 'battle' | 'warfare'; players: Combatant[]; activeId?: string; round?: number; target?: string | number; logs?: any[]; mapEnabled?: boolean; objective: string; rules: string[]; configuration: string[]; accent?: string; children?: React.ReactNode };
 const sections: { id: Panel; label: string; glyph: string }[] = [
   {id:'stats',label:'STATS',glyph:'▥'}, {id:'ranking',label:'CLASSEMENT',glyph:'🏆'}, {id:'logs',label:'LOGS',glyph:'☷'}, {id:'map',label:'MAP',glyph:'⌖'},
   {id:'objective',label:'OBJECTIF',glyph:'◎'}, {id:'rules',label:'RÈGLES',glyph:'ⓘ'}, {id:'config',label:'CONFIG',glyph:'⚙'},
 ];
-export default function TacticalMatchPanels({kind,players,activeId,round,target,logs=[],mapEnabled=false,objective,rules,configuration,accent='#ffc857',children}:Props){
+
+function shortName(name?: string) {
+  const n = String(name || 'Joueur').trim();
+  return n.length > 12 ? `${n.slice(0, 12)}…` : n;
+}
+
+function avatarNode(p: Combatant, accent: string, activeId?: string, size=36){
+  return <span className="mss-combat-band-avatar" style={{width:size,height:size,borderColor:p.id===activeId?accent:'rgba(255,255,255,.22)'}}>{p.avatarDataUrl?<img src={p.avatarDataUrl} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<b>{p.name?.slice(0,1)||'J'}</b>}</span>;
+}
+
+export default function TacticalMatchPanels({placement='actions',kind,players,activeId,round,target,logs=[],mapEnabled=false,objective,rules,configuration,accent='#ffc857'}:Props){
  const [open,setOpen]=React.useState<Panel|null>(null);
  const ranked=React.useMemo(()=>[...players].sort((a,b)=>Number(b.alive!==false)-Number(a.alive!==false)||Number(b.lives||0)-Number(a.lives||0)||Number(b.score||0)-Number(a.score||0)),[players]);
  const shown=sections.filter(x=>x.id!=='map'||mapEnabled);
  const btn:React.CSSProperties={background:'rgba(255,255,255,.045)',border:'1px solid rgba(255,255,255,.15)',borderRadius:10,color:'inherit',padding:'6px',fontSize:10,fontWeight:850,display:'flex',alignItems:'center',justifyContent:'center',gap:5,cursor:'pointer'};
  const avatar=(p:Combatant,size=26)=><span style={{width:size,height:size,borderRadius:'50%',overflow:'hidden',display:'inline-grid',placeItems:'center',background:'#252531',border:`1px solid ${p.id===activeId?accent:'rgba(255,255,255,.2)'}`,flexShrink:0}}>{p.avatarDataUrl?<img src={p.avatarDataUrl} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<b>{p.name?.slice(0,1)||'J'}</b>}</span>;
  const playerLine=(p:Combatant,i:number)=><div key={p.id} style={{display:'flex',alignItems:'center',gap:9,padding:'9px 10px',borderRadius:12,background:p.id===activeId?`${accent}19`:'rgba(255,255,255,.04)',border:`1px solid ${p.id===activeId?accent+'66':'rgba(255,255,255,.07)'}`,opacity:p.alive===false?.55:1}}><span style={{width:20,color:accent}}>{i+1}</span>{avatar(p,34)}<strong style={{flex:1,overflow:'hidden',textOverflow:'ellipsis'}}>{p.name}</strong><span style={{fontSize:12}}>{kind==='battle'?(p.alive===false?'ÉLIMINÉ':`♥ ${p.lives??0} · ✕ ${p.misses??0}`):`${p.team||''} · ${p.score??0}`}</span></div>;
+
+ const roster = <div className="mss-combat-band" style={{['--roster-accent' as any]:accent}} role="group" aria-label="Résumé des joueurs">
+   <div className="mss-combat-band-scroll">
+     {players.map((p) => {
+       const isActive = p.id === activeId;
+       const battleStat = p.alive===false ? 'ÉLIMINÉ' : `♥ ${p.lives ?? 0} · ✕ ${p.misses ?? 0}`;
+       const warStat = `${p.team || 'ARMÉE'} · ${p.score ?? 0}/10`;
+       return (
+         <button
+           key={p.id}
+           type="button"
+           onClick={() => setOpen('ranking')}
+           className={`mss-combat-band-segment${isActive ? ' is-active' : ''}${p.alive===false ? ' is-eliminated' : ''}`}
+           title={p.name}
+         >
+           {avatarNode(p, accent, activeId, 42)}
+           <div className="mss-combat-band-copy">
+             <strong>{shortName(p.name)}</strong>
+             <small>{kind === 'battle' ? battleStat : warStat}</small>
+           </div>
+         </button>
+       );
+     })}
+   </div>
+ </div>;
+
  return <>
-  <section className="mss-tactical-bar" style={{background:'rgba(16,17,27,.95)',border:'1px solid rgba(255,255,255,.13)',borderRadius:14,padding:'6px',display:'grid',gap:5,minWidth:0}}>
-   <div className="mss-tactical-players" style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}} aria-label="Résumé des joueurs">{players.map(p=><button key={p.id} type="button" onClick={()=>setOpen('ranking')} title={`${p.name} — ${kind==='battle'?`${p.lives??0} vies`:`${p.score??0} soldats`}`} style={{background:p.id===activeId?`${accent}22`:'rgba(255,255,255,.035)',border:`1px solid ${p.id===activeId?accent+'88':'rgba(255,255,255,.12)'}`,color:'inherit',borderRadius:10,padding:'3px 6px',display:'flex',alignItems:'center',gap:5,flex:'0 0 auto',opacity:p.alive===false?.5:1}}>{avatar(p,23)}<span style={{display:'grid',textAlign:'left',fontSize:10,lineHeight:1.25}}><b style={{maxWidth:75,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</b><span style={{color:accent}}>{kind==='battle'?`♥ ${p.lives??0} · ✕ ${p.misses??0}`:`${p.team||''} · ${p.score??0}`}</span></span></button>)}</div>
-   <div className="mss-tactical-actions" style={{display:'flex',gap:5,overflowX:'auto',scrollbarWidth:'none',minWidth:0,paddingBottom:1}}>{shown.map(x=><button key={x.id} type="button" title={x.label} aria-label={x.label} onClick={()=>setOpen(x.id)} style={{...btn,padding:'6px 9px',fontSize:10,flex:'1 0 auto',minWidth:38}}><span aria-hidden="true" style={{fontSize:17,color:accent,lineHeight:1}}>{x.glyph}</span><span className="mss-tactical-action-label" style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{x.label}</span></button>)}</div>
-   {children&&<div className="mss-tactical-objective" style={{display:'flex',gap:6,alignItems:'center',justifyContent:'space-between',minWidth:0}}><div style={{minWidth:0,flex:'0 0 auto'}}>{children}</div><button type="button" onClick={()=>setOpen('objective')} style={{flex:1,minWidth:0,textAlign:'right',background:'transparent',border:'none',color:accent,fontSize:11,fontWeight:750,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer'}} title={objective}>◎ {objective}</button></div>}
-  </section>
+  {placement === 'players' ? roster : (
+    <nav className="mss-combat-bottomnav" aria-label="Informations de la partie">
+      {shown.map(x => <button key={x.id} type="button" onClick={()=>setOpen(x.id)} className={`mss-combat-nav-item${open===x.id?' is-selected':''}`} title={x.label} aria-label={x.label} style={{['--roster-accent' as any]:accent}}>
+        <span className="mss-combat-nav-glyph" aria-hidden="true">{x.glyph}</span>{open===x.id && <span className="mss-combat-nav-title">{x.label}</span>}
+      </button>)}
+    </nav>
+  )}
   {open&&<div role="presentation" onClick={()=>setOpen(null)} style={{position:'fixed',inset:0,zIndex:10050,background:'rgba(0,0,0,.8)',display:'grid',placeItems:'center',padding:12}}><section role="dialog" aria-modal="true" aria-label={sections.find(x=>x.id===open)?.label} onClick={e=>e.stopPropagation()} style={{width:'min(620px,100%)',maxHeight:'min(80dvh,720px)',overflow:'auto',borderRadius:20,background:'#151622',border:`1px solid ${accent}66`,color:'#f8f8ff',boxShadow:'0 20px 60px #000c',padding:16}}>
    <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14,borderBottom:`1px solid ${accent}55`,paddingBottom:12}}><strong style={{color:accent,letterSpacing:'.07em'}}>{sections.find(x=>x.id===open)?.glyph} {sections.find(x=>x.id===open)?.label}</strong><button type="button" onClick={()=>setOpen(null)} aria-label="Fermer" style={{...btn,padding:'8px 13px'}}>✕</button></header>
    {open==='stats'&&<div style={{display:'grid',gap:9}}><div style={{color:accent}}>Tour {round??1}{target!==undefined?` · Cible ${target}`:''} · {players.filter(p=>p.alive!==false).length}/{players.length} actifs</div>{ranked.map(playerLine)}</div>}
