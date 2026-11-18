@@ -10,6 +10,10 @@ export type PresidentScoreInputMethod = "keypad" | "dartboard";
 export type PresidentBotLevel = "easy" | "normal" | "hard";
 export type PresidentVariant = "classic" | "chaos";
 export type PresidentComboSize = 1 | 2 | 3;
+export type PresidentDifficulty = "discovery" | "classic" | "expert";
+export type PresidentTargetMode = "fixed" | "rotate" | "shuffle-round" | "shuffle-trick";
+export type PresidentSelectionMode = "manual" | "assisted";
+export type PresidentAdviceLevel = "off" | "light" | "full";
 
 export type PresidentConfigPayload = {
   mode: "president";
@@ -29,11 +33,16 @@ export type PresidentConfigPayload = {
   coupEtat: boolean;
   revolution: boolean;
   scoreInputMethod: PresidentScoreInputMethod;
+  difficulty?: PresidentDifficulty;
+  targetMode?: PresidentTargetMode;
+  selectionMode?: PresidentSelectionMode;
+  adviceLevel?: PresidentAdviceLevel;
+  dartsPerAttempt?: 1 | 2 | 3;
 };
 
 export type PresidentRules = Pick<
   PresidentConfigPayload,
-  "rounds" | "handSize" | "deckCopies" | "variant" | "bullJoker" | "coupEtat" | "revolution"
+  "rounds" | "handSize" | "deckCopies" | "variant" | "bullJoker" | "coupEtat" | "revolution" | "difficulty" | "targetMode" | "selectionMode" | "adviceLevel" | "dartsPerAttempt"
 >;
 
 export type PresidentTarget = {
@@ -58,6 +67,7 @@ export type PresidentTurnEvent = {
   cardsAfter: number;
   createdAt: number;
   playedSuits?: number[];
+  aimLabel?: string;
 };
 
 export type PresidentRoundResult = {
@@ -140,6 +150,7 @@ export type PresidentState = {
   previousRoles: Record<string, string>;
   taxesThisRound: PresidentTaxEvent[];
   revolutionActive: boolean;
+  targetSegments: Record<number, number>; // Rang de carte → segment physique. Stable pendant chaque pli.
   history: PresidentTurnEvent[];
   roundResults: PresidentRoundResult[];
   statsByPlayer: Record<string, PresidentPlayerStats>;
@@ -203,6 +214,32 @@ export function presidentCardsPerPlayer(playerCount: number, requested: number):
   const count = Math.max(3, Math.min(8, Math.floor(Number(playerCount) || 3)));
   return Math.min(Math.max(1, Math.floor(Number(requested) || 10)), Math.floor(PRESIDENT_DECK_SIZE / count));
 }
+
+/** Les 13 rangs restent ceux du Président. Leurs cibles physiques peuvent changer
+ * sans modifier le paquet, les comparaisons ou le nombre de cartes posées.
+ * Chaque rang reçoit un segment unique dans [1,20].
+ */
+export function presidentMakeTargetSegments(mode: PresidentTargetMode = "fixed", roundNo = 1): Record<number, number> {
+  const base: Record<number, number> = {};
+  const rotation = mode === "rotate" ? (Math.max(1, roundNo) - 1) * 3 : 0;
+  const available = mode.startsWith("shuffle") ? shuffle(Array.from({ length: 20 }, (_, i) => i + 1)) : [];
+  CARD_RANKS.forEach((rank, index) => {
+    base[rank] = mode.startsWith("shuffle") ? available[index] : ((rank - 1 + rotation) % 20) + 1;
+  });
+  return base;
+}
+export function presidentSegmentForCard(state: Pick<PresidentState, "targetSegments">, value: number): number {
+  if (value === 25 || value === 50) return 25;
+  const segment = state.targetSegments?.[value];
+  return Number.isInteger(segment) && segment >= 1 && segment <= 20 ? segment : value;
+}
+export function presidentAimLabel(state: Pick<PresidentState, "targetSegments">, target: PresidentTarget | null): string {
+  if (!target) return "—";
+  if (target.value === 25) return "BULL25";
+  if (target.value === 50) return "DBULL50";
+  return `${target.size === 3 ? "T" : target.size === 2 ? "D" : "S"}${presidentSegmentForCard(state, target.value)}`;
+}
+
 function cardPower(value: number): number { return value === 2 ? 15 : value === 25 ? 16 : value === 50 ? 17 : value; }
 const sortCards = (a:number,b:number) => cardPower(a)-cardPower(b);
 /** Barème maison MSS, pénalité des cartes restant en main en fin de manche. */
@@ -327,7 +364,7 @@ function dartMatchesTarget(dart: GameDart, target: PresidentTarget, state: Presi
   if (target.value === 50) return { ok: dart.bed === "IB", coupEtat: false };
   if (state.rules.variant === "chaos" && state.rules.bullJoker && target.size === 1 && dart.bed === "OB") return { ok: true, coupEtat: false };
   const expectedBed = target.size === 3 ? "T" : target.size === 2 ? "D" : "S";
-  return { ok: dart.bed === expectedBed && Number(dart.number) === target.value, coupEtat: false };
+  return { ok: dart.bed === expectedBed && Number(dart.number) === presidentSegmentForCard(state, target.value), coupEtat: false };
 }
 
 /**
@@ -340,20 +377,22 @@ export function presidentResolvePlayedTarget(
   state: PresidentState,
   darts: GameDart[],
   preferred: PresidentTarget | null = null,
+  strictSelection = false,
 ): PresidentTarget | null {
   const hand = state.hands[state.activePlayerId] || [];
   const legal = presidentLegalTargets(hand, state.currentTarget, state.revolutionActive);
   if (!legal.length) return null;
   const same = (a: PresidentTarget, b: PresidentTarget) => a.value === b.value && a.size === b.size;
-  for (const dart of (darts || []).slice(0, 3)) {
+  for (const dart of (darts || []).slice(0, state.rules.dartsPerAttempt || 3)) {
     // Preserve the selection on ambiguous CHAOS joker hits, but never let an
     // obsolete or illegal selection override an actual legal shot.
     if (preferred && legal.some(t => same(t, preferred)) && dartMatchesTarget(dart, preferred, state).ok) {
       return preferred;
     }
+    if (strictSelection) continue; // Manuel : une autre cible légale ne remplace jamais le choix explicite.
     const exact = legal.find(t => t.value === 50 && dart.bed === "IB" ||
       t.value === 25 && dart.bed === "OB" ||
-      t.value < 25 && dart.bed === (t.size === 1 ? "S" : t.size === 2 ? "D" : "T") && Number(dart.number) === t.value);
+      t.value < 25 && dart.bed === (t.size === 1 ? "S" : t.size === 2 ? "D" : "T") && Number(dart.number) === presidentSegmentForCard(state, t.value));
     if (exact) return exact;
     const special = legal.find(t => dartMatchesTarget(dart, t, state).ok);
     if (special) return special;
@@ -529,6 +568,11 @@ export function createPresidentState(
     bullJoker: inputRules.variant === "chaos" && inputRules.bullJoker !== false,
     coupEtat: inputRules.variant === "chaos" && inputRules.coupEtat !== false,
     revolution: inputRules.variant === "chaos" && inputRules.revolution !== false,
+    difficulty: ["discovery","classic","expert"].includes(String(inputRules.difficulty)) ? inputRules.difficulty : "classic",
+    targetMode: ["fixed","rotate","shuffle-round","shuffle-trick"].includes(String(inputRules.targetMode)) ? inputRules.targetMode : "fixed",
+    selectionMode: inputRules.selectionMode === "assisted" ? "assisted" : "manual",
+    adviceLevel: inputRules.adviceLevel === "off" || inputRules.adviceLevel === "full" ? inputRules.adviceLevel : "light",
+    dartsPerAttempt: ([1,2,3].includes(Number(inputRules.dartsPerAttempt)) ? Number(inputRules.dartsPerAttempt) : 3) as 1 | 2 | 3,
   };
   const order = players.map((p) => p.id);
   const statsByPlayer: Record<string, PresidentPlayerStats> = {};
@@ -540,6 +584,7 @@ export function createPresidentState(
     roundNo: 1, trickNo: 1, activePlayerId: order[0], currentTarget: null,
     lastSuccessfulPlayerId: null, passedPlayerIds: [], finishedPlayerIds: [], currentRoundRanking: [],
     previousRoundRanking: [], previousRoles: {}, taxesThisRound: [], revolutionActive: false, twoFinishIds: [],
+    targetSegments: presidentMakeTargetSegments(rules.targetMode, 1),
     history: [], roundResults: [], statsByPlayer, finished: false, winnerId: null, standings: [],
     startedAt: now, roundStartedAt: now,
   };
@@ -559,6 +604,7 @@ export function startNextPresidentRound(state: PresidentState): PresidentState {
   next.currentRoundRanking = [];
   next.revolutionActive = false;
   next.roundStartedAt = Date.now();
+  next.targetSegments = presidentMakeTargetSegments(next.rules.targetMode, next.roundNo);
   const { hands, suitsByPlayer } = dealHands(next.order, next.rules.handSize, next.rules.variant === "classic");
   next.hands = hands;
   next.suitsByPlayer = suitsByPlayer;
@@ -657,6 +703,7 @@ export function passPresidentTurn(state: PresidentState, automatic = false): Pre
     const leader = chooseLeaderAfterTrick(next);
     if (next.lastSuccessfulPlayerId) next.statsByPlayer[next.lastSuccessfulPlayerId].tricksWon += 1;
     next.trickNo += 1;
+    if (next.rules.targetMode === "shuffle-trick") next.targetSegments = presidentMakeTargetSegments("shuffle-trick", next.roundNo);
     next.currentTarget = null;
     next.currentTableSuits = [];
     next.lastSuccessfulPlayerId = null;
@@ -673,11 +720,11 @@ export function playPresidentTurn(state: PresidentState, target: PresidentTarget
   const next = clonePresidentState(state);
   const playerId = next.activePlayerId;
   const hand = next.hands[playerId] || [];
-  const normalizedDarts = (darts || []).slice(0, 3);
+  const normalizedDarts = (darts || []).slice(0, next.rules.dartsPerAttempt || 3);
   // The physical hit takes precedence over an obsolete selection. Resolve
   // against the live hand before checking legality; otherwise a stale S3
   // blocks an actual, legal S4 when the table has changed.
-  const actualTarget = presidentResolvePlayedTarget(next, normalizedDarts, target);
+  const actualTarget = presidentResolvePlayedTarget(next, normalizedDarts, target, next.rules.selectionMode === "manual");
   const candidate = actualTarget || target;
   const legal = presidentLegalTargets(hand, next.currentTarget, next.revolutionActive)
     .some((t) => t.value === candidate.value && t.size === candidate.size);
@@ -739,7 +786,7 @@ export function playPresidentTurn(state: PresidentState, target: PresidentTarget
     id: `pres-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     roundNo: next.roundNo, trickNo: next.trickNo, playerId, target: { ...target },
     darts: normalizedDarts, labels: normalizedDarts.map(presidentDartLabel), success, passed: !success,
-    coupEtat, revolutionTriggered, playedSuits: success ? playedSuits : undefined, cardsBefore, cardsAfter: next.hands[playerId]?.length ?? cardsBefore, createdAt: Date.now(),
+    coupEtat, revolutionTriggered, playedSuits: success ? playedSuits : undefined, aimLabel: presidentAimLabel(next, target), cardsBefore, cardsAfter: next.hands[playerId]?.length ?? cardsBefore, createdAt: Date.now(),
   });
 
   const completed = maybeCompleteRound(next);
@@ -748,6 +795,7 @@ export function playPresidentTurn(state: PresidentState, target: PresidentTarget
   if (coupEtat) {
     if (next.lastSuccessfulPlayerId) next.statsByPlayer[next.lastSuccessfulPlayerId].tricksWon += 1;
     next.trickNo += 1;
+    if (next.rules.targetMode === "shuffle-trick") next.targetSegments = presidentMakeTargetSegments("shuffle-trick", next.roundNo);
     next.currentTarget = null;
     next.currentTableSuits = [];
     next.lastSuccessfulPlayerId = null;
@@ -760,6 +808,7 @@ export function playPresidentTurn(state: PresidentState, target: PresidentTarget
     const leader = chooseLeaderAfterTrick(next);
     if (next.lastSuccessfulPlayerId) next.statsByPlayer[next.lastSuccessfulPlayerId].tricksWon += 1;
     next.trickNo += 1;
+    if (next.rules.targetMode === "shuffle-trick") next.targetSegments = presidentMakeTargetSegments("shuffle-trick", next.roundNo);
     next.currentTarget = null;
     next.currentTableSuits = [];
     next.lastSuccessfulPlayerId = null;
@@ -785,6 +834,7 @@ export function clonePresidentState(state: PresidentState): PresidentState {
     hands: Object.fromEntries(Object.entries(state.hands).map(([id, hand]) => [id, [...hand]])),
     suitsByPlayer: Object.fromEntries(Object.entries(state.suitsByPlayer || {}).map(([id, suits]) => [id, [...suits]])),
     currentTableSuits: [...(state.currentTableSuits || [])],
+    targetSegments: { ...(state.targetSegments || {}) },
     pendingTaxes: (state.pendingTaxes || []).map(task=>({...task})),
     currentTarget: state.currentTarget ? { ...state.currentTarget } : null,
     passedPlayerIds: [...state.passedPlayerIds],

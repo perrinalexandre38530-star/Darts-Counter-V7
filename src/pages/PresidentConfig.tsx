@@ -51,12 +51,12 @@ function Rules({ color }: { color: string }) {
     <div><b style={{ color }}>DEUX JEUX, DEUX RÈGLES</b><br />PRÉSIDENT : plis, rangs et points. KILO DE MERDE : échange de quatre cartes, dernier à taper, pénalités en kilos et chasse d'eau sur le 7 du tas. Ils ne partagent pas le même comptage.</div>
     <div><b style={{ color }}>OBJECTIF</b><br />Débarrasse-toi de ta main virtuelle avant les autres. Le premier devient Président, le dernier Trou du cul.</div>
     <div><b style={{ color }}>CLASSEMENT</b><br />Le Président reçoit N−1 points pour N joueurs, le suivant N−2, et le dernier 0. Exemple à 5 : 4 / 3 / 2 / 1 / 0. Les plis n'octroient pas de points ; ils restent des statistiques. Aucune pénalité en kilos au Président.</div>
-    <div><b style={{ color }}>CARTES = CIBLE</b><br />S7 joue une carte 7, D7 joue une paire de 7, T7 joue un brelan de 7. Tu as jusqu’à 3 fléchettes pour réussir la cible affichée.</div>
+    <div><b style={{ color }}>CARTES & CIBLES</b><br />S = 1 carte, D = 2 cartes, T = 3 cartes. En ciblage fixe, le rang correspond au segment ; en Expert, chaque rang peut être associé à un des 20 segments. Le nombre de tentatives se règle dans la configuration.</div>
     <div><b style={{ color }}>PLI</b><br />À l’ouverture tu choisis une combinaison de ta main. Ensuite il faut jouer la même combinaison avec une valeur supérieure. Quand tous les autres passent, le dernier joueur ayant réussi reprend la main.</div>
     <div><b style={{ color }}>HIÉRARCHIE</b><br />Président, Vice-Président, Citoyen, Vice-Trou du cul, Trou du cul selon le nombre de joueurs.</div>
     <div><b style={{ color }}>TAXE</b><br />À la manche suivante, le dernier donne ses 2 meilleures cartes au Président, qui lui rend ses 2 plus faibles. À 4 joueurs ou plus, VP/VTC échangent aussi 1 carte.</div>
     <div><b style={{ color }}>PAQUET CLASSIQUE</b><br />PRÉSIDENT classique : les 52 cartes sont distribuées, aucun Joker. PRÉSIDENT CHAOS : deux Jokers MSS supplémentaires activés dans cette variante uniquement.</div>
-    <div><b style={{ color: "#ffcf66" }}>CHAOS</b><br />Optionnel : BULL joker sur un simple, DBULL Coup d’État, T20 Révolution qui inverse l’ordre des valeurs jusqu’à la fin de la manche.</div>
+    <div><b style={{ color: "#ffcf66" }}>CHAOS</b><br />Optionnel : BULL joker sur un simple, DBULL Coup d’État, brelan d’As = Révolution qui inverse l’ordre des valeurs jusqu’à la fin de la manche.</div>
   </div>;
 }
 
@@ -95,10 +95,15 @@ export default function PresidentConfig(props: any) {
   const [coupEtat, setCoupEtat] = React.useState(saved.coupEtat !== false);
   const [revolution, setRevolution] = React.useState(saved.revolution !== false);
   const [randomOrder, setRandomOrder] = React.useState(saved.randomOrder !== false);
+  const [difficulty, setDifficulty] = React.useState<"discovery" | "classic" | "expert">(["discovery","classic","expert"].includes(saved.difficulty) ? saved.difficulty : "classic");
+  const [targetMode, setTargetMode] = React.useState<"fixed" | "rotate" | "shuffle-round" | "shuffle-trick">(["fixed","rotate","shuffle-round","shuffle-trick"].includes(saved.targetMode) ? saved.targetMode : "fixed");
+  const [selectionMode, setSelectionMode] = React.useState<"manual" | "assisted">(saved.selectionMode === "assisted" ? "assisted" : "manual");
+  const [adviceLevel, setAdviceLevel] = React.useState<"off" | "light" | "full">(["off","light","full"].includes(saved.adviceLevel) ? saved.adviceLevel : "light");
+  const [dartsPerAttempt, setDartsPerAttempt] = React.useState<1|2|3>(([1,2,3].includes(Number(saved.dartsPerAttempt)) ? Number(saved.dartsPerAttempt) : 3) as 1|2|3);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [view, setView] = React.useState<"guided" | "complete">(() => { try { return localStorage.getItem("dc_president_config_view") === "complete" ? "complete" : "guided"; } catch { return "guided"; } });
   const [step, setStep] = React.useState(0);
-  const steps = ["Participants", "Règne", "Variante", "Saisie", "Résumé"];
+  const steps = ["Participants", "Règne", "Variante", "Difficulté", "Résumé"];
 
   React.useEffect(() => {
     const map = new Map<string, BotLite>();
@@ -108,8 +113,8 @@ export default function PresidentConfig(props: any) {
   }, []);
   React.useEffect(() => { if (!selectedIds.length && humanProfiles.length >= 3) setSelectedIds(humanProfiles.slice(0, 3).map((p) => String(p.id))); }, [humanProfiles, selectedIds.length]);
   React.useEffect(() => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ selectedIds, playerDartSets, botsPanelEnabled, botLevel, rounds, handSize, deckCopies, variant, bullJoker, coupEtat, revolution, randomOrder, scoreInputMethod })); } catch {}
-  }, [selectedIds, playerDartSets, botsPanelEnabled, botLevel, rounds, handSize, deckCopies, variant, bullJoker, coupEtat, revolution, randomOrder, scoreInputMethod]);
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ selectedIds, playerDartSets, botsPanelEnabled, botLevel, rounds, handSize, deckCopies, variant, bullJoker, coupEtat, revolution, randomOrder, scoreInputMethod, difficulty, targetMode, selectionMode, adviceLevel, dartsPerAttempt })); } catch {}
+  }, [selectedIds, playerDartSets, botsPanelEnabled, botLevel, rounds, handSize, deckCopies, variant, bullJoker, coupEtat, revolution, randomOrder, scoreInputMethod, difficulty, targetMode, selectionMode, adviceLevel, dartsPerAttempt]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((p) => ({ ...p, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
@@ -145,7 +150,7 @@ export default function PresidentConfig(props: any) {
       playersList: orderedProfiles.map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur", dartSetId: playerDartSets[String(p.id)] ?? null })),
       playerDartSets, botIds, botsEnabled: botIds.length > 0, botLevel, rounds, handSize: actualHandSize, deckCopies,
       variant, randomOrder, bullJoker: variant === "chaos" && bullJoker, coupEtat: variant === "chaos" && coupEtat,
-      revolution: variant === "chaos" && revolution, scoreInputMethod,
+      revolution: variant === "chaos" && revolution, scoreInputMethod, difficulty, targetMode, selectionMode, adviceLevel, dartsPerAttempt,
     };
     try { recordProfileUsageForMode("president", orderedIds); } catch {}
     if (typeof go === "function") go("president_play", payload);
@@ -177,19 +182,29 @@ export default function PresidentConfig(props: any) {
 
   const chaos = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>VARIANTE</div>
     <OptionRow label="Mode"><OptionSelect value={variant} options={[{ value: "classic", label: "Président classique" }, { value: "chaos", label: "Président Chaos" }, ]} onChange={setVariant} /></OptionRow>
-    {variant === "chaos" ? <><OptionRow label="BULL = Joker simple"><OptionToggle value={bullJoker} onChange={setBullJoker} /></OptionRow><OptionRow label="DBULL = Coup d'État"><OptionToggle value={coupEtat} onChange={setCoupEtat} /></OptionRow><OptionRow label="T14 (As) = Révolution"><OptionToggle value={revolution} onChange={setRevolution} /></OptionRow></> : null}
+    {variant === "chaos" ? <><OptionRow label="BULL = Joker simple"><OptionToggle value={bullJoker} onChange={setBullJoker} /></OptionRow><OptionRow label="DBULL = Coup d'État"><OptionToggle value={coupEtat} onChange={setCoupEtat} /></OptionRow><OptionRow label="Brelan d’As = Révolution"><OptionToggle value={revolution} onChange={setRevolution} /></OptionRow></> : null}
     <div style={rowHelp}>{variant === "classic" ? "Président : points selon le classement (premier : N−1, dernier : 0). Pas de kilos ni chasse d’eau." : variant === "chaos" ? "Président Chaos : mêmes points par place, événements optionnels sur le dartboard." : "KILO DE MERDE : 4 cartes, échange vers la gauche, 4 identiques, dernier à taper pénalisé. Le 7 du tas déclenche la chasse d’eau intégrale."}</div>
     <PresidentCardPreview color={primary} />
   </section>;
 
-  const input = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>SAISIE</div>
+  const input = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>DIFFICULTÉ & SAISIE</div>
+    <OptionRow label="Difficulté"><OptionSelect value={difficulty} options={[{value:"discovery",label:"Découverte"},{value:"classic",label:"Classique"},{value:"expert",label:"Expert"}]} onChange={(v: any)=>{
+      setDifficulty(v); if(v==="discovery"){setTargetMode("fixed");setSelectionMode("assisted");setAdviceLevel("full");setDartsPerAttempt(3);}
+      else if(v==="classic"){setTargetMode("fixed");setSelectionMode("manual");setAdviceLevel("light");setDartsPerAttempt(3);}
+      else {setTargetMode("shuffle-round");setSelectionMode("manual");setAdviceLevel("light");setDartsPerAttempt(2);}
+    }}/></OptionRow>
+    <OptionRow label="Segments des cartes"><OptionSelect value={targetMode} options={[{value:"fixed",label:"Fixes (rangs = segments)"},{value:"rotate",label:"Rotation par manche"},{value:"shuffle-round",label:"Aléatoires par manche"},{value:"shuffle-trick",label:"Aléatoires par pli"}]} onChange={setTargetMode}/></OptionRow>
+    <OptionRow label="Choix du coup"><OptionSelect value={selectionMode} options={[{value:"manual",label:"Manuel : choix obligatoire"},{value:"assisted",label:"Assisté : proposé automatiquement"}]} onChange={setSelectionMode}/></OptionRow>
+    <OptionRow label="Conseils Awena"><OptionSelect value={adviceLevel} options={[{value:"off",label:"Désactivés"},{value:"light",label:"Discrets"},{value:"full",label:"Complets"}]} onChange={setAdviceLevel}/></OptionRow>
+    <OptionRow label="Fléchettes / coup"><OptionSelect value={dartsPerAttempt} options={[{value:3,label:"3 tentatives"},{value:2,label:"2 tentatives"},{value:1,label:"1 tentative"}]} onChange={(v:any)=>setDartsPerAttempt(Number(v) as 1|2|3)}/></OptionRow>
+    <div style={rowHelp}>Les rangs des cartes ne changent jamais : seul le segment à toucher varie. S = 1 carte, D = 2 cartes, T = 3 cartes. Rotation et tirages utilisent les 20 segments sans doublons parmi les 13 rangs. Le mode « par pli » redéfinit les cibles à chaque nouveau pli.</div>
     <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad X01" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
-    <div style={rowHelp}>La carte-cible reste affichée pendant la tentative. Exemple : <b style={{ color: primary }}>D7 — PAIRE DE 7</b>. Dès qu’une fléchette correspond exactement, la combinaison est validée.</div>
+    <div style={rowHelp}>La carte et sa cible physique sont affichées ensemble. En fixe : paire de 7 → D7 ; en ciblage variable, la même paire peut demander D18. Une touche exacte valide la combinaison.</div>
   </section>;
 
   const summary = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 9 }}>RÉSUMÉ</div>
     <div style={{ display: "grid", gap: 7, fontSize: 11.5 }}>
-      {[["Participants", `${selectedIds.length} joueurs`],["Règne", `${rounds} manche${rounds > 1 ? "s" : ""}`],["Main", `${actualHandSize} cartes/joueur${deckWarning ? ` (au lieu de ${handSize})` : ""}`],["Paquet", `Unique · ${deckCapacity} cartes`],["Variante", variant === "chaos" ? "CHAOS" : "CLASSIQUE"],["Saisie", scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
+      {[["Participants", `${selectedIds.length} joueurs`],["Règne", `${rounds} manche${rounds > 1 ? "s" : ""}`],["Main", `${actualHandSize} cartes/joueur${deckWarning ? ` (au lieu de ${handSize})` : ""}`],["Paquet", `Unique · ${deckCapacity} cartes`],["Variante", variant === "chaos" ? "CHAOS" : "CLASSIQUE"],["Difficulté", `${difficulty} · ${targetMode} · ${dartsPerAttempt} fléchette(s)`],["Choix du coup", selectionMode === "manual" ? "Manuel obligatoire" : "Assisté"],["Saisie", scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
     </div>
   </section>;
 
