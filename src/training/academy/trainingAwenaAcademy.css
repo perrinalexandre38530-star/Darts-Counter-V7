@@ -1,82 +1,782 @@
-.mssAwenaAcademy { box-sizing:border-box; width:100%; max-width:1100px; margin:10px auto 22px; color:#eff9ff; font-family:inherit; }
-.mssAwenaAcademy button { font-family:inherit; cursor:pointer; }
-.mssAwenaAcademy button:focus-visible { outline:2px solid #38e1ff; outline-offset:2px; }
-.mssAwenaAcademy button:disabled {opacity:.46;cursor:not-allowed;}
-.mssAcademyHero {display:flex;align-items:center;gap:14px;padding:15px;border:1px solid rgba(48,225,255,.27);background:radial-gradient(circle at 92% 8%,rgba(82,41,142,.3),transparent 55%),linear-gradient(115deg,#091c2e,#13111f);border-radius:20px;box-shadow:0 12px 26px rgba(0,0,0,.18);}
-.mssAcademyHero img {width:68px;height:68px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 2px 12px rgba(57,207,255,.3));}
-.mssAcademyHeroText {flex:1;min-width:0;}
-.mssAcademyHeroText small,.mssAcademyBanner small,.mssAcademyStory small,.mssAcademyMission small,.mssAcademyResult small,.mssAcademyPlayerHead small {display:block;font-size:10px;font-weight:900;letter-spacing:.85px;color:#75e8ff;}
-.mssAcademyHeroText h2 {margin:4px 0;font-size:clamp(18px,3vw,26px);font-weight:950;letter-spacing:1.2px;color:#eafdff;}
-.mssAcademyHeroText p {margin:0;max-width:650px;font-size:12px;color:#b4cbd7;line-height:1.4;}
-.mssAcademyVoice {padding:9px 10px;border-radius:10px;color:#bcf6ff;background:rgba(39,220,255,.09);border:1px solid rgba(39,220,255,.3);font-size:11px;font-weight:900;white-space:nowrap;}
-.mssAcademyVoiceNotice {padding:8px 12px;font-size:12px;color:#ffd97d;}
-.mssAcademyTabs {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:13px 0;}
-.mssAcademyTabs button {min-height:44px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(255,255,255,.035);color:#b0ccdc;font-size:11px;font-weight:950;}
-.mssAcademyTabs button.active {background:rgba(39,220,255,.14);border-color:rgba(39,220,255,.5);color:#e7fdff;box-shadow:inset 0 -2px 0 #20d4f5;}
-.mssAcademyBanner {display:flex;align-items:center;gap:12px;justify-content:space-between;padding:14px 16px;border-radius:15px;border:1px solid rgba(124,255,203,.27);background:rgba(25,74,70,.18);margin-bottom:12px;}
-.mssAcademyBanner > div {min-width:0;display:flex;flex-direction:column;gap:3px;}.mssAcademyBanner strong {font-size:16px;}.mssAcademyBanner span {font-size:11px;color:#bfd5d9;}
-.mssAcademyBanner button,.mssAcademyActions button.primary {background:linear-gradient(180deg,#36def5,#16a9d5);color:#031620;border:0;font-weight:950;}
-.mssAcademyBanner button {border-radius:11px;padding:10px 14px;white-space:nowrap;font-size:11px;}
-.mssAcademyLessonGrid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
-.mssAcademyLessonTile {display:flex;align-items:center;gap:10px;text-align:left;padding:13px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(110deg,rgba(22,36,55,.93),rgba(16,18,31,.93));border-radius:15px;min-width:0;color:inherit;}
-.mssAcademyLessonTile:hover,.mssAcademyProgressRow:hover {border-color:rgba(39,220,255,.4);}
-.mssAcademyLessonNumber {font-size:15px;display:grid;place-items:center;flex:0 0 37px;width:37px;height:37px;border-radius:12px;color:#67e4ff;background:rgba(39,220,255,.09);border:1px solid rgba(39,220,255,.16);font-weight:900;}
-.mssAcademyLessonInfo {min-width:0;flex:1;display:flex;flex-direction:column;gap:4px;}.mssAcademyLessonInfo small {font-size:9px;color:#6ce6ff;letter-spacing:.4px;font-weight:900;}.mssAcademyLessonInfo strong {font-size:13px;font-weight:950;}.mssAcademyLessonInfo > span {font-size:10px;line-height:1.35;color:#a4bbc9;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-.mssAcademyLessonStatus {font-size:9px;font-weight:850;color:#95e8bf;white-space:nowrap;}.mssAcademyLessonStatus b {font-size:20px;vertical-align:middle;margin-left:5px;color:#4fe6ff;}
-.mssAcademyPlayer {border-radius:19px;background:linear-gradient(145deg,#0b2030,#101321);border:1px solid rgba(39,220,255,.25);padding:clamp(12px,2vw,22px);}
-.mssAcademyPlayerHead {display:flex;gap:12px;align-items:center;border-bottom:1px solid rgba(255,255,255,.09);padding-bottom:12px;}
-.mssAcademyPlayerHead button {padding:9px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:inherit;font-size:10px;font-weight:900;}
-.mssAcademyPlayerHead div {flex:1;min-width:0;}.mssAcademyPlayerHead h3 {margin:3px 0;font-size:clamp(16px,2.4vw,22px);}.mssAcademyPlayerHead > span {color:#ffd883;font-weight:900;font-size:11px;}
-.mssAcademyStory {max-width:740px;margin:0 auto;padding:20px 3px;}.mssAcademyStory > p {font-size:clamp(15px,2.1vw,19px);line-height:1.52;font-weight:750;margin:13px 0 17px;}
-.mssAcademyInsight {background:rgba(39,220,255,.09);border:1px solid rgba(39,220,255,.26);padding:14px;border-radius:13px;font-size:14px;line-height:1.5;}
-.mssAcademyActions {display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;}.mssAcademyActions button {min-height:42px;padding:10px 13px;border:1px solid rgba(255,255,255,.17);background:rgba(255,255,255,.055);border-radius:11px;color:#ebfaff;font-size:11px;font-weight:900;}
-.mssAcademyAnswers {display:grid;gap:8px;}.mssAcademyAnswers button {text-align:left;display:flex;align-items:center;gap:11px;min-height:48px;border-radius:12px;padding:8px 12px;color:#e6f4f9;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);font-size:13px;font-weight:760;}.mssAcademyAnswers button span {display:grid;place-items:center;border-radius:8px;width:26px;height:26px;background:rgba(255,255,255,.08);color:#75e6fc;font-weight:900;}.mssAcademyAnswers button.chosen {border-color:#47d9f0;background:rgba(39,220,255,.12);}.mssAcademyAnswers button.correct {border-color:#70e4a9;}
-.mssAcademyMission {display:flex;flex-direction:column;gap:7px;padding:14px 0;}.mssAcademyMission strong {font-size:14px;line-height:1.4;}
-.mssAcademyScoreboard,.mssAcademyStats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}.mssAcademyScoreboard>div,.mssAcademyStats>div {display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;padding:11px;border-radius:12px;background:rgba(7,28,38,.85);border:1px solid rgba(39,220,255,.14);}.mssAcademyScoreboard small,.mssAcademyStats small {text-align:center;color:#8ad7e7;font-size:9px;font-weight:900;letter-spacing:.3px;}.mssAcademyScoreboard strong,.mssAcademyStats strong {font-size:clamp(20px,3vw,29px);margin-top:5px;}
-.mssAcademyFeedback {margin-top:10px;padding:10px 12px;border-radius:11px;background:rgba(255,215,117,.08);border:1px solid rgba(255,215,117,.23);font-size:12px;line-height:1.45;}
-.mssAcademyHint {color:#a4c0cc;font-size:11px;line-height:1.5;}.mssAcademyPad {height:clamp(320px,58dvh,540px);min-height:320px;display:flex;min-width:0;flex-direction:column;overflow:hidden;margin-top:8px;border-radius:15px;background:rgba(0,0,0,.2);padding:8px;}
-.mssAcademyResult {border-radius:15px;background:radial-gradient(circle at top,rgba(39,220,255,.15),transparent 60%),rgba(0,0,0,.25);padding:20px;text-align:center;margin-top:15px;}.mssAcademyResult h3 {font-size:37px;color:#8ef7cb;margin:6px 0;}.mssAcademyResult p {font-size:13px;color:#bed4df;}.mssAcademyResult .mssAcademyActions {justify-content:center;}
-.mssAcademyProgress>p,.mssAcademyFoot {font-size:11px;color:#a5bcc8;line-height:1.5;}.mssAcademyProgressRow {width:100%;display:grid;grid-template-columns:1fr auto;gap:7px;text-align:left;min-height:54px;margin:8px 0;padding:11px 13px;color:inherit;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);border-radius:12px;}.mssAcademyProgressRow strong {font-size:12px;}.mssAcademyProgressRow>span {font-size:10px;color:#90f0c4;}.mssAcademyProgressTrack {grid-column:1/-1;height:5px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden;}.mssAcademyProgressTrack span {display:block;height:100%;background:linear-gradient(90deg,#26c9e9,#7cffc1);}
-@media(max-width:700px) {.mssAcademyLessonGrid {grid-template-columns:1fr;}.mssAcademyHero {padding:11px;gap:8px;flex-wrap:wrap;}.mssAcademyHero img {width:51px;height:51px;}.mssAcademyHeroText {flex:1 1 calc(100% - 65px);}.mssAcademyHeroText h2 {font-size:19px;}.mssAcademyHeroText p {font-size:10px;}.mssAcademyVoice {margin-left:auto;padding:7px;font-size:9px;}.mssAcademyTabs {gap:4px;}.mssAcademyTabs button {font-size:9px;padding:5px 2px;}.mssAcademyBanner {padding:11px;}.mssAcademyBanner strong {font-size:13px;}.mssAcademyBanner span {font-size:10px;}.mssAcademyBanner button {font-size:9px;padding:9px;}.mssAcademyPlayerHead {gap:6px;}.mssAcademyPlayerHead button {padding:7px;font-size:9px;}.mssAcademyScoreboard>div,.mssAcademyStats>div {padding:8px 3px;}.mssAcademyScoreboard small,.mssAcademyStats small {font-size:7.5px;}.mssAcademyPad {height:clamp(320px,52dvh,480px);}.mssAcademyLessonStatus {font-size:8px;}}
-/* Academy expansion: filters, quiz challenges, and answer-by-answer progression. */
-.mssAcademyTabs {grid-template-columns:repeat(4,minmax(0,1fr));}
-.mssAcademyFilters {display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:11px 0 14px;}
-.mssAcademyFilters label {color:#87def1;font-size:9px;letter-spacing:.6px;font-weight:900;display:flex;flex-direction:column;gap:5px;flex:1 1 140px;}
-.mssAcademyFilters input,.mssAcademyFilters select {width:100%;min-width:0;min-height:39px;padding:8px 10px;border-radius:10px;border:1px solid rgba(70,209,238,.26);background:#111e2f;color:#f0faff;font-size:12px;font-family:inherit;}
-.mssAcademyFilters input::placeholder {color:#8c9ba8;}
-.mssAcademyCount {font-weight:900;color:#94f0c4;font-size:11px;white-space:nowrap;padding:9px 0;}
-.mssAcademyQuizPanel {border-radius:19px;background:linear-gradient(145deg,#0b2030,#101321);border:1px solid rgba(39,220,255,.25);padding:clamp(12px,2vw,22px);}
-.mssAcademyQuizHeader {display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
-.mssAcademyQuizHeader small {color:#71e1fb;font-weight:900;font-size:10px;letter-spacing:.7px;}
-.mssAcademyQuizHeader h3 {margin:5px 0;font-size:clamp(16px,2.4vw,23px);}
-.mssAcademyQuizHeader p {margin:0;color:#b0c9d5;font-size:12px;line-height:1.5;}
-.mssAcademyQuizHeader button {background:linear-gradient(180deg,#36def5,#16a9d5);color:#031620;border:0;border-radius:11px;padding:11px 15px;font-weight:950;font-size:11px;white-space:nowrap;}
-.mssAcademyQuizTrack {height:7px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:12px;}
-.mssAcademyQuizTrack span {height:100%;display:block;background:linear-gradient(90deg,#23c7ed,#85eec2);transition:width .18s ease;}
-.mssAcademyAnswers button.incorrect {border-color:#ff9a88;background:rgba(246,103,87,.10);}
-.mssAcademyAnswers button:disabled {opacity:1;}
-.mssAcademyMiniScore {text-align:right;font-size:11px;color:#a1d7e8;padding:10px 2px;}
-.mssAcademyQuizStats {margin-top:9px;}
-.mssAcademyEmpty {color:#bacbd7;font-size:12px;padding:18px 10px;line-height:1.5;}
-@media(max-width:700px) {
-  .mssAcademyTabs {grid-template-columns:repeat(2,minmax(0,1fr));}
-  .mssAcademyFilters label {flex:1 1 115px;}
-  .mssAcademyCount {flex:1 1 100%;padding:1px 0 5px;}
-  .mssAcademyQuizHeader button {width:100%;}
-  .mssAcademyFilters select,.mssAcademyFilters input {font-size:11px;}
+.mssAwenaAcademy {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1100px;
+  margin: 10px auto 24px;
+  color: #eff9ff;
+  font-family: inherit;
 }
-/* V168: short adaptive Awena revision sessions, following the existing Academy visual system. */
-.mssAcademyTabs {grid-template-columns:repeat(5,minmax(0,1fr));}
-.mssAcademyReviewDashboard {border:1px solid rgba(39,220,255,.28);border-radius:18px;background:linear-gradient(140deg,rgba(8,33,45,.95),rgba(23,22,43,.93));padding:clamp(12px,2vw,20px);margin-bottom:12px;}
-.mssAcademyReviewStats {margin:15px 0 12px;}
-.mssAcademyReviewAdvice {color:#b9d2db;font-size:12px;line-height:1.55;padding:10px 12px;background:rgba(39,220,255,.06);border-radius:10px;}
-.mssAcademyReviewFocus {display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;text-align:left;color:#ecfdff;border:1px solid rgba(114,235,182,.3);border-radius:13px;background:rgba(19,73,58,.20);margin-top:12px;padding:12px 14px;}
-.mssAcademyReviewFocus>span {display:flex;flex-direction:column;gap:4px;min-width:0;}
-.mssAcademyReviewFocus small {font-size:9px;font-weight:900;letter-spacing:.5px;color:#87f2c3;}
-.mssAcademyReviewFocus strong {font-size:14px;}
-.mssAcademyReviewFocus>span>span {color:#c1d6db;font-size:11px;}
-.mssAcademyReviewFocus b {font-size:25px;color:#87f2c3;}
-.mssAcademyReminder {color:#7df3c1!important;font-weight:900;}
-.mssAcademyQuizHeader button:disabled {opacity:.55;cursor:default;filter:grayscale(.6);}
-@media(max-width:700px) {.mssAcademyTabs {grid-template-columns:repeat(3,minmax(0,1fr));}.mssAcademyTabs button {min-height:39px;font-size:9px;}.mssAcademyReviewStats strong {font-size:20px;}}
-@media(max-width:420px) {.mssAcademyTabs {grid-template-columns:repeat(2,minmax(0,1fr));}.mssAcademyReviewStats small {font-size:8px;}}
+.mssAwenaAcademy button { font-family: inherit; cursor: pointer; }
+.mssAwenaAcademy button:focus-visible { outline: 2px solid #38e1ff; outline-offset: 2px; }
+.mssAwenaAcademy button:disabled { opacity: .46; cursor: not-allowed; }
+
+.mssAcademyHero,
+.mssAcademyPlayer,
+.mssAcademyQuizPanel,
+.mssAcademyReviewDashboard {
+  background: linear-gradient(180deg, rgba(11, 21, 33, .96), rgba(10, 18, 29, .96));
+  border: 1px solid rgba(95, 221, 255, .16);
+  border-radius: 18px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .18);
+}
+
+.mssAcademyHero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+}
+.mssAcademyHero img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 8px rgba(57, 207, 255, .18));
+}
+.mssAcademyHeroText { min-width: 0; }
+.mssAcademyHeroText small,
+.mssAcademyBanner small,
+.mssAcademyStory small,
+.mssAcademyMission small,
+.mssAcademyResult small,
+.mssAcademyPlayerHead small,
+.mssAcademyHeroStat small {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .85px;
+  color: #76e8ff;
+}
+.mssAcademyHeroText h2 {
+  margin: 3px 0 5px;
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 950;
+  letter-spacing: 1px;
+  color: #f5fdff;
+}
+.mssAcademyHeroText p {
+  margin: 0;
+  max-width: 680px;
+  font-size: 12px;
+  color: #b0c8d6;
+  line-height: 1.45;
+}
+.mssAcademyVoice,
+.mssAcademyPlayerHead button,
+.mssAcademyActions button,
+.mssAcademyBanner button,
+.mssAcademyQuizHeader button {
+  min-height: 42px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(95, 221, 255, .18);
+  background: rgba(255, 255, 255, .04);
+  color: #ebfaff;
+  font-size: 11px;
+  font-weight: 900;
+}
+.mssAcademyBanner button,
+.mssAcademyActions button.primary,
+.mssAcademyQuizHeader button {
+  background: linear-gradient(180deg, #36def5, #16a9d5);
+  color: #031620;
+  border: 0;
+}
+.mssAcademyVoice {
+  white-space: nowrap;
+  background: rgba(39, 220, 255, .08);
+  color: #bcf6ff;
+}
+.mssAcademyHeroStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+}
+.mssAcademyHeroStat,
+.mssAcademyScoreboard > div,
+.mssAcademyStats > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .035);
+  border: 1px solid rgba(95, 221, 255, .12);
+}
+.mssAcademyHeroStat > span,
+.mssAcademyBannerIcon,
+.mssAcademyLessonIcon,
+.mssAcademyProgressIcon,
+.mssAcademyReviewFocusIcon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  color: #7ae7ff;
+  background: rgba(39, 220, 255, .09);
+  border: 1px solid rgba(39, 220, 255, .18);
+}
+.mssAcademyHeroStat div,
+.mssAcademyBanner > div,
+.mssAcademyReviewFocus > span { min-width: 0; }
+.mssAcademyHeroStat strong,
+.mssAcademyScoreboard strong,
+.mssAcademyStats strong {
+  display: block;
+  margin-top: 3px;
+  font-size: clamp(18px, 3vw, 28px);
+  line-height: 1;
+}
+.mssAcademyVoiceNotice {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 215, 117, .08);
+  border: 1px solid rgba(255, 215, 117, .2);
+  font-size: 12px;
+  color: #ffd97d;
+}
+
+.mssAcademyTabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 13px 0;
+}
+.mssAcademyTabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 64px;
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .03);
+  color: #a8c6d6;
+}
+.mssAcademyTabs button.active {
+  background: rgba(39, 220, 255, .11);
+  border-color: rgba(39, 220, 255, .34);
+  color: #f1fdff;
+}
+.mssAcademyTabIcon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+.mssAcademyTabLabel {
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: .35px;
+}
+
+.mssAcademyBanner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(124, 255, 203, .19);
+  background: rgba(16, 51, 61, .45);
+  margin-bottom: 12px;
+}
+.mssAcademyBanner strong { display: block; font-size: 16px; }
+.mssAcademyBanner span { display: block; font-size: 11px; color: #bfd5d9; }
+.mssAcademyReminder { color: #87f2c3 !important; font-weight: 900; }
+
+.mssAcademyFilters {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 11px 0 14px;
+}
+.mssAcademyFilters label {
+  color: #87def1;
+  font-size: 9px;
+  letter-spacing: .6px;
+  font-weight: 900;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1 1 140px;
+}
+.mssAcademyFilters input,
+.mssAcademyFilters select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(70, 209, 238, .19);
+  background: rgba(14, 26, 40, .96);
+  color: #f0faff;
+  font-size: 12px;
+  font-family: inherit;
+}
+.mssAcademyFilters input::placeholder { color: #8c9ba8; }
+.mssAcademyCount {
+  font-weight: 900;
+  color: #94f0c4;
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 9px 0;
+}
+
+.mssAcademyLessonGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.mssAcademyLessonTile,
+.mssAcademyProgressRow,
+.mssAcademyReviewFocus {
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .03);
+}
+.mssAcademyLessonTile {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 13px;
+  border-radius: 16px;
+  min-width: 0;
+}
+.mssAcademyLessonTile:hover,
+.mssAcademyProgressRow:hover,
+.mssAcademyReviewFocus:hover {
+  border-color: rgba(39, 220, 255, .28);
+  background: rgba(39, 220, 255, .05);
+}
+.mssAcademyLessonRail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.mssAcademyLessonNumber {
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #67e4ff;
+  background: rgba(39, 220, 255, .09);
+  border: 1px solid rgba(39, 220, 255, .16);
+  font-weight: 900;
+}
+.mssAcademyLessonInfo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mssAcademyLessonInfo small {
+  font-size: 9px;
+  color: #6ce6ff;
+  letter-spacing: .4px;
+  font-weight: 900;
+}
+.mssAcademyLessonInfo strong {
+  font-size: 14px;
+  font-weight: 950;
+}
+.mssAcademyLessonInfo > span {
+  font-size: 11px;
+  line-height: 1.42;
+  color: #a4bbc9;
+}
+.mssAcademyLessonInfo > span:not(.mssAcademyLessonMeta) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mssAcademyLessonMeta {
+  display: flex !important;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.mssAcademyLessonMeta em,
+.mssAcademyLessonMeta i {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  border-radius: 999px;
+  padding: 6px 8px;
+}
+.mssAcademyLessonMeta em {
+  color: #08241d;
+  background: #87f2c3;
+}
+.mssAcademyLessonMeta i {
+  color: #c6dae2;
+  background: rgba(255, 255, 255, .06);
+}
+.mssAcademyLessonArrow {
+  color: #63e7ff;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.mssAcademyPlayer,
+.mssAcademyQuizPanel,
+.mssAcademyReviewDashboard {
+  padding: clamp(12px, 2vw, 22px);
+}
+.mssAcademyPlayerHead {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  padding-bottom: 12px;
+}
+.mssAcademyPlayerHead div { flex: 1; min-width: 0; }
+.mssAcademyPlayerHead h3 {
+  margin: 3px 0;
+  font-size: clamp(16px, 2.4vw, 22px);
+}
+.mssAcademyPlayerHead > span { color: #ffd883; font-weight: 900; font-size: 11px; }
+
+.mssAcademyStory {
+  max-width: 740px;
+  margin: 0 auto;
+  padding: 20px 3px;
+}
+.mssAcademyStory > p {
+  font-size: clamp(15px, 2.1vw, 19px);
+  line-height: 1.52;
+  font-weight: 750;
+  margin: 13px 0 17px;
+}
+.mssAcademyInsight,
+.mssAcademyReviewAdvice,
+.mssAcademyFeedback {
+  border-radius: 14px;
+  padding: 13px 14px;
+  line-height: 1.5;
+}
+.mssAcademyInsight {
+  background: rgba(39, 220, 255, .08);
+  border: 1px solid rgba(39, 220, 255, .18);
+  font-size: 14px;
+}
+.mssAcademyFeedback {
+  margin-top: 10px;
+  background: rgba(255, 215, 117, .08);
+  border: 1px solid rgba(255, 215, 117, .2);
+  font-size: 12px;
+}
+.mssAcademyReviewAdvice {
+  color: #b9d2db;
+  font-size: 12px;
+  background: rgba(39, 220, 255, .05);
+  border: 1px solid rgba(39, 220, 255, .12);
+}
+.mssAcademyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 17px;
+}
+.mssAcademyAnswers { display: grid; gap: 8px; }
+.mssAcademyAnswers button {
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 50px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: #e6f4f9;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .12);
+  font-size: 13px;
+  font-weight: 760;
+}
+.mssAcademyAnswers button span {
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, .08);
+  color: #75e6fc;
+  font-weight: 900;
+}
+.mssAcademyAnswers button.chosen { border-color: #47d9f0; background: rgba(39, 220, 255, .12); }
+.mssAcademyAnswers button.correct { border-color: #70e4a9; }
+.mssAcademyAnswers button.incorrect { border-color: #ff9a88; background: rgba(246, 103, 87, .10); }
+.mssAcademyAnswers button:disabled { opacity: 1; }
+
+.mssAcademyMission {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 0;
+}
+.mssAcademyMission strong { font-size: 14px; line-height: 1.4; }
+.mssAcademyScoreboard,
+.mssAcademyStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.mssAcademyScoreboard > div,
+.mssAcademyStats > div {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+}
+.mssAcademyScoreboard small,
+.mssAcademyStats small {
+  text-align: center;
+  color: #8ad7e7;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .3px;
+}
+.mssAcademyHint,
+.mssAcademyProgress > p,
+.mssAcademyFoot,
+.mssAcademyMiniScore,
+.mssAcademyQuizHeader p,
+.mssAcademyReviewFocus > span > span {
+  color: #a6c0cd;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.mssAcademyPad {
+  height: clamp(320px, 58dvh, 540px);
+  min-height: 320px;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 8px;
+  border-radius: 15px;
+  background: rgba(0, 0, 0, .2);
+  padding: 8px;
+}
+.mssAcademyResult {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(95, 221, 255, .12);
+  padding: 20px;
+  text-align: center;
+  margin-top: 15px;
+}
+.mssAcademyResult h3 {
+  font-size: 37px;
+  color: #8ef7cb;
+  margin: 6px 0;
+}
+.mssAcademyResult p { font-size: 13px; color: #bed4df; }
+.mssAcademyResult .mssAcademyActions { justify-content: center; }
+
+.mssAcademyProgressRow {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  min-height: 58px;
+  margin: 8px 0;
+  padding: 12px 13px;
+  border-radius: 14px;
+}
+.mssAcademyProgressRow strong { font-size: 12px; }
+.mssAcademyProgressRow > span:not(.mssAcademyProgressIcon) { font-size: 10px; color: #90f0c4; }
+.mssAcademyProgressTrack {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .08);
+  overflow: hidden;
+}
+.mssAcademyProgressTrack span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #26c9e9, #7cffc1);
+}
+
+.mssAcademyQuizHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mssAcademyQuizHeader small {
+  color: #71e1fb;
+  font-weight: 900;
+  font-size: 10px;
+  letter-spacing: .7px;
+}
+.mssAcademyQuizHeader h3 {
+  margin: 5px 0;
+  font-size: clamp(16px, 2.4vw, 23px);
+}
+.mssAcademyQuizTrack {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .1);
+  overflow: hidden;
+  margin-top: 12px;
+}
+.mssAcademyQuizTrack span {
+  height: 100%;
+  display: block;
+  background: linear-gradient(90deg, #23c7ed, #85eec2);
+  transition: width .18s ease;
+}
+.mssAcademyMiniScore { text-align: right; padding: 10px 2px; }
+.mssAcademyQuizStats { margin-top: 9px; }
+.mssAcademyEmpty { color: #bacbd7; font-size: 12px; padding: 18px 10px; line-height: 1.5; }
+
+.mssAcademyReviewStats { margin: 15px 0 12px; }
+.mssAcademyReviewFocus {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border-radius: 14px;
+  margin-top: 12px;
+  padding: 12px 14px;
+}
+.mssAcademyReviewFocus small {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .5px;
+  color: #87f2c3;
+}
+.mssAcademyReviewFocus strong { display: block; font-size: 14px; margin-top: 3px; }
+.mssAcademyReviewFocus b { font-size: 25px; color: #87f2c3; }
+.mssAcademyQuizHeader button:disabled { opacity: .55; cursor: default; filter: grayscale(.6); }
+
+@media (max-width: 900px) {
+  .mssAcademyTabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mssAcademyHeroStats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .mssAcademyHero {
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    padding: 12px;
+  }
+  .mssAcademyHero img { width: 52px; height: 52px; }
+  .mssAcademyHeroText h2 { font-size: 20px; }
+  .mssAcademyHeroText p { font-size: 10px; }
+  .mssAcademyVoice { grid-column: 1 / -1; width: 100%; }
+  .mssAcademyTabs { gap: 6px; }
+  .mssAcademyTabs button { min-height: 58px; }
+  .mssAcademyBanner {
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    padding: 12px;
+  }
+  .mssAcademyBanner button { grid-column: 1 / -1; width: 100%; }
+  .mssAcademyLessonGrid { grid-template-columns: 1fr; }
+  .mssAcademyPlayerHead { gap: 6px; }
+  .mssAcademyPlayerHead button { padding: 8px 10px; }
+  .mssAcademyScoreboard > div,
+  .mssAcademyStats > div { padding: 9px 6px; }
+  .mssAcademyScoreboard small,
+  .mssAcademyStats small { font-size: 7.5px; }
+  .mssAcademyPad { height: clamp(320px, 52dvh, 480px); }
+  .mssAcademyFilters label { flex: 1 1 115px; }
+  .mssAcademyCount { flex: 1 1 100%; padding: 1px 0 5px; }
+  .mssAcademyQuizHeader button { width: 100%; }
+  .mssAcademyFilters select,
+  .mssAcademyFilters input { font-size: 11px; }
+}
+@media (max-width: 520px) {
+  .mssAcademyTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mssAcademyHeroStats,
+  .mssAcademyScoreboard,
+  .mssAcademyStats { grid-template-columns: 1fr 1fr; }
+  .mssAcademyReviewFocus,
+  .mssAcademyProgressRow { grid-template-columns: auto 1fr; }
+  .mssAcademyReviewFocus b,
+  .mssAcademyLessonArrow,
+  .mssAcademyProgressRow > span:not(.mssAcademyProgressIcon) { display: none; }
+}
+@media (max-width: 420px) {
+  .mssAcademyHeroStats,
+  .mssAcademyScoreboard,
+  .mssAcademyStats { grid-template-columns: 1fr; }
+}
+
+/* MSS Academy V195 : compact bottomnav language + short pages. Preserve the
+   original engine and theme tokens; these rules only refine the Academy UI. */
+.mssAwenaAcademy { max-width: 1080px; margin: 6px auto 18px; }
+.mssAcademyHero,
+.mssAcademyPlayer,
+.mssAcademyQuizPanel,
+.mssAcademyReviewDashboard { box-shadow: none; border-color: rgba(117,217,245,.16); }
+.mssAcademyHero { padding: 10px 14px; gap: 11px; border-radius: 15px; }
+.mssAcademyHero img { width: 50px; height: 50px; }
+.mssAcademyHeroText h2 { margin: 1px 0; font-size: clamp(18px,2.6vw,23px); }
+.mssAcademyHeroText small { font-size: 9px; letter-spacing: .55px; }
+.mssAcademyHeroText p { font-size: 11px; }
+.mssAcademyVoice { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 9px; border-radius: 10px; }
+.mssAcademyVoice[aria-pressed="false"] { color: #9caab5; border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.025); }
+.mssAcademyVoice > span:first-child { display: grid; place-items: center; }
+
+.mssAcademyHeroStats { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; margin-top: 7px; }
+.mssAcademyHeroStat { padding: 8px 10px; gap: 8px; border-radius: 11px; }
+.mssAcademyHeroStat > span { width: 28px; height: 28px; border-radius: 8px; }
+.mssAcademyHeroStat strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.mssAcademyHeroStat small { font-size: 9px; letter-spacing: .2px; }
+
+/* Same line-icon vocabulary as BottomNav; only the current tab has a caption. */
+.mssAcademyTabs { display: flex; grid-template-columns: unset; gap: 6px; margin: 9px 0; }
+.mssAcademyTabs button,
+.mssAcademyTabs button.active {
+  display: flex; flex: 1 1 0; min-width: 0; min-height: 50px;
+  padding: 7px 5px; flex-direction: row; align-items: center;
+  justify-content: center; gap: 7px; border-radius: 11px;
+  transition: flex-grow .18s ease,background .18s ease,border-color .18s ease;
+}
+.mssAcademyTabs button.active { flex: 2.3 1 0; border-color: rgba(54,222,245,.55); box-shadow: inset 0 -2px #2ad9f2; }
+.mssAcademyTabs .mssAcademyTabIcon { width: 25px; height: 25px; flex: 0 0 auto; }
+.mssAcademyTabs .mssAcademyTabLabel { display: none; }
+.mssAcademyTabs .active .mssAcademyTabLabel { display: block; max-width: 105px; font-size: 10px; text-align: left; line-height: 1.14; letter-spacing: .15px; }
+
+.mssAcademyBanner { padding: 11px 13px; border-radius: 13px; gap: 10px; }
+.mssAcademyBanner strong { font-size: 14px; }
+.mssAcademyBannerIcon { width: 32px; height: 32px; border-radius: 9px; }
+.mssAcademyBanner button { min-height: 37px; padding: 8px 12px; }
+.mssAcademyFilters { margin: 9px 0; gap: 6px; }
+.mssAcademyFilters label { gap: 4px; font-size: 9px; }
+.mssAcademyFilters input,.mssAcademyFilters select { min-height: 36px; padding: 7px 9px; border-radius: 9px; }
+.mssAcademyCount { padding: 8px 2px; color: #a6c8d6; font-size: 10px; }
+
+.mssAcademyLessonGrid { gap: 7px; }
+.mssAcademyLessonTile { padding: 10px 11px; gap: 10px; border-radius: 12px; background: rgba(255,255,255,.025); }
+.mssAcademyLessonRail { flex-direction: column; gap: 5px; }
+.mssAcademyLessonNumber { width: 31px; height: 31px; border-radius: 9px; font-size: 12px; }
+.mssAcademyLessonIcon { width: 25px; height: 25px; border-radius: 8px; }
+.mssAcademyLessonInfo { gap: 3px; }
+.mssAcademyLessonInfo small { font-size: 8px; letter-spacing: .15px; }
+.mssAcademyLessonInfo strong { font-size: 13px; line-height: 1.2; }
+.mssAcademyLessonInfo > span:not(.mssAcademyLessonMeta) { -webkit-line-clamp: 1; font-size: 10px; }
+.mssAcademyLessonMeta { margin-top: 1px; }
+.mssAcademyLessonMeta i,.mssAcademyLessonMeta em { font-size: 8px; padding: 5px 7px; }
+.mssAcademyLessonArrow { font-size: 19px; }
+
+.mssAcademyPager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0 2px; }
+.mssAcademyPager span { color: #b8d5e0; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 96px; text-align: center; }
+.mssAcademyPager button { display: grid; place-items: center; min-height: 38px; min-width: 43px; border-radius: 11px; border: 1px solid rgba(95,221,255,.23); background: rgba(255,255,255,.035); color: #80e8f9; font-size: 25px; line-height: 1; }
+.mssAcademyPager button:disabled { opacity: .25; }
+.mssAcademyProgressTitle { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin: 15px 0 7px; }
+.mssAcademyProgressTitle strong { color: #edfaff; font-size: 13px; }
+.mssAcademyProgressTitle span { color: #8fb7c7; font-size: 10px; }
+.mssAcademyProgressRow { min-height: 48px; margin: 6px 0; padding: 9px 11px; border-radius: 11px; gap: 6px 9px; }
+.mssAcademyProgressIcon { height: 29px; width: 29px; border-radius: 8px; }
+.mssAcademyProgressTrack { height: 4px; }
+.mssAcademyQuizPanel,.mssAcademyReviewDashboard,.mssAcademyPlayer { padding: clamp(11px,1.5vw,17px); border-radius: 15px; }
+.mssAcademyReviewStats { margin: 10px 0; }
+.mssAcademyStats > div,.mssAcademyScoreboard > div { padding: 9px 7px; border-radius: 11px; }
+.mssAcademyReviewAdvice,.mssAcademyInsight { padding: 10px 12px; }
+.mssAcademyStory { padding: 12px 2px; }
+.mssAcademyStory > p { margin: 10px 0 12px; }
+.mssAcademyAnswers { gap: 6px; }
+.mssAcademyAnswers button { min-height: 44px; border-radius: 11px; }
+.mssAcademyActions { margin-top: 10px; }
+.mssAcademyResult { padding: 14px; }
+.mssAcademyFoot { padding: 2px 4px; font-size: 10px; }
+
+@media (max-width: 900px) {
+  .mssAcademyTabs { display: flex; grid-template-columns: unset; }
+  .mssAcademyHeroStats { grid-template-columns: repeat(4,minmax(0,1fr)); }
+}
+@media (max-width: 700px) {
+  .mssAcademyHero { grid-template-columns: 40px minmax(0,1fr) auto; gap: 8px; padding: 9px 10px; }
+  .mssAcademyHero img { width: 40px; height: 40px; }
+  .mssAcademyHeroText h2 { font-size: 17px; }
+  .mssAcademyHeroText small { font-size: 7px; }
+  .mssAcademyHeroText p { display: none; }
+  .mssAcademyVoice { grid-column: auto; width: auto; min-height: 33px; padding: 6px; }
+  .mssAcademyVoice > span:last-child { display: none; }
+  .mssAcademyTabs { display: flex; grid-template-columns: unset; gap: 4px; }
+  .mssAcademyTabs button,.mssAcademyTabs button.active { min-height: 45px; padding: 6px 2px; gap: 3px; }
+  .mssAcademyTabs .active .mssAcademyTabLabel { font-size: 9px; }
+  .mssAcademyHeroStat { padding: 7px 5px; gap: 4px; }
+  .mssAcademyHeroStat > span { width: 24px; height: 24px; }
+  .mssAcademyHeroStat strong { font-size: 17px; }
+  .mssAcademyHeroStat small { font-size: 8px; }
+  .mssAcademyBanner { grid-template-columns: auto minmax(0,1fr) auto; padding: 9px; gap: 8px; }
+  .mssAcademyBanner button { grid-column: auto; width: auto; min-height: 34px; padding: 6px 9px; font-size: 9px; }
+  .mssAcademyBannerIcon { width: 29px; height: 29px; }
+  .mssAcademyBanner strong { font-size: 12px; }
+  .mssAcademyBanner span { font-size: 10px; }
+  .mssAcademyFilters label:first-child { flex: 1 1 100%; }
+  .mssAcademyFilters label:not(:first-child) { flex: 1 1 calc(50% - 6px); }
+  .mssAcademyCount { flex: 1 1 100%; padding: 0; }
+  .mssAcademyLessonTile { padding: 9px; }
+  .mssAcademyLessonGrid { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .mssAcademyTabs { display: flex; grid-template-columns: unset; }
+  .mssAcademyHeroStats { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .mssAcademyScoreboard,.mssAcademyStats { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .mssAcademyProgressRow { grid-template-columns: auto minmax(0,1fr) auto; }
+  .mssAcademyProgressRow > span:not(.mssAcademyProgressIcon) { display: inline; font-size: 9px; }
+}
+@media (max-width: 420px) {
+  .mssAcademyHeroStats { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .mssAcademyScoreboard,.mssAcademyStats { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .mssAcademyHeroStat { display: flex; flex-direction: column; gap: 3px; justify-content: center; min-height: 51px; }
+  .mssAcademyHeroStat > span { display: none; }
+  .mssAcademyHeroStat div { text-align: center; }
+  .mssAcademyHeroStat small { font-size: 7px; }
+  .mssAcademyHeroStat strong { font-size: 17px; }
+  .mssAcademyBannerIcon { display: none; }
+  .mssAcademyBanner { grid-template-columns: minmax(0,1fr) auto; }
+  .mssAcademyTabIcon { transform: scale(.9); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mssAcademyTabs button,.mssAcademyQuizTrack span { transition: none; }
+}
+
+/* V199 rebase: scoped FINISH DO course entry; preserves V199 pagination and compact Academy UI. */
+.mssAcademyFinishSpotlight{display:flex;align-items:center;gap:12px;margin:8px 0;padding:12px 14px;border:1px solid rgba(53,217,251,.3);border-radius:15px;background:linear-gradient(105deg,rgba(15,85,108,.3),rgba(12,22,35,.96))}
+.mssAcademyFinishIcon{display:grid;place-items:center;width:40px;height:40px;flex:0 0 auto;border-radius:12px;background:rgba(53,217,251,.12);color:#7ae7ff}
+.mssAcademyFinishSpotlight>div:nth-child(2){flex:1;min-width:0}
+.mssAcademyFinishSpotlight small{display:block;color:#86dbe9;letter-spacing:.08em;font-size:10px;font-weight:800}
+.mssAcademyFinishSpotlight strong{display:block;font-size:14px;line-height:1.3;margin:2px 0}
+.mssAcademyFinishSpotlight span{display:block;font-size:11px;line-height:1.35;color:#c1d3de}
+.mssAcademyFinishSpotlight button{border:1px solid #4dcadf;border-radius:11px;background:rgba(34,180,206,.15);color:#e7fbff;font-size:12px;font-weight:800;padding:10px 13px;white-space:nowrap}
+.mssAcademyCourseSwitch{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}
+.mssAcademyCourseSwitch button{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.035);color:#c5dbe6;font-size:11px;font-weight:800;padding:9px 12px}
+.mssAcademyCourseSwitch button.active{background:rgba(39,220,255,.16);border-color:rgba(39,220,255,.56);color:#f4fdff}
+.mssAcademyCourseSwitch span{background:#17637b;border-radius:9px;padding:2px 6px}
+@media(max-width:700px){
+  .mssAcademyFinishSpotlight{padding:9px;gap:8px}
+  .mssAcademyFinishIcon{display:none}
+  .mssAcademyFinishSpotlight button{padding:8px;font-size:10px}
+  .mssAcademyFinishSpotlight span{display:none}
+}

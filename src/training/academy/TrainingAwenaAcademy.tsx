@@ -1,5 +1,6 @@
 import React from "react";
 import { awenaVoice } from "../../awena/AwenaVoice";
+import { BottomNavIcon } from "../../components/BottomNav";
 import { loadAwenaSettings } from "../../awena/AwenaSettings";
 import TrainingDartPad from "../ui/TrainingDartPad";
 import type { TrainingDart } from "../lib/trainingDarts";
@@ -18,12 +19,24 @@ import "./trainingAwenaAcademy.css";
 type AcademyScreen = "learn" | "practice" | "quiz" | "review" | "progress";
 type LessonPhase = "intro" | "quiz" | "practice" | "result";
 const LETTERS = ["A", "B", "C"];
+const LESSONS_PER_PAGE = 6;
+const PROGRESS_PER_PAGE = 8;
 const LEVELS = ["", "DÉCOUVERTE", "FONDATIONS", "MAÎTRISE", "EXPERT"];
 const FAMILIES: Record<AcademyLesson["family"], string> = {
   scoring: "Calcul mental", doubles: "Doubles", checkout: "Finishs", precision: "Précision",
 };
 const VOICE_PLACEHOLDER = "Awena utilise la voix MSS configurée. Le texte reste accessible si la synthèse vocale n'est pas disponible.";
 const CATALOGUE = [...MSS_ACADEMY_CATALOGUE].sort((a, b) => a.level - b.level);
+const SCREEN_TABS: { id: AcademyScreen; label: string; icon: React.ComponentProps<typeof BottomNavIcon>["name"] }[] = [
+  { id: "learn", label: "APPRENDRE", icon: "home" },
+  { id: "practice", label: "S’EXERCER", icon: "games" },
+  { id: "quiz", label: "QUIZZ EXPRESS", icon: "messages" },
+  { id: "review", label: "MES RÉVISIONS", icon: "agenda" },
+  { id: "progress", label: "MES PROGRÈS", icon: "stats" },
+];
+const FAMILY_ICONS: Record<AcademyLesson["family"], React.ComponentProps<typeof BottomNavIcon>["name"]> = {
+  scoring: "stats", doubles: "tournaments", checkout: "games", precision: "profiles",
+};
 
 export default function TrainingAwenaAcademy({ participantId }: { participantId?: string | null }) {
   const [screen, setScreen] = React.useState<AcademyScreen>("learn");
@@ -44,6 +57,9 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const [levelFilter, setLevelFilter] = React.useState("all");
   const [familyFilter, setFamilyFilter] = React.useState("all");
   const [search, setSearch] = React.useState("");
+  const [lessonPage, setLessonPage] = React.useState(0);
+  const [progressPage, setProgressPage] = React.useState(0);
+  const [finishOnly, setFinishOnly] = React.useState(false);
   const [round, setRound] = React.useState<AcademyQuizItem[]>([]);
   const [roundIndex, setRoundIndex] = React.useState(0);
   const [roundAnswers, setRoundAnswers] = React.useState<number[]>([]);
@@ -93,7 +109,25 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const filteredLessons = CATALOGUE.filter(item =>
     (levelFilter === "all" || item.level === Number(levelFilter)) &&
     (familyFilter === "all" || item.family === familyFilter) &&
+    (!finishOnly || (item.family === "checkout" && item.id.startsWith("finish-do-"))) &&
     (!search.trim() || `${item.title} ${item.intro} ${item.mission}`.toLocaleLowerCase("fr").includes(search.toLocaleLowerCase("fr").trim())));
+  const lessonPageCount = Math.max(1, Math.ceil(filteredLessons.length / LESSONS_PER_PAGE));
+  const visibleLessons = filteredLessons.slice(lessonPage * LESSONS_PER_PAGE, (lessonPage + 1) * LESSONS_PER_PAGE);
+  const progressPageCount = Math.max(1, Math.ceil(CATALOGUE.length / PROGRESS_PER_PAGE));
+  const visibleProgress = CATALOGUE.slice(progressPage * PROGRESS_PER_PAGE, (progressPage + 1) * PROGRESS_PER_PAGE);
+  const questionTotal = React.useMemo(() => CATALOGUE.reduce((total, item) => total + getAcademyQuestions(item).length, 0), []);
+
+
+  const openFinishCourse = (practice = false) => {
+    void awenaVoice.stop(); voiceSeq.current += 1;
+    setLesson(null);
+    setFamilyFilter("checkout");
+    setLevelFilter("all");
+    setSearch("");
+    setFinishOnly(true);
+    setLessonPage(0);
+    setScreen(practice ? "practice" : "learn");
+  };
 
   const noteAnswer = (questionId: string, isCorrect: boolean, origin: AcademyAnswerOrigin) => {
     setReviewJournal(saveAcademyAnswer(participantId, questionId, isCorrect, origin));
@@ -194,33 +228,49 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   };
 
   const renderList = (freePractice: boolean) => <>
+    <div className="mssAcademyCourseSwitch" role="group" aria-label="Parcours pédagogique">
+      <button type="button" className={!finishOnly ? "active" : ""} aria-pressed={!finishOnly} onClick={() => { setFinishOnly(false); setFamilyFilter("all"); setLessonPage(0); }}>TOUTES LES LEÇONS</button>
+      <button type="button" className={finishOnly ? "active" : ""} aria-pressed={finishOnly} onClick={() => openFinishCourse(freePractice)}><BottomNavIcon name="games" size={17} /> FINISHS DO <span>{CATALOGUE.filter(item => item.family === "checkout" && item.id.startsWith("finish-do-")).length}</span></button>
+    </div>
     <div className="mssAcademyFilters">
-      <label>RECHERCHE <input type="search" placeholder="Rechercher une leçon" value={search} onChange={e => setSearch(e.target.value)} /></label>
-      <label>NIVEAU <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)}>
+      <label>RECHERCHE <input type="search" placeholder="Rechercher une leçon" value={search} onChange={e => { setSearch(e.target.value); setLessonPage(0); }} /></label>
+      <label>NIVEAU <select value={levelFilter} onChange={e => { setLevelFilter(e.target.value); setLessonPage(0); }}>
         <option value="all">Tous les niveaux</option>{[1,2,3,4].map(level => <option key={level} value={level}>{LEVELS[level]}</option>)}
       </select></label>
-      <label>THÈME <select value={familyFilter} onChange={e => setFamilyFilter(e.target.value)}>
+      <label>THÈME <select value={familyFilter} onChange={e => { setFamilyFilter(e.target.value); setLessonPage(0); }}>
         <option value="all">Tous les thèmes</option>{Object.entries(FAMILIES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
       </select></label>
-      <span className="mssAcademyCount">{filteredLessons.length} / {CATALOGUE.length} leçons</span>
+      <span className="mssAcademyCount" aria-live="polite">{filteredLessons.length} résultats</span>
     </div>
     <div className="mssAcademyLessonGrid">
-      {filteredLessons.map(item => {
+      {visibleLessons.map(item => {
         const row = progress[item.id];
         const isSuggested = recommended.id === item.id;
         const index = CATALOGUE.indexOf(item);
         return <button type="button" key={item.id} className="mssAcademyLessonTile" onClick={() => beginLesson(item, freePractice)}>
-          <span className="mssAcademyLessonNumber">{String(index + 1).padStart(2, "0")}</span>
+          <span className="mssAcademyLessonRail">
+            <span className="mssAcademyLessonNumber">{String(index + 1).padStart(2, "0")}</span>
+            <span className="mssAcademyLessonIcon" aria-hidden="true"><BottomNavIcon name={FAMILY_ICONS[item.family]} size={16} /></span>
+          </span>
           <span className="mssAcademyLessonInfo">
-            <small>{LEVELS[item.level]} · {FAMILIES[item.family]} · {item.minutes} MIN · 3 QUIZ {isSuggested ? "· CONSEILLÉE" : ""}</small>
+            <small>{LEVELS[item.level]} · {FAMILIES[item.family]} · {item.minutes} MIN · {getAcademyQuestions(item).length} QUESTIONS</small>
             <strong>{item.title}</strong>
             <span>{freePractice ? item.mission : item.intro}</span>
+            <span className="mssAcademyLessonMeta">
+              {isSuggested && <em>CONSEILLÉE</em>}
+              <i>{row ? `${row.best}/100 · ${row.attempts} essai${row.attempts > 1 ? "s" : ""}` : "À découvrir"}</i>
+            </span>
           </span>
-          <span className="mssAcademyLessonStatus">{row ? `${row.best}/100` : "DÉCOUVRIR"}<b>›</b></span>
+          <span className="mssAcademyLessonArrow" aria-hidden="true">›</span>
         </button>;
       })}
     </div>
     {!filteredLessons.length && <p className="mssAcademyEmpty">Aucune leçon ne correspond aux filtres. Modifie la recherche ou le niveau.</p>}
+    {filteredLessons.length > LESSONS_PER_PAGE && <nav className="mssAcademyPager" aria-label="Pages du catalogue">
+      <button type="button" onClick={() => setLessonPage(page => Math.max(0, page - 1))} disabled={lessonPage === 0} aria-label="Page précédente du catalogue">‹</button>
+      <span>Page {lessonPage + 1} / {lessonPageCount}</span>
+      <button type="button" onClick={() => setLessonPage(page => Math.min(lessonPageCount - 1, page + 1))} disabled={lessonPage >= lessonPageCount - 1} aria-label="Page suivante du catalogue">›</button>
+    </nav>}
   </>;
 
   const currentRoundQuestion = round[roundIndex];
@@ -230,21 +280,36 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
       <div className="mssAcademyHeroText">
         <small>MULTISPORTS SCORING · CENTRE D’ENTRAÎNEMENT</small>
         <h2>ACADÉMIE AWENA</h2>
-        <p>{CATALOGUE.length} mini-leçons originales · {CATALOGUE.reduce((n,item) => n + getAcademyQuestions(item).length,0)} quiz · exercices réels commentés par Awena.</p>
+        <p>Mini-leçons, quiz et entraînements réels accompagnés par Awena.</p>
       </div>
-      <button type="button" className="mssAcademyVoice" aria-pressed={voiceEnabled} title={voiceEnabled ? "Couper la narration" : "Activer la narration"}
+      <button type="button" className="mssAcademyVoice" aria-pressed={voiceEnabled} title={voiceEnabled ? "Couper la narration" : "Activer la narration"} aria-label={voiceEnabled ? "Couper la narration" : "Activer la narration"}
         onClick={() => { if (voiceEnabled) { void awenaVoice.stop(); voiceSeq.current++; } setVoiceEnabled(v => !v); }}>
-        {voiceEnabled ? "🔊 VOIX ON" : "🔇 VOIX OFF"}
+        <span aria-hidden="true"><BottomNavIcon name="live" size={18} /></span><span>{voiceEnabled ? "VOIX ON" : "VOIX OFF"}</span>
       </button>
+    </div>
+    <div className="mssAcademyHeroStats" aria-label="Résumé de l’Académie Awena">
+      <div className="mssAcademyHeroStat"><span><BottomNavIcon name="home" size={16} /></span><div><small>LEÇONS</small><strong>{CATALOGUE.length}</strong></div></div>
+      <div className="mssAcademyHeroStat"><span><BottomNavIcon name="messages" size={16} /></span><div><small>QUESTIONS</small><strong>{questionTotal}</strong></div></div>
+      <div className="mssAcademyHeroStat"><span><BottomNavIcon name="agenda" size={16} /></span><div><small>À REVOIR</small><strong>{reviewInsights.due}</strong></div></div>
+      <div className="mssAcademyHeroStat"><span><BottomNavIcon name="stats" size={16} /></span><div><small>MAÎTRISÉES</small><strong>{mastered}</strong></div></div>
     </div>
     {voiceNotice && <div className="mssAcademyVoiceNotice" role="status">{voiceNotice}</div>}
     <div className="mssAcademyTabs" role="group" aria-label="Parcours Académie Awena">
-      {([ ["learn", "APPRENDRE"], ["practice", "S’EXERCER"], ["quiz", "QUIZZ EXPRESS"], ["review", "MES RÉVISIONS"], ["progress", "MES PROGRÈS"] ] as const).map(([id, label]) =>
-        <button key={id} type="button" aria-pressed={screen === id} className={screen === id ? "active" : ""} onClick={() => switchScreen(id)}>{label}</button>)}
+      {SCREEN_TABS.map(({ id, label, icon }) =>
+        <button key={id} type="button" aria-label={label} title={label} aria-pressed={screen === id} className={screen === id ? "active" : ""} onClick={() => switchScreen(id)}>
+          <span className="mssAcademyTabIcon" aria-hidden="true"><BottomNavIcon name={icon} size={20} /></span>
+          <span className="mssAcademyTabLabel" aria-hidden={screen !== id}>{label}</span>
+        </button>)}
     </div>
 
     {!lesson && (screen === "learn" || screen === "practice") && <>
+      <div className="mssAcademyFinishSpotlight">
+        <div className="mssAcademyFinishIcon"><BottomNavIcon name="games" size={22} /></div>
+        <div><small>PARCOURS DOUBLE OUT</small><strong>FINISHS DO · COMBINAISONS & PLANS B</strong><span>Des sorties à mémoriser, des solutions après un raté et des quiz avec Awena.</span></div>
+        <button type="button" onClick={() => openFinishCourse(screen === "practice")}>DÉCOUVRIR ›</button>
+      </div>
       <div className="mssAcademyBanner">
+        <div className="mssAcademyBannerIcon" aria-hidden="true"><BottomNavIcon name={screen === "practice" ? "games" : "home"} size={22} /></div>
         <div><small>PARCOURS PERSONNALISÉ</small><strong>{attempted} / {CATALOGUE.length} leçons explorées</strong>
           <span>Prochaine étape : {recommended.title}</span>
           {reviewInsights.due > 0 && <span className="mssAcademyReminder">{reviewInsights.due} question{reviewInsights.due > 1 ? "s" : ""} à revoir avec Awena</span>}</div>
@@ -329,6 +394,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
           <>Aucune erreur enregistrée pour ce profil. Fais quelques leçons ou un Quiz express : Awena repérera automatiquement les réponses à travailler.</>}
       </div>}
       {!!reviewInsights.focusLessonId && !round.length && <button type="button" className="mssAcademyReviewFocus" onClick={() => beginLesson(CATALOGUE.find(item => item.id === reviewInsights.focusLessonId)!)}>
+        <span className="mssAcademyReviewFocusIcon" aria-hidden="true"><BottomNavIcon name="games" size={18} /></span>
         <span><small>LEÇON RECOMMANDÉE PAR AWENA</small><strong>{CATALOGUE.find(item => item.id === reviewInsights.focusLessonId)?.title}</strong><span>Revoir l'explication et s'entraîner sur la cible MSS</span></span><b>›</b>
       </button>}
     </div>}
@@ -338,7 +404,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
           <p>{roundMode === "review" ? "Questions sélectionnées parmi tes erreurs précédentes. Trois bonnes réponses consécutives permettent de consolider chaque notion." : "Questions sur les valeurs, doubles, finishs et décisions tactiques. Aucun lancer nécessaire."}</p></div>
         <button type="button" onClick={roundMode === "review" ? newReviewRound : newQuizRound}>{round.length ? (roundMode === "review" ? "ACTUALISER LA RÉVISION" : "NOUVEAU QUIZ") : "COMMENCER ›"}</button>
       </div>
-      {!round.length && <div className="mssAcademyEmpty">40 leçons, 120 questions : Awena compose un nouveau quiz à partir de plusieurs niveaux. Les résultats sont enregistrés pour ton profil.</div>}
+      {!round.length && <div className="mssAcademyEmpty">{CATALOGUE.length} leçons, {questionTotal} questions : Awena compose un quiz de plusieurs niveaux. Les résultats sont enregistrés pour ton profil.</div>}
       {!!round.length && !roundFinished && currentRoundQuestion && <div className="mssAcademyStory">
         <small>{LEVELS[currentRoundQuestion.level]} · {currentRoundQuestion.lessonTitle} · QUESTION {roundIndex + 1} / {round.length}</small>
         <div className="mssAcademyQuizTrack"><span style={{width:`${(roundIndex + (roundChecked ? 1 : 0))/round.length*100}%`}} /></div>
@@ -375,16 +441,24 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
       <div className="mssAcademyStats"><div><small>LEÇONS EXPLORÉES</small><strong>{attempted}/{CATALOGUE.length}</strong></div><div><small>MAÎTRISÉES (80+)</small><strong>{mastered}</strong></div><div><small>EXERCICES</small><strong>{attempts}</strong></div></div>
       <div className="mssAcademyStats mssAcademyQuizStats"><div><small>QUIZ EXPRESS</small><strong>{quizStats.rounds}</strong></div><div><small>MEILLEUR QUIZ</small><strong>{quizStats.best}%</strong></div><div><small>RÉPONSES JUSTES</small><strong>{quizStats.correct}/{quizStats.questions}</strong></div></div>
       <button type="button" className="mssAcademyReviewFocus" onClick={() => switchScreen("review")}>
+        <span className="mssAcademyReviewFocusIcon" aria-hidden="true"><BottomNavIcon name="agenda" size={18} /></span>
         <span><small>RÉVISIONS ADAPTATIVES</small><strong>{reviewInsights.due} question{reviewInsights.due > 1 ? "s" : ""} à revoir maintenant</strong><span>{reviewInsights.mastered} question{reviewInsights.mastered > 1 ? "s" : ""} consolidée{reviewInsights.mastered > 1 ? "s" : ""} après trois réussites</span></span><b>›</b>
       </button>
       <p>Les résultats restent associés à ce profil sur cet appareil. L'Historique V4 des parties n'est pas modifié. La synchronisation cloud n'est pas encore activée pour l'Académie.</p>
-      {CATALOGUE.map(item => {
+      <div className="mssAcademyProgressTitle"><strong>Parcours par leçon</strong><span>{CATALOGUE.length} leçons · page {progressPage + 1}/{progressPageCount}</span></div>
+      {visibleProgress.map(item => {
         const row = progress[item.id];
         return <button type="button" className="mssAcademyProgressRow" key={item.id} onClick={() => beginLesson(item)}>
+          <span className="mssAcademyProgressIcon" aria-hidden="true"><BottomNavIcon name={FAMILY_ICONS[item.family]} size={18} /></span>
           <strong>{item.title}</strong><span>{row ? `${row.best}/100 · ${row.attempts} essai${row.attempts > 1 ? "s" : ""}` : "À découvrir"}</span>
           <div className="mssAcademyProgressTrack"><span style={{ width: `${row?.best || 0}%` }}/></div>
         </button>;
       })}
+      {CATALOGUE.length > PROGRESS_PER_PAGE && <nav className="mssAcademyPager" aria-label="Pages de progression">
+        <button type="button" onClick={() => setProgressPage(page => Math.max(0, page - 1))} disabled={progressPage === 0} aria-label="Page précédente de progression">‹</button>
+        <span>Page {progressPage + 1} / {progressPageCount}</span>
+        <button type="button" onClick={() => setProgressPage(page => Math.min(progressPageCount - 1, page + 1))} disabled={progressPage >= progressPageCount - 1} aria-label="Page suivante de progression">›</button>
+      </nav>}
     </div>}
     <p className="mssAcademyFoot">{VOICE_PLACEHOLDER} Les contenus et quiz sont des créations MSS, sans reproduction du livret de référence.</p>
   </section>;

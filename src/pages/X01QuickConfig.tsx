@@ -91,7 +91,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
         temporaryPlayerId: id,
         isTemporary: true,
         name,
-        avatarDataUrl: null,
+        avatarDataUrl: `/images/prebuilt-avatars/common/avatar-common-${String(1 + Math.floor(Math.random()*12)).padStart(3,"0")}.webp`,
         dartSetId: null,
       };
     });

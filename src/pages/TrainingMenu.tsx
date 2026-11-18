@@ -363,19 +363,19 @@ export default function TrainingMenu({ go }: Props) {
     };
 
     const finishDo: ModeDef = {
-      id: "finish_do", titleKey: "training.finishdo.title", titleDefault: "FINISHS DOUBLE OUT",
-      subtitleKey: "training.finishdo.subtitle", subtitleDefault: "Combinaisons • Plans B • Checkouts DO",
+      id: "finish_do", titleKey: "training.finishdo.title", titleDefault: "FINISHS DO",
+      subtitleKey: "training.finishdo.subtitle", subtitleDefault: "Checkouts • Astuces Awena • Plans B",
       infoKey: "training.finishdo.info", infoDefault: "Entraîne exclusivement les sorties Double Out, apprends à recalculer après une erreur et évite les BUST.",
       tab: "training_mode", params: { modeId: "training_finish_do" }, enabled: true,
       badge: "DO", accentHex: "#35d9fb", accentBorder: "rgba(53,217,251,.45)", accentGlow: "rgba(53,217,251,.5)",
-      tickerSrc: findTickerSmart("training_x01"),
+      tickerSrc: null,
     };
     const finishChallenge: ModeDef = {
       id: "finish_do_challenge", titleKey: "training.finishchallenge.title", titleDefault: "CHALLENGE FINISH DO",
       subtitleKey: "training.finishchallenge.subtitle", subtitleDefault: "1 volée pour réussir le checkout",
       infoKey: "training.finishchallenge.info", infoDefault: "Un défi checkout Double Out : trois fléchettes au maximum pour sortir. Recalcule si tu rates ta cible.",
       tab: "training_mode", params: { modeId: "training_finish_challenge" }, enabled: true,
-      badge: "DÉFI", tickerSrc: findTickerSmart("training_challenges"),
+      badge: "DO", accentHex: "#35d9fb", accentBorder: "rgba(53,217,251,.45)", accentGlow: "rgba(53,217,251,.5)", tickerSrc: null,
     };
     return [evolution, labCard, finishDo, x01, clock, doubleIOCard, challengesCard, finishChallenge];
   }, [t, lang, regById]);
@@ -443,7 +443,7 @@ export default function TrainingMenu({ go }: Props) {
           textAlign: "left",
           borderRadius: 16,
           border: `1px solid ${accent.border}`,
-          background: CARD_BG,
+          background: (m.id === "finish_do" || m.id === "finish_do_challenge") ? "linear-gradient(105deg,rgba(9,61,80,.94),rgba(13,23,37,.98))" : CARD_BG,
           cursor: clickable ? "pointer" : "default",
           opacity: visuallyDisabled ? 0.55 : 1,
           boxShadow: visuallyDisabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,

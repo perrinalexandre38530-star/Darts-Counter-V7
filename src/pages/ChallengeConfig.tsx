@@ -1,3 +1,4 @@
+import "./challengeFinishDoShortcut.css";
 import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from 'react';
 import GameDifficultyStars from '../components/GameDifficultyStars';
@@ -460,6 +461,11 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
     <button type="button" className="challenge-focused-records" onClick={()=>setPreviewChoiceId(focusedChoice.id)}>🏆 DERNIERS SCORES · RECORDS · PARTIES JOUÉES</button>
     <p className="challenge-focused-hint">Les autres cartes sont masquées. Poursuis avec les réglages de ce défi ou reviens à la liste.</p>
    </div> : <>
+  <button type="button" className="mss-finish-challenge-shortcut" onClick={()=>go('training_mode',{modeId:'training_finish_challenge'})}>
+    <span className="mss-finish-challenge-shortcut-icon" aria-hidden="true">◎</span>
+    <span><small>PRÉCISION · DOUBLE OUT</small><strong>CHALLENGE FINISH DO</strong><em>Un checkout, trois fléchettes. Combinaisons et plans B d’Awena.</em></span>
+    <b>JOUER ›</b>
+  </button>
   <div className="challenge-unified-tools">
    <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(130px,170px)',gap:8,alignItems:'end'}}><label className="challenge-unified-search"><span>RECHERCHER UN DÉFI</span><input type="search" placeholder="Nom, règle ou catégorie…" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} aria-label="Rechercher un challenge"/></label><GameDifficultyFilter compact value={challengeDifficultyFilter} onChange={setChallengeDifficultyFilter} label="Difficulté des défis" /></div>
    <div className="challenge-unified-filters" role="group" aria-label="Filtrer par catégorie">

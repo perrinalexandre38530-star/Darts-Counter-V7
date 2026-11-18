@@ -3,6 +3,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { prepareAgentContext, requestAiProposal, qualifyAgentProposal } from './mss-dev-agent-core-v15.mjs';
+import {assertOutboundContext} from './mss-dev-send-guard-v23.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const args=process.argv.slice(2), idx=args.indexOf('--files');
 const paths=idx>=0?(args[idx+1]||'').split(',').filter(Boolean):undefined;
@@ -13,6 +14,7 @@ else {
   const context=prepareAgentContext(root,description,paths);
   console.log('Mission :',context.missionId,'| Fichiers :',context.files.map(f=>f.path).join(', '));
   if(process.env.MSS_AI_ALLOW_SEND!=='YES')throw Error('Envoi non autorisé : définir MSS_AI_ALLOW_SEND=YES après avoir vérifié les fichiers listés. Ils seront transmis au modèle IA.');
+  assertOutboundContext(root,context);
   const proposal=await requestAiProposal(context,{apiKey:process.env.OPENAI_API_KEY,model:process.env.MSS_AI_MODEL||'gpt-5-mini'});
   const {result,changed,zip}=qualifyAgentProposal(root,proposal);
   const sibling=resolve(root,'..','MSS_AI_CONTROL_REPORTS','DEV_V15');mkdirSync(sibling,{recursive:true});

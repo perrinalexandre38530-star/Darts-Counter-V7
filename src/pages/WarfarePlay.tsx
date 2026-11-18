@@ -13,6 +13,9 @@ import type { Dart } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ScoreInputHub from "../components/ScoreInputHub";
+import TacticalMatchPanels from "../components/TacticalMatchPanels";
+import tickerWarfare from "../assets/tickers/ticker_warfare.png";
+import "./mssBattleLayouts.css";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import type { WarfareConfig, WarfareZoneRule } from "./WarfareConfig";
@@ -531,47 +534,32 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: 14,
-        paddingBottom: 170,
-        background: PAGE_BG,
-        color: theme.text,
-      }}
-    >
-      {/* Header (une ligne : BackDot + titre + InfoDot) */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div className="mss-war-play" style={{ background: PAGE_BG, color: theme.text, ['--mss-accent' as any]: theme.primary }}>
+
+      <header className="mss-war-header" style={{ backgroundImage: `linear-gradient(90deg, rgba(0,0,0,.44), rgba(0,0,0,.06), rgba(0,0,0,.44)), url(${tickerWarfare})` }}>
         <BackDot onClick={() => go("warfare_config")} />
-
-        <div style={{ flex: 1, textAlign: "center" }}>
-          <div
-            style={{
-              fontWeight: 900,
-              letterSpacing: 1,
-              color: theme.primary,
-              textTransform: "uppercase",
-              textShadow: `0 0 12px ${theme.primary}66`,
-            }}
-          >
-            {t("warfare.title", "WARFARE")}
-          </div>
-        </div>
-
         <InfoDot onClick={() => setInfoOpen(true)} />
-      </div>
-
-      {/* Active player card (compact - mini stats like Killer) */}
-      <div
+      </header>
+      <div className="mss-war-content">
+      {/* Joueur actif : priorité visuelle */}
+      <div className="mss-war-active"
         style={{
           marginTop: 12,
-          padding: 12,
-          borderRadius: 20,
+          padding: 7,
+          borderRadius: 16,
           border: `1px solid ${theme.borderSoft}`,
           background: CARD_BG,
           boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
         }}
       >
+      <TacticalMatchPanels kind="warfare" activeId={activePlayer?.id} round={Math.max(cursorTop,cursorBottom)+1} logs={visitHistoryRef.current} accent={theme.primary}
+        players={[...teams.TOP.map(p=>({...p,alive:aliveTop.length>0,team:'TOP',score:aliveTop.length})),...teams.BOTTOM.map(p=>({...p,alive:aliveBottom.length>0,team:'BOTTOM',score:aliveBottom.length}))]}
+        mapEnabled={!!(config as any)?.tacticalMapEnabled}
+        objective={`Éliminer les ${activeArmy === 'TOP' ? aliveBottom.length : aliveTop.length} soldats de l’armée adverse. Ton camp conserve ${activeArmy === 'TOP' ? aliveTop.length : aliveBottom.length} soldats.`}
+        rules={["Une volée comprend jusqu’à trois fléchettes.","Une touche valide sur le numéro d’un soldat adverse l’élimine.",`Zones autorisées : ${zonesLabel}.`,normalized.friendlyFire ? "Attention : le tir allié est activé." : "Le tir allié est désactivé.","L’armée qui conserve des soldats remporte la partie."]}
+        configuration={[`Zones : ${zonesLabel}`,`Tirs alliés : ${normalized.friendlyFire?'oui':'non'}`,`Handicap : ${normalized.handicapP1Harder?'oui':'non'}`,`Carte tactique : ${(config as any)?.tacticalMapEnabled?'activée':'désactivée'}`,`Saisie : ${(config as any)?.inputMethod || 'keypad'}`]}>
+        <span style={{fontSize:11,fontWeight:850,color:theme.primary}}>JOUEUR ACTIF · {activePlayer?.name||'—'}</span>
+      </TacticalMatchPanels>
         {(() => {
           const s = getStats(activePlayer?.id);
           const ownAlive = activeArmy === "TOP" ? aliveTop.length : aliveBottom.length;
@@ -654,48 +642,33 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
                 </div>
               </div>
 
-              {/* right: mini stats box */}
-              <div
+              {/* Mini statistiques réorganisées en grille pour préserver le champ de bataille. */}
+              <div className="mss-war-kpis"
                 style={{
-                  width: 150,
-                  padding: 10,
+                  width: "auto",
+                  padding: 7,
                   borderRadius: 16,
                   border: `1px solid ${theme.borderSoft}`,
                   background: "rgba(0,0,0,.22)",
                 }}
               >
                 {statRow(t("warfare.kpi.kills", "Kills"), s.kills || 0)}
-                <div style={{ height: 6 }} />
+                <div className="mss-war-kpi-separator" style={{ height: 6 }} />
                 {statRow(t("warfare.kpi.ff", "Friendly"), s.friendlyKills || 0)}
-                <div style={{ height: 6 }} />
+                <div className="mss-war-kpi-separator" style={{ height: 6 }} />
                 {statRow(t("warfare.kpi.darts", "Flèches"), s.darts || 0)}
-                <div style={{ height: 6 }} />
+                <div className="mss-war-kpi-separator" style={{ height: 6 }} />
                 {statRow(t("warfare.kpi.accuracy", "Précision"), `${acc}%`)}
 
-                <div
-                  style={{
-                    marginTop: 8,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    fontSize: 11,
-                    fontWeight: 900,
-                    textTransform: "uppercase",
-                    color: theme.textSoft,
-                  }}
-                >
-                  <span>{t("warfare.zones", "Zones")}</span>
-                  <span style={{ color: theme.primary }}>{zonesLabel}</span>
-                </div>
+
               </div>
             </div>
           );
         })()}
       </div>
 
-      {/* Armies (stacked TOP then BOTTOM) */}
-      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Les deux camps partagent une grille adaptative. */}
+      <div className="mss-war-armies">
         {([
           { army: "TOP" as const, title: "TOP", nums: TOP_ARMY, aliveSet: aliveSetTop, players: topPlayers },
           { army: "BOTTOM" as const, title: "BOTTOM", nums: BOTTOM_ARMY, aliveSet: aliveSetBottom, players: bottomPlayers },
@@ -705,6 +678,7 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
           return (
             <div
               key={army}
+              className={`mss-war-army ${isActiveArmy ? "is-active" : ""}`}
               style={{
                 padding: 14,
                 borderRadius: 18,
@@ -722,7 +696,7 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
                 </div>
                 {renderMedallions(players, army)}
               </div>
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+              <div className="mss-war-soldiers">
                 {nums.map((n) => {
                   const alive = aliveSet.has(n);
                   return (
@@ -751,19 +725,9 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
         })}
       </div>
 
-      {/* Bottom: volée en cours (3 blocs) + zones à droite + clavier */}
-      <div
-        style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: 12,
-          zIndex: 30,
-          display: "grid",
-          gap: 10,
-        }}
-      >
+      </div>
+      {/* Volée et saisie visibles, indépendantes du défilement de la bataille. */}
+      <div className="mss-war-keypad">
         <div
           style={{
             display: "flex",
@@ -818,6 +782,10 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
             setCurrentThrow((prev) => [...prev, { v: d.v, mult: d.mult as any } as any]);
             if (mult !== 1) setMult(1);
           }}
+          preferredMethod={(config as any)?.inputMethod || "keypad"}
+          switcherMode="drawer"
+          hideSwitcher={false}
+          hideTabs={false}
           hidePreview
           hideTotal
         />

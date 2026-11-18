@@ -861,6 +861,13 @@ function PresidentStandardPlay(props: any) {
   // A new confirmed turn always requires a new handoff, including after undo.
   // Bots never need an approval screen. Taxes and end-of-round dialogs have priority.
   const turnKey = `${state.roundNo}:${state.trickNo}:${state.history.length}:${activeId}`;
+  // Keep the newest turn visible to outstanding bot timers (including undo).
+  const botTurnRef = React.useRef(turnKey);
+  botTurnRef.current = turnKey;
+  // One authoritative snapshot for delayed bot callbacks. A rejected or
+  // obsolete action must never create a phantom UNDO entry.
+  const liveStateRef = React.useRef(state);
+  liveStateRef.current = state;
   React.useEffect(() => { submissionTurnRef.current = null; }, [turnKey]);
   React.useEffect(() => { setShowInput(false); }, [turnKey]);
   const activeIsBot = isBotProfile(activeProfile, botIds);
@@ -881,7 +888,9 @@ function PresidentStandardPlay(props: any) {
     const first = config.selectionMode === "assisted" ? presidentAutoTarget(state, activeId) : null;
     setSelectedTarget(first);
     setThrowDarts([]); setMultiplier(1); setNotice("");
-  }, [activeId, state.trickNo, state.roundNo, state.currentTarget?.value, state.currentTarget?.size, state.revolutionActive]);
+  // A new action is a new turn even when the same player opens again with
+  // the same combination. Keeping history length here avoids a stale hand/cible.
+  }, [activeId, state.history.length, state.trickNo, state.roundNo, state.currentTarget?.value, state.currentTarget?.size, state.revolutionActive]);
 
   React.useEffect(() => {
     if (state.roundResults.length > roundCountRef.current) {
@@ -893,13 +902,42 @@ function PresidentStandardPlay(props: any) {
 
   function commitAttempt(darts: UiDart[], target = selectedTarget) {
     if (!target || state.finished || botThinking || needsHandoff || trickTransition || submissionTurnRef.current === turnKey) return;
-    submissionTurnRef.current = turnKey; // Reject repeated VALIDATE/clicks before React commits the new turn.
+    if (!darts.length) {
+      setNotice("Joue au moins une fléchette ou utilise PASSER.");
+      return;
+    }
+    // Validate and apply against the *live* turn. Checking a rendered snapshot
+    // and updating it later could save a ghost UNDO entry on a rejected move.
+    const snapshot = liveStateRef.current;
+    if (snapshot !== state || botTurnRef.current !== turnKey) {
+      setNotice("Le tour a changé. Vérifie les cartes et recommence.");
+      return;
+    }
     const normalized = darts.map(toGameDart);
-    const realTarget = config.selectionMode === "manual" ? target : presidentResolvePlayedTarget(state, normalized, target);
-    // The engine is also authoritative; both click-to-play and VALIDATE use
-    // the same resolution rather than treating the highlighted card as fixed.
-    setUndo((u) => [...u.slice(-49), clonePresidentState(state)]);
-    setState((prev) => playPresidentTurn(prev, realTarget || target, normalized));
+    const realTarget = config.selectionMode === "manual"
+      ? target
+      : presidentResolvePlayedTarget(snapshot, normalized, target);
+    const candidate = realTarget || target;
+    const stillLegal = presidentLegalTargets(snapshot.hands[snapshot.activePlayerId] || [], snapshot.currentTarget, snapshot.revolutionActive)
+      .some((allowed) => allowed.size === candidate.size && allowed.value === candidate.value);
+    if (!stillLegal || snapshot.finished || snapshot.finishedPlayerIds.includes(snapshot.activePlayerId) ||
+        snapshot.passedPlayerIds.includes(snapshot.activePlayerId) || snapshot.pendingTaxes?.length) {
+      setThrowDarts([]);
+      setSelectedTarget(null);
+      setMultiplier(1);
+      setNotice("La situation du pli a changé. Sélectionne un coup encore autorisé.");
+      return;
+    }
+    const next = playPresidentTurn(snapshot, candidate, normalized);
+    if (next === snapshot) {
+      // An engine refusal must not lock VALIDATE or pollute ANNULER.
+      setNotice("Coup non enregistré. Vérifie ta cible et réessaie.");
+      return;
+    }
+    submissionTurnRef.current = turnKey;
+    liveStateRef.current = next;
+    setUndo((u) => [...u.slice(-49), clonePresidentState(snapshot)]);
+    setState(next);
     setThrowDarts([]); setMultiplier(1); setNotice("");
   }
   function addDart(value: number, direct?: 1|2|3) {
@@ -918,33 +956,68 @@ function PresidentStandardPlay(props: any) {
   function validateAttempt() { if (!selectedTarget) return; if (!throwDarts.length) { setNotice("Joue au moins une fléchette ou utilise PASSER."); return; } commitAttempt(throwDarts); }
   function passTurn() {
     if (!state.currentTarget || state.finished || botThinking || needsHandoff || trickTransition || submissionTurnRef.current === turnKey) return;
+    const snapshot = liveStateRef.current;
+    if (snapshot !== state || botTurnRef.current !== turnKey) return;
+    const next = passPresidentTurn(snapshot, false);
+    if (next === snapshot) {
+      setNotice("PASSER refusé : aucun tour n’a été consommé.");
+      return;
+    }
     submissionTurnRef.current = turnKey;
-    setUndo((u) => [...u.slice(-49), clonePresidentState(state)]);
-    setState((prev) => passPresidentTurn(prev, false));
+    liveStateRef.current = next;
+    setUndo((u) => [...u.slice(-49), clonePresidentState(snapshot)]);
+    setState(next);
     setThrowDarts([]); setMultiplier(1); setNotice("PASSÉ");
   }
   function undoTurn() {
     if (throwDarts.length) { setThrowDarts([]); setMultiplier(1); setNotice(""); return; }
     if (!undo.length || state.finished) return;
-    const prev = undo[undo.length-1]; setUndo((u)=>u.slice(0,-1)); setState(clonePresidentState(prev)); setNotice("Dernier tour annulé.");
+    const prev = clonePresidentState(undo[undo.length-1]);
+    // Invalidate any scheduled bot action before restoring a previous turn.
+    botTurnRef.current = "undo-pending";
+    liveStateRef.current = prev;
+    setUndo((u)=>u.slice(0,-1)); setState(prev); setNotice("Dernier tour annulé.");
   }
   function back() {
     if (state.history.length && !state.finished && !window.confirm("Quitter le règne en cours ?")) return;
     if (typeof go === "function") go("president_config", { ...config, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
   }
   function replay() {
-    setState(createInitial()); setUndo([]); setThrowDarts([]); setSelectedTarget(null); setNotice(""); setShowEnd(false); setShowRound(false); setRevealedTurnKey(null); setTrickTransition(null);
+    const initial = createInitial();
+    botTurnRef.current = "replay-pending";
+    liveStateRef.current = initial;
+    setState(initial); setUndo([]); setThrowDarts([]); setSelectedTarget(null); setNotice(""); setShowEnd(false); setShowRound(false); setRevealedTurnKey(null); setTrickTransition(null);
     matchIdRef.current = `president-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; savedRef.current = ""; roundCountRef.current = 0;
   }
 
   React.useEffect(() => {
-    const p = profilesById.get(activeId);
+    // The active player can be a bot created from config.playersList or from
+    // the engine's normalized players, even if absent from the profile store.
+    const p = activeProfile;
     if (!p || !isBotProfile(p, botIds) || state.finished || state.pendingTaxes?.length || showRound || showEnd || trickTransition) { setBotThinking(false); return; }
     let cancelled = false; setBotThinking(true);
     const timer = window.setTimeout(() => {
-      if (cancelled) return;
-      const target = presidentAutoTarget(state, activeId);
-      if (!target) { if (state.currentTarget) setState((prev)=>passPresidentTurn(prev,true)); setBotThinking(false); return; }
+      if (cancelled || botTurnRef.current !== turnKey) return;
+      const stillCurrent = (live: PresidentState) =>
+        live.activePlayerId === activeId && live.roundNo === state.roundNo &&
+        live.trickNo === state.trickNo && live.history.length === state.history.length &&
+        live.currentTarget?.value === state.currentTarget?.value &&
+        live.currentTarget?.size === state.currentTarget?.size &&
+        !live.finished && !live.pendingTaxes?.length;
+      const snapshot = liveStateRef.current;
+      if (!stillCurrent(snapshot)) { setBotThinking(false); return; }
+      const target = presidentAutoTarget(snapshot, activeId);
+      if (!target) {
+        if (snapshot.currentTarget) {
+          const afterPass = passPresidentTurn(snapshot, true);
+          if (afterPass !== snapshot && !cancelled && botTurnRef.current === turnKey && liveStateRef.current === snapshot) {
+            liveStateRef.current = afterPass;
+            setUndo((u) => [...u.slice(-49), clonePresidentState(snapshot)]);
+            setState(afterPass);
+          }
+        }
+        setBotThinking(false); return;
+      }
       const level = String(config.botLevel || "normal");
       const base = level === "hard" ? .64 : level === "easy" ? .26 : .44;
       const difficulty = target.size === 3 ? .55 : target.size === 2 ? .72 : 1;
@@ -956,12 +1029,27 @@ function PresidentStandardPlay(props: any) {
         else if (config.variant === "chaos" && config.coupEtat && Math.random() < .035) { darts.push({ v:25,mult:2 }); hit = true; }
         else { const miss = Math.random()<.2; darts.push(miss ? {v:0,mult:1} : {v:Math.max(1,Math.min(20,target.value+(Math.random()<.5?-1:1))),mult:1}); }
       }
-      setUndo((u)=>[...u.slice(-49),clonePresidentState(state)]);
-      setState((prev)=>playPresidentTurn(prev,target,darts.map(toGameDart)));
+      const throwSnapshot = darts.map(toGameDart);
+      // A delayed bot result must not create a phantom UNDO snapshot after
+      // the turn has changed (manual undo, handoff, trick or round transition).
+      // Check the current turn immediately before queuing both React updates.
+      if (cancelled || botTurnRef.current !== turnKey || liveStateRef.current !== snapshot || !stillCurrent(snapshot)) {
+        setBotThinking(false); return;
+      }
+      const afterPlay = playPresidentTurn(snapshot, target, throwSnapshot);
+      // Only an accepted state transition is undoable. Keep the original
+      // snapshot, bot move and undo entry in the same validated callback.
+      if (afterPlay !== snapshot) {
+        liveStateRef.current = afterPlay;
+        setUndo((u) => [...u.slice(-49), clonePresidentState(snapshot)]);
+        setState(afterPlay);
+      }
       setBotThinking(false);
     }, 480);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [activeId, state.trickNo, state.roundNo, state.currentTarget?.value, state.currentTarget?.size, state.pendingTaxes?.length, showRound, showEnd, trickTransition]);
+  // A bot can become the active player again within the *same* pli. Watching
+  // history length as well as the seat prevents the bot from stalling.
+  }, [activeId, state.history.length, state.trickNo, state.roundNo, state.currentTarget?.value, state.currentTarget?.size, state.pendingTaxes?.length, showRound, showEnd, trickTransition]);
 
   function buildHistoryRecord() {
     const now = Date.now();
@@ -1174,6 +1262,7 @@ function PresidentStandardPlay(props: any) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:10}}><b style={{color:primary,fontSize:14}}>🎯 SAISIE DES FLÉCHETTES</b><button type="button" onClick={()=>setShowInput(false)} style={{...action(primary),minHeight:36,padding:"0 12px"}}>✕ FERMER</button></div>
         <div style={{fontWeight:1000,color:"#bdeee1",fontSize:11,marginBottom:7}}>{selectedTarget?`CARTE ${presidentCardRank(selectedTarget.value)} · VISE ${presidentAimLabel(state,selectedTarget)} · ${selectedTarget.size} carte(s)`:"CHOISIS UN COUP DANS TA MAIN AVANT DE LANCER"}</div>
         <div style={{color:"#a8d9ca",fontSize:10,lineHeight:1.35,marginBottom:8}}>{config.selectionMode === "manual" ? "MANUEL : seule la cible choisie peut poser des cartes. Une autre touche ne remplace pas ce choix." : "ASSISTÉ : une touche correspondant à un autre coup légal peut également poser ses cartes."} · {config.dartsPerAttempt || 3} fléchette(s) maximum.</div>
+        {notice ? <div role="status" aria-live="polite" style={{padding:"8px 10px",marginBottom:8,borderRadius:10,border:"1px solid rgba(255,176,109,.5)",background:"rgba(77,42,22,.45)",color:"#ffe2b0",fontSize:11,fontWeight:900,lineHeight:1.35}}>{notice}</div> : null}
         <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:6,marginBottom:8}}>{shotOptions.map(target=><button type="button" key={`${target.value}-${target.size}`} onClick={()=>chooseShot(target)} disabled={throwDarts.length>0} style={{...action(primary),minWidth:53,minHeight:37,flex:"0 0 auto",padding:"4px 7px",background:selectedTarget?.value===target.value&&selectedTarget?.size===target.size?`${primary}55`:"#ffffff0a"}}>{presidentCardRank(target.value)} → {presidentAimLabel(state,target)}</button>)}</div>
         <div style={{display:"flex",gap:5,marginBottom:8}}>{Array.from({length:config.dartsPerAttempt || 3},(_,i)=>i).map(i=><div key={i} style={{flex:1,textAlign:"center",background:"#ffffff0a",borderRadius:8,padding:6,fontSize:11,color:throwDarts[i]?"#9bffc8":"#b4c5c8"}}>FLÉCHETTE {i+1}<div style={{fontWeight:1000,fontSize:14}}>{throwDarts[i]?presidentDartLabel(toGameDart(throwDarts[i])):"—"}</div></div>)}</div>
         {config.scoreInputMethod === "dartboard" ? <><div style={{display:"grid",placeItems:"center",opacity:selectedTarget?1:.45,pointerEvents:selectedTarget?"auto":"none"}}><DartboardClickable multiplier={multiplier} onHit={(segment,mult)=>addDart(segment,mult)} size={Math.min(310,Math.max(235,window.innerWidth-42))}/></div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginTop:8}}><button onClick={undoTurn} style={action(primary)}>ANNULER</button><button disabled={!state.currentTarget} onClick={passTurn} style={action("#ff9a70",!state.currentTarget)}>PASSER</button><button disabled={!throwDarts.length} onClick={validateAttempt} style={action("#6ee7b7",!throwDarts.length)}>VALIDER</button></div></> : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={()=>setMultiplier(1)} onDouble={()=>setMultiplier(2)} onTriple={()=>setMultiplier(3)} onCancel={undoTurn} onBackspace={()=>setThrowDarts(d=>d.slice(0,-1))} onNumber={n=>addDart(n)} onBull={bull=>addDart(25,bull===50?2:1)} onValidate={validateAttempt} hidePreview hideTotal centerSlot={<div style={{textAlign:"center"}}><div style={{color:primary,fontWeight:1100,fontSize:12}}>{selectedTarget?presidentAimLabel(state,selectedTarget):"—"}</div><button disabled={!state.currentTarget} onClick={e=>{e.stopPropagation();passTurn();}} style={{marginTop:2,border:0,background:"transparent",color:"#ffae77",fontSize:9}}>PASSER</button></div>} noticeSlot={notice?<span>{notice}</span>:null} validateAttention={throwDarts.length>0} safeBottomPad={false}/>} 

@@ -128,6 +128,8 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   }, [voiceEnabled]);
 
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [tacticalMapEnabled, setTacticalMapEnabled] = React.useState(false);
+  const [inputMethod, setInputMethod] = React.useState("keypad");
 
   const canEnter = selectedIds.length >= 2;
 
@@ -526,6 +528,22 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
         </div>
       </div>
 
+      {/* Réglages d'interface : en fin de configuration, après joueurs/règles/audio. */}
+      <section style={{...cardShell,padding:12,marginBottom:10}}>
+        <div style={{fontWeight:900,color:theme.primary,fontSize:14,marginBottom:10}}>CARTE TACTIQUE</div>
+        <label style={{display:'flex',alignItems:'center',gap:10,fontSize:13,lineHeight:1.4,cursor:'pointer'}}>
+          <input type="checkbox" checked={tacticalMapEnabled} onChange={e=>setTacticalMapEnabled(e.target.checked)}/>
+          Afficher la carte des survivants
+        </label>
+        <div style={{fontWeight:900,color:theme.primary,fontSize:14,margin:'16px 0 9px'}}>MODE DE SAISIE</div>
+        <div role="group" aria-label="Mode de saisie Battle Royale" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
+          {([['keypad','CLAVIER'],['dartboard','CIBLE'],['presets','PRÉSETS']] as const).map(([value,label])=>(
+            <button key={value} type="button" aria-pressed={inputMethod===value} onClick={()=>setInputMethod(value)}
+              style={{...pill(inputMethod===value),minWidth:0,padding:'10px 5px',fontSize:11,borderRadius:12}}>{label}</button>
+          ))}
+        </div>
+      </section>
+
       {/* CTA sticky */}
       <div
         style={{
@@ -572,6 +590,8 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
                 missLimit: 6,
                 sfxEnabled,
                 voiceEnabled,
+                tacticalMapEnabled,
+                inputMethod,
               };
 
               // ✅ Démarre le gameplay (flow identique Shanghai/Killer)

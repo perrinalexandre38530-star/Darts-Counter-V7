@@ -49,6 +49,8 @@ export type WarfareConfig = {
   handicapTopHarder?: boolean;
   layout: WarfareLayout;
   bullRule: WarfareBullRule;
+  tacticalMapEnabled?: boolean;
+  inputMethod?: string;
 };
 
 type TeamBlockProps = {
@@ -427,6 +429,8 @@ export default function WarfareConfigPage({ store, go }: Props) {
   const [bullBomb, setBullBomb] = React.useState(false);
   const [bullHeal, setBullHeal] = React.useState(false);
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [tacticalMapEnabled, setTacticalMapEnabled] = React.useState(false);
+  const [inputMethod, setInputMethod] = React.useState("keypad");
 
   const bullRule = React.useMemo<WarfareBullRule>(() => {
     if (bullBomb && bullHeal) return "CHOICE";
@@ -489,6 +493,8 @@ export default function WarfareConfigPage({ store, go }: Props) {
       handicapTopHarder,
       layout,
       bullRule,
+      tacticalMapEnabled,
+      inputMethod,
     };
     go("warfare_play", { config: cfg });
   }
@@ -660,6 +666,22 @@ export default function WarfareConfigPage({ store, go }: Props) {
             {t("warfare.bull.note", "Par défaut, le Bull n’a aucun effet.")}
           </div>
         </div>
+
+        {/* MSS : options de saisie après les règles, jamais avant le ticker ou les joueurs. */}
+        <section style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${theme.borderSoft}`}}>
+          <div style={{fontSize:13,fontWeight:900,color:theme.primary,marginBottom:10}}>CARTE TACTIQUE</div>
+          <label style={{display:'flex',alignItems:'center',gap:10,fontSize:13,cursor:'pointer',lineHeight:1.4}}>
+            <input type="checkbox" checked={tacticalMapEnabled} onChange={e=>setTacticalMapEnabled(e.target.checked)}/>
+            Activer la carte des deux armées
+          </label>
+          <div style={{fontSize:13,fontWeight:900,color:theme.primary,margin:'18px 0 9px'}}>MODE DE SAISIE</div>
+          <div role="group" aria-label="Mode de saisie Warfare" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
+            {([['keypad','CLAVIER'],['dartboard','CIBLE'],['presets','PRÉSETS']] as const).map(([value,label])=>(
+              <button key={value} type="button" aria-pressed={inputMethod===value} onClick={()=>setInputMethod(value)}
+                style={{...pillStyle(inputMethod===value,theme),borderRadius:12,minWidth:0,padding:'10px 5px',fontSize:11}}>{label}</button>
+            ))}
+          </div>
+        </section>
 
         <div style={{ marginTop: 14, fontSize: 12, color: canStart ? theme.textSoft : "#ff8a8a" }}>
           {canStart

@@ -483,6 +483,11 @@ function updateImpactStats(stats: PresidentPlayerStats, darts: GameDart[]) {
 
 function finishRound(state: PresidentState): PresidentState {
   const next = clonePresidentState(state);
+  // The final successful play can finish the round before the normal trick
+  // reset. Count that last trick exactly once, without a fabricated PASS.
+  if (next.currentTarget && next.lastSuccessfulPlayerId) {
+    next.statsByPlayer[next.lastSuccessfulPlayerId].tricksWon += 1;
+  }
   const remaining = next.order.filter((id) => !next.currentRoundRanking.includes(id));
   const twoLast = new Set(next.twoFinishIds || []);
   const ranking = [...next.currentRoundRanking, ...remaining.filter(id=>!twoLast.has(id)), ...remaining.filter(id=>twoLast.has(id))];
@@ -684,8 +689,12 @@ export function presidentAutoTarget(state: PresidentState, playerId: string): Pr
 }
 
 export function passPresidentTurn(state: PresidentState, automatic = false): PresidentState {
-  // No pass on an empty table: the leader must open with a legal combination.
-  if (state.finished || state.pendingTaxes?.length || !state.currentTarget) return state;
+  // Only the current, still-active participant may pass once per trick.
+  // Calls from delayed controls/bot callbacks must never append duplicate passes.
+  if (state.finished || state.pendingTaxes?.length || !state.currentTarget ||
+      state.finishedPlayerIds.includes(state.activePlayerId) ||
+      state.passedPlayerIds.includes(state.activePlayerId) ||
+      !state.order.includes(state.activePlayerId)) return state;
   const next = clonePresidentState(state);
   const playerId = next.activePlayerId;
   const stats = next.statsByPlayer[playerId];
@@ -716,7 +725,12 @@ export function passPresidentTurn(state: PresidentState, automatic = false): Pre
 }
 
 export function playPresidentTurn(state: PresidentState, target: PresidentTarget, darts: GameDart[]): PresidentState {
-  if (state.finished || state.pendingTaxes?.length) return state;
+  // Prevent empty validations, stale actions from eliminated/passed players and
+  // illegal payloads from changing a turn or its history.
+  if (state.finished || state.pendingTaxes?.length || !target || !Array.isArray(darts) || !darts.length ||
+      state.finishedPlayerIds.includes(state.activePlayerId) ||
+      state.passedPlayerIds.includes(state.activePlayerId) ||
+      !state.order.includes(state.activePlayerId)) return state;
   const next = clonePresidentState(state);
   const playerId = next.activePlayerId;
   const hand = next.hands[playerId] || [];

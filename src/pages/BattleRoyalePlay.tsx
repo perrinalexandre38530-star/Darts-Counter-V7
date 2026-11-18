@@ -21,6 +21,8 @@ import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import ScoreInputHub from "../components/ScoreInputHub";
+import TacticalMatchPanels from "../components/TacticalMatchPanels";
+import "./mssBattleLayouts.css";
 import type { Dart as UIDart } from "../lib/types";
 import { History } from "../lib/history";
 import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
@@ -48,6 +50,8 @@ export type BattleRoyaleConfig = {
 
   sfxEnabled?: boolean;
   voiceEnabled?: boolean;
+  tacticalMapEnabled?: boolean;
+  inputMethod?: string;
 };
 
 type Props = {
@@ -807,7 +811,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   const cardBg = theme.card;
 
   const cardShell: React.CSSProperties = {
-    borderRadius: 0,
+    borderRadius: 18,
     border: `1px solid ${theme.borderSoft}`,
     background: cardBg,
     boxShadow: `0 10px 24px rgba(0,0,0,0.55)`,
@@ -826,7 +830,9 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
   return (
     <div
+      className="mss-br-play"
       style={{
+        ['--mss-accent' as any]: theme.primary,
         height: "100dvh",
         overflow: "hidden",
         background: pageBg,
@@ -842,7 +848,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       }}
     >
       {/* Header sticky */}
-      <div
+      <div className="mss-br-header"
         style={{
           position: "sticky",
           top: 0,
@@ -885,8 +891,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         </div>
       </div>
 
-      {/* Content (scroll) — 1 colonne pour éviter tout débordement */}
-      <div
+      {/* Contenu fluide, clavier toujours visible */}
+      <div className="mss-br-content"
         style={{
           flex: 1,
           minHeight: 0,
@@ -897,10 +903,17 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         }}
       >
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: 860, margin: "0 auto" }}>
-          <div style={{ ...cardShell, width: "100%" }}>
+          <div style={{ ...cardShell, width: "100%", padding: 5 }}>
+          <TacticalMatchPanels kind="battle" players={players} activeId={activePlayer?.id} round={roundIndex+1} target={fmtTarget(target)} logs={visitHistoryRef.current} mapEnabled={!!cfg?.tacticalMapEnabled} accent={theme.primary}
+            objective={`Atteindre ${fmtTarget(target)} pendant cette volée pour rester dans l’arène. ${eliminationRule === 'life_system' ? `Sans touche, perte d’une vie (${activePlayer?.lives??0} restante(s)).` : eliminationRule === 'miss_x' ? `Éviter ${missLimit} ratés cumulés.` : 'Sans point sur la cible, élimination.'}`}
+            rules={["À chaque round, une nouvelle cible de 20 vers 1 puis BULL.",`Chaque joueur dispose de ${dartsPerTurn} fléchette(s) par tour.`, "Seules les touches sur la cible du round permettent de survivre.", "Le dernier survivant remporte la partie."]}
+            configuration={[`Élimination : ${eliminationRule}`,`Vies initiales : ${baseLives}`,`Fléchettes par tour : ${dartsPerTurn}`,`Carte tactique : ${cfg?.tacticalMapEnabled ? 'activée' : 'désactivée'}`,`Saisie : ${cfg?.inputMethod || 'keypad'}`]}>
+            <span style={{fontSize:11,fontWeight:850,color:theme.primary}}>JOUEUR ACTIF · {activePlayer?.name||'—'}</span>
+          </TacticalMatchPanels>
+
             <div
               style={{
-                padding: 8,
+                padding: 6,
                 display: "grid",
                 gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
                 gap: 8,
@@ -993,8 +1006,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 >
                   <div
                     style={{
-                      width: 84,
-                      height: 84,
+                      width: 60,
+                      height: 60,
                       borderRadius: 999,
                       overflow: "hidden",
                       background: "rgba(0,0,0,0.22)",
@@ -1103,121 +1116,38 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             </div>
           </div>
 
-          {/* ✅ Carte Joueurs : ticker2 en fond (transparence) */}
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => setPlayersPanelOpen(true)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setPlayersPanelOpen(true);
-            }}
-            style={{
-              ...cardShell,
-              padding: 0,
-              cursor: "pointer",
-              overflow: "hidden",
-              backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.58), rgba(0,0,0,0.58)), url(${tickerBattleRoyale2})`,
-              backgroundSize: "cover",
-              backgroundPosition: "62% center",
-            }}
-          >
-            {/* Ticker header */}
-            <div
-              style={{
-                padding: "10px 12px",
-                borderBottom: `1px solid ${theme.borderSoft}`,
-                background: `linear-gradient(90deg, ${theme.primary}22, rgba(0,0,0,0.10), ${theme.primary}18)`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ fontWeight: 1100, letterSpacing: 0.4 }}>
-                {t("common.players", "Joueurs")}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={miniBadge}>
-                  {aliveCount}/{players.length}
-                </span>
-                {!ended && (
-                <span
-                  style={{
-                    ...miniBadge,
-                    borderColor: theme.primary + "66",
-                    color: theme.text,
-                    background: theme.primary + "1a",
-                  }}
-                >
-                  {t("common.round", "Round")} {roundIndex + 1}/{TARGETS.length}
-                </span>
-              )}
-              </div>
+          {/* Carte Joueurs restaurée : comme les cartes de suivi KILLER/5 VIES,
+              l'état de tous les participants reste visible sans ouvrir de modale. */}
+          <section className="mss-br-players-card" aria-label="Joueurs et ordre de passage"
+            style={{ borderColor: theme.borderSoft,
+              backgroundImage: `linear-gradient(90deg, rgba(9,11,20,.95), rgba(9,11,20,.72)), url(${tickerBattleRoyale2})` }}>
+            <button type="button" className="mss-br-players-card-head"
+              onClick={() => setPlayersPanelOpen(true)}
+              aria-label="Afficher le classement complet et l'ordre de passage">
+              <span className="mss-br-players-card-title">{t("common.players", "Joueurs")}</span>
+              <span className="mss-br-players-card-count">{aliveCount}/{players.length} survivants</span>
+              <span className="mss-br-players-card-round">{t("common.round", "Round")} {roundIndex + 1}/{TARGETS.length}</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+            <div className="mss-br-players-card-list">
+              {players.map((p, idx) => {
+                const selected = idx === activeIndex && p.alive && !ended;
+                return <button type="button" key={p.id}
+                  className={`mss-br-player-tile${selected ? " is-active" : ""}${!p.alive ? " is-eliminated" : ""}`}
+                  onClick={() => setPlayersPanelOpen(true)}
+                  aria-label={`${p.name}, ${p.alive ? "en jeu" : "éliminé"}, ${p.lives} vies`}>
+                  <span className="mss-br-player-avatar">
+                    {p.avatarDataUrl ? <img src={p.avatarDataUrl} alt=""/> : avatarFallback(p.name)}
+                  </span>
+                  <span className="mss-br-player-details">
+                    <strong>{p.name}</strong>
+                    <small>{!p.alive ? "ÉLIMINÉ" : eliminationRule === "life_system" ? `♥ ${p.lives}/${baseLives}` : eliminationRule === "miss_x" ? `✕ ${p.misses}/${missLimit}` : "EN JEU"}</small>
+                  </span>
+                  {selected && <span className="mss-br-player-turn">TOUR</span>}
+                </button>;
+              })}
             </div>
-
-            {/* Aperçu avatars */}
-            <div
-              style={{
-                padding: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                flexWrap: "wrap",
-                background: "rgba(0,0,0,0.10)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
-                {players.slice(0, 6).map((p) => (
-                  <div
-                    key={p.id}
-                    title={p.name}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      border: `1px solid ${p.alive ? theme.borderSoft : "rgba(255,80,80,.35)"}`,
-                      opacity: p.alive ? 1 : 0.5,
-                      background: "rgba(0,0,0,0.25)",
-                      display: "grid",
-                      placeItems: "center",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    {p.avatarDataUrl ? (
-                      <img
-                        src={p.avatarDataUrl}
-                        alt=""
-                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: 11, fontWeight: 1000 }}>{avatarFallback(p.name)}</span>
-                    )}
-                  </div>
-                ))}
-                {players.length > 6 && <div style={{ ...miniBadge, padding: "6px 10px" }}>+{players.length - 6}</div>}
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 999,
-                    border: `1px solid ${theme.borderSoft}`,
-                    background: "rgba(0,0,0,0.22)",
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 1100,
-                  }}
-                >
-                  ↗
-                </div>
-              </div>
-            </div>
-          </div>
+          </section>
 
           {/* ✅ Overlay centré : liste complète joueurs (ordre du tour) */}
           {playersPanelOpen && (
@@ -1241,7 +1171,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                   maxHeight: "86vh",
                   overflowY: "auto",
                   WebkitOverflowScrolling: "touch",
-                  borderRadius: 0,
+                  borderRadius: 18,
                   border: `1px solid ${theme.borderSoft}`,
                   background: theme.card,
                   boxShadow: "0 16px 44px rgba(0,0,0,.6)",
@@ -1379,7 +1309,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       </div>
 
       {/* Keypad fixed (BottomNav masquée pendant la partie) */}
-      <div style={{ marginTop: "auto" }}>
+      <div className="mss-br-keypad" style={{ marginTop: "auto" }}>
         {/* ✅ ScoreInputHub compact
             - On supprime la preview de volée et les onglets (KEYPAD/CIBLE/...) pour gagner en hauteur.
             - La volée est affichée dans le Profil actif (ThrowBlocks) avec un style néon.
@@ -1399,7 +1329,10 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             onDirectDart={(d) => pushDart(d)}
             hidePreview={true}
             hideTotal={true}
-            switcherMode="hidden"
+            preferredMethod={cfg?.inputMethod || "keypad"}
+            switcherMode="drawer"
+            hideSwitcher={false}
+            hideTabs={false}
             centerSlot={
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontWeight: 1000, fontSize: 12, color: "rgba(255,255,255,.7)" }}>

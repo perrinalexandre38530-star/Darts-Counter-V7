@@ -1,0 +1,160 @@
+/* MSS — Battle layouts. Presentation-only: no scoring/rules changes. */
+.mss-war-play, .mss-br-play { width:100%; min-width:0; box-sizing:border-box; }
+.mss-war-play *, .mss-br-play * { box-sizing:border-box; }
+.mss-war-play { height:100dvh; min-height:0; padding:10px max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)); display:flex; flex-direction:column; gap:9px; overflow:hidden; }
+.mss-war-header { height:clamp(54px,9vh,76px); flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; padding:7px 10px; border:1px solid rgba(255,255,255,.18); border-radius:15px; background-size:100% 100%; background-position:center; box-shadow:0 5px 18px rgba(0,0,0,.24); }
+.mss-war-content { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; padding:1px 2px 9px; }
+.mss-war-active { margin-top:0!important; border-radius:16px!important; padding:10px!important; box-shadow:0 4px 14px rgba(0,0,0,.22)!important; }
+.mss-war-active > div { min-width:0; }
+.mss-war-armies { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; gap:9px; margin-top:9px; }
+.mss-war-army { min-width:0; padding:10px!important; border-radius:16px!important; box-shadow:none!important; }
+.mss-war-army.is-active { box-shadow:inset 0 0 0 1px var(--mss-accent)!important; }
+.mss-war-soldiers { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:5px; margin-top:8px; }
+.mss-war-soldiers > div { min-width:0; height:clamp(30px,5.4vh,42px)!important; border-radius:9px!important; font-size:clamp(12px,2.5vw,16px); }
+.mss-war-keypad { flex:0 0 auto; display:grid; gap:5px; padding:6px 7px max(5px,env(safe-area-inset-bottom)); border:1px solid rgba(255,255,255,.12); border-radius:16px; background:rgba(10,12,19,.97); box-shadow:0 -5px 22px rgba(0,0,0,.28); min-width:0; }
+.mss-war-keypad > div:first-child { min-width:0; }
+.mss-br-play { gap:7px!important; padding-top:8px!important; }
+.mss-br-header { flex:0 0 auto; padding-bottom:0!important; }
+.mss-br-header > div { border-radius:14px!important; height:clamp(52px,9vh,68px)!important; box-shadow:0 5px 15px rgba(0,0,0,.28)!important; }
+.mss-br-content { scrollbar-width:thin; }
+.mss-br-content > div { max-width:1060px!important; gap:8px!important; }
+.mss-br-content > div > div { border-radius:16px!important; overflow:hidden; }
+.mss-br-keypad { flex:0 0 auto; min-width:0; padding:5px 7px max(5px,env(safe-area-inset-bottom)); background:rgba(10,12,19,.96); border-radius:15px; border:1px solid rgba(255,255,255,.12); box-shadow:0 -5px 20px rgba(0,0,0,.26); }
+@media (max-width:570px) {
+ .mss-war-play { padding:7px; gap:6px; }
+ .mss-war-header { height:54px; border-radius:12px; }
+ .mss-war-active > div { flex-wrap:wrap; gap:8px!important; }
+ .mss-war-active > div > div:last-child { width:100%!important; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px 8px; padding:7px!important; }
+ .mss-war-active > div > div:last-child > div { margin:0!important; }
+ .mss-war-armies { grid-template-columns:1fr; gap:6px; margin-top:6px; }
+ .mss-war-army { padding:8px!important; }
+ .mss-war-soldiers > div { height:30px!important; }
+ .mss-war-keypad { padding:4px; }
+ .mss-br-play { padding:7px!important; gap:6px!important; }
+ .mss-br-keypad { padding:4px; }
+}
+@media (min-width:900px) and (orientation:landscape) {
+ .mss-war-content { display:grid; align-content:start; grid-template-columns:minmax(220px,.78fr) minmax(360px,1.6fr); gap:12px; }
+ .mss-war-armies { margin-top:0; }
+ .mss-war-keypad, .mss-br-keypad { max-width:1120px; width:100%; margin-inline:auto; }
+}
+@media (max-height:680px) and (orientation:landscape) {
+ .mss-war-header, .mss-br-header > div { height:46px!important; }
+ .mss-war-play, .mss-br-play { gap:4px!important; }
+ .mss-war-keypad, .mss-br-keypad { padding:3px; }
+}
+
+/* V204 : prevent narrow StackBlitz/mobile panes from clipping the scoring panel. */
+.mss-war-play, .mss-br-play { max-width:100%; overflow-x:clip; }
+.mss-war-keypad, .mss-br-keypad { max-width:100%; overflow-x:hidden; }
+.mss-war-keypad > *, .mss-br-keypad > *, #br-scorehub { min-width:0; max-width:100%; }
+.mss-war-keypad > div:first-child { flex-wrap:wrap; gap:5px!important; }
+.mss-war-keypad > div:first-child > div { min-width:0; }
+.mss-war-content, .mss-br-content { min-width:0; overflow-x:hidden; }
+@media (max-width:600px) {
+  .mss-war-play, .mss-br-play { padding-inline:6px!important; }
+  .mss-war-keypad, .mss-br-keypad { padding:4px!important; }
+  .mss-war-keypad > div:first-child { padding-inline:2px!important; }
+}
+
+/* V207 — densité maîtrisée sans modifier les règles des jeux. */
+.mss-tactical-bar { max-width:100%; }
+.mss-tactical-actions { -webkit-overflow-scrolling:touch; }
+.mss-tactical-actions button { transition:background .15s ease,border-color .15s ease; }
+.mss-tactical-actions button:focus-visible, .mss-tactical-players button:focus-visible { outline:2px solid var(--mss-accent);outline-offset:2px; }
+.mss-tactical-objective { border-top:1px solid rgba(255,255,255,.08);padding-top:4px; }
+.mss-war-active > div:nth-child(2) { display:grid!important;grid-template-columns:44px minmax(0,1fr);align-items:center;gap:8px!important; }
+.mss-war-kpis { grid-column:1/-1; display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px!important; width:100%!important; min-width:0; padding:5px!important; border-radius:10px!important; }
+.mss-war-kpis > div:not(.mss-war-kpi-separator) { display:flex!important;flex-direction:column;gap:2px!important;text-align:center;align-items:center!important;justify-content:center!important;min-width:0; }
+.mss-war-kpis > div:not(.mss-war-kpi-separator) > div:first-child { font-size:9px!important; }
+.mss-war-kpis > div:not(.mss-war-kpi-separator) > div:last-child { font-size:14px; }
+.mss-war-kpi-separator { display:none!important; }
+.mss-war-kpis > div:last-child { grid-column:1/-1;display:flex!important;flex-direction:row!important;justify-content:center!important;margin-top:0!important;border-top:1px solid rgba(255,255,255,.08);padding-top:3px; }
+.mss-br-players-trigger { min-width:0; }
+.mss-br-players-trigger > div:first-child { padding:6px 9px!important; }
+.mss-br-players-trigger > div:nth-child(2) { padding:5px 9px!important; }
+@media (max-width:680px) {
+ .mss-war-active { padding:6px!important; }
+ .mss-tactical-players { scrollbar-width:none; }
+ .mss-tactical-actions button { flex:1 0 39px!important;padding:6px!important; }
+ .mss-tactical-action-label { display:none; }
+ .mss-tactical-objective { font-size:10px; }
+ .mss-war-army { padding:6px!important; }
+ .mss-war-soldiers { margin-top:5px;gap:4px; }
+ .mss-war-soldiers > div {height:27px!important;}
+ .mss-war-keypad, .mss-br-keypad { border-radius:12px; }
+}
+@media (max-height:760px) {
+ .mss-war-header, .mss-br-header > div { height:49px!important; }
+ .mss-war-play, .mss-br-play { gap:5px!important; }
+}
+
+/* V209 — compact battlefield, avoid duplicated status and retain access to all details. */
+.mss-br-order-button { width:100%; min-width:0; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 12px; margin:0; border:1px solid; border-radius:11px; background:rgba(255,255,255,.045); font-size:12px; font-weight:800; cursor:pointer; }
+.mss-br-order-button:hover { background:rgba(255,255,255,.09); }
+.mss-br-order-button:focus-visible { outline:2px solid var(--mss-accent); outline-offset:2px; }
+.mss-br-order-button span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.mss-war-active { padding:7px!important; }
+.mss-war-kpis { grid-template-columns:repeat(4,minmax(0,1fr))!important; padding:4px!important; }
+.mss-war-kpis > div:not(.mss-war-kpi-separator) { min-height:34px; }
+.mss-war-armies { gap:6px; margin-top:6px; }
+.mss-war-soldiers { grid-template-columns:repeat(5,minmax(0,1fr)); }
+.mss-tactical-bar { padding:5px!important; gap:4px!important; }
+.mss-tactical-players { padding-bottom:0!important; }
+.mss-tactical-objective { padding-top:3px!important; }
+@media (max-width:680px) {
+ .mss-war-active > div:nth-child(2) { grid-template-columns:38px minmax(0,1fr);gap:6px!important; }
+ .mss-war-kpis { grid-column:1/-1; }
+ .mss-war-army { padding:6px!important; }
+ .mss-war-soldiers > div { height:28px!important; }
+ .mss-br-order-button { padding:6px 9px; }
+}
+@media (max-height:850px) and (orientation:portrait) {
+ .mss-war-header, .mss-br-header > div {height:49px!important;}
+ .mss-war-active {padding:5px!important;}
+ .mss-war-soldiers > div {height:26px!important;}
+}
+
+
+/* V212 — retour de la carte JOUEURS voulue par l'utilisateur.
+   Les joueurs restent visibles sur le terrain ; la modale reste accessible. */
+.mss-br-players-card { border:1px solid; border-radius:16px; overflow:hidden; background-size:cover; background-position:center; isolation:isolate; min-width:0; box-shadow:inset 0 1px 0 rgba(255,255,255,.08); }
+.mss-br-players-card-head { width:100%; min-width:0; display:flex; align-items:center; gap:9px; padding:10px 12px; color:#fff; background:rgba(9,11,20,.50); border:0; border-bottom:1px solid rgba(255,255,255,.13); cursor:pointer; text-align:left; }
+.mss-br-players-card-title {font-weight:1000; font-size:17px; margin-right:auto;}
+.mss-br-players-card-count,.mss-br-players-card-round { font-size:12px; font-weight:850; white-space:nowrap; border:1px solid rgba(255,255,255,.16); border-radius:100px; padding:4px 7px; background:rgba(0,0,0,.36); }
+.mss-br-players-card-list {display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr)); gap:7px; padding:10px; max-height:184px; overflow:auto; scrollbar-width:thin;}
+.mss-br-player-tile {display:flex;align-items:center;gap:8px;min-width:0;text-align:left;border:1px solid rgba(255,255,255,.17);border-radius:12px;background:rgba(11,14,24,.80);color:#fff;padding:7px;cursor:pointer;}
+.mss-br-player-tile.is-active {border-color:var(--mss-accent);background:color-mix(in srgb,var(--mss-accent) 15%,rgba(11,14,24,.9));}
+.mss-br-player-tile.is-eliminated {opacity:.52;filter:grayscale(.8);}
+.mss-br-player-avatar {width:36px;height:36px;flex:0 0 36px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:#171923;overflow:hidden;display:grid;place-items:center;font-weight:1000;}
+.mss-br-player-avatar img {width:100%;height:100%;object-fit:cover;}
+.mss-br-player-details {min-width:0;display:flex;flex-direction:column;gap:2px;}
+.mss-br-player-details strong {font-size:13px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}
+.mss-br-player-details small {font-size:11px;color:#ffc45b;font-weight:850;}
+.mss-br-player-turn {margin-left:auto;color:var(--mss-accent);font-size:9px;font-weight:1000;}
+.mss-br-players-card button:focus-visible {outline:2px solid var(--mss-accent);outline-offset:-2px;}
+/* Ne plus imposer de miniaturisation globale aux panneaux de l'arène. */
+.mss-br-content > div > div {overflow:visible;}
+@media (max-width:430px) {
+ .mss-br-players-card-head {padding:8px;gap:5px;}
+ .mss-br-players-card-title {font-size:14px;}
+ .mss-br-players-card-count,.mss-br-players-card-round {font-size:10px;padding:3px 5px;}
+ .mss-br-players-card-list {grid-template-columns:repeat(2,minmax(0,1fr));padding:7px;gap:5px;}
+ .mss-br-player-tile {padding:5px;gap:5px;}
+ .mss-br-player-avatar {width:30px;height:30px;flex-basis:30px;}
+}
+
+/* Reprise des principes SHOVE/KILLER : bloc joueur actif lisible, statut visible,
+   plateaux de chaque camp distincts et non fusionnés avec le clavier. */
+.mss-war-active { background:linear-gradient(110deg,color-mix(in srgb,var(--mss-accent) 10%,#11131f),#10121c 65%)!important; border:1px solid color-mix(in srgb,var(--mss-accent) 50%,#333)!important; }
+.mss-war-army {background:linear-gradient(160deg,rgba(25,29,42,.98),rgba(10,12,19,.98))!important; border-radius:15px!important;}
+.mss-war-army.is-active {border-color:var(--mss-accent)!important; box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mss-accent) 45%,transparent),0 0 14px color-mix(in srgb,var(--mss-accent) 10%,transparent)!important;}
+.mss-war-army:not(.is-active) {opacity:.87;}
+.mss-war-kpis > div:not(.mss-war-kpi-separator) {border-radius:8px; background:rgba(255,255,255,.035);padding:3px 2px;}
+@media(min-width:550px) {
+ .mss-war-armies {grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:549px) {
+ .mss-war-armies {grid-template-columns:1fr;}
+ .mss-war-kpis {gap:4px!important;}
+}
