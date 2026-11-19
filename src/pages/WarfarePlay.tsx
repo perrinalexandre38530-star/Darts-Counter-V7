@@ -562,7 +562,26 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
         rules={["Une volée comprend jusqu'à trois fléchettes.","Une touche valide sur un soldat adverse l'élimine.",`Zones autorisées : ${zonesLabel}.`,normalized.friendlyFire?'Le tir allié est activé.':'Le tir allié est désactivé.',"L'armée qui conserve des soldats gagne."]}
         configuration={[`Zones : ${zonesLabel}`,`Tirs alliés : ${normalized.friendlyFire?'oui':'non'}`,`Handicap : ${normalized.handicapP1Harder?'oui':'non'}`,`Carte tactique : ${(config as any)?.tacticalMapEnabled?'activée':'désactivée'}`,`Saisie : ${(config as any)?.inputMethod||'keypad'}`]} />
 
-      {/* Les deux camps partagent une grille adaptative. */}
+      {/* Vue d'ensemble du front : synthèse visuelle, le détail reste dans les deux armées. */}
+      <section className="mss-war-frontline" aria-label="État du champ de bataille">
+        <div className="mss-war-frontline-side is-top">
+          <span className="mss-war-frontline-name">▲ TOP</span>
+          <strong>{aliveTop.length}<small> / 10</small></strong>
+        </div>
+        <div className="mss-war-frontline-center" aria-hidden="true">
+          <span className="mss-war-frontline-label">FRONT</span>
+          <div className="mss-war-frontline-meter">
+            <span className="mss-war-frontline-top" style={{flex:aliveTop.length || 0}} />
+            <span className="mss-war-frontline-divider">VS</span>
+            <span className="mss-war-frontline-bottom" style={{flex:aliveBottom.length || 0}} />
+          </div>
+          <span className="mss-war-frontline-caption">{aliveTop.length + aliveBottom.length} soldats en jeu</span>
+        </div>
+        <div className="mss-war-frontline-side is-bottom">
+          <span className="mss-war-frontline-name">BOTTOM ▼</span>
+          <strong>{aliveBottom.length}<small> / 10</small></strong>
+        </div>
+      </section>
       <div className="mss-war-armies">
         {([
           { army: "TOP" as const, title: "TOP", nums: TOP_ARMY, aliveSet: aliveSetTop, players: topPlayers },

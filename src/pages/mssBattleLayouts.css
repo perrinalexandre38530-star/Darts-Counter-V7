@@ -502,3 +502,60 @@
  .mss-war-current-indicator {font-size:9px;}
 }
 @media (prefers-reduced-motion:reduce) {.mss-br-round-track > span {transition:none;}}
+
+
+/* V230 — terrain d'abord. Styles locaux aux modes WARFARE / BATTLE ROYALE.
+   Conserve les composants KILLER/LOTERIE et le clavier dans son emplacement. */
+.mss-war-frontline {
+  display:grid;grid-template-columns:minmax(62px,1fr) minmax(100px,2.2fr) minmax(62px,1fr);
+  align-items:center;gap:8px;padding:8px 12px;min-width:0;
+  border:1px solid rgba(255,255,255,.14);border-radius:16px;
+  background:linear-gradient(110deg,rgba(209,164,74,.13),#111620 48%,rgba(122,184,206,.13));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+}
+.mss-war-frontline-side {display:grid;gap:2px;min-width:0;}
+.mss-war-frontline-side.is-bottom {text-align:right;}
+.mss-war-frontline-name {font-weight:950;font-size:11px;letter-spacing:.05em;white-space:nowrap;}
+.mss-war-frontline-side.is-top .mss-war-frontline-name,.mss-war-frontline-side.is-top strong {color:#e8bd67;}
+.mss-war-frontline-side.is-bottom .mss-war-frontline-name,.mss-war-frontline-side.is-bottom strong {color:#91cbdf;}
+.mss-war-frontline-side strong {font-size:25px;line-height:1.1;font-weight:1000;font-variant-numeric:tabular-nums;}
+.mss-war-frontline-side strong small {font-size:11px;color:#b7bfcb;font-weight:750;}
+.mss-war-frontline-center {display:grid;justify-items:center;gap:4px;min-width:0;}
+.mss-war-frontline-label {font-size:10px;font-weight:950;letter-spacing:.14em;color:#e6e9f1;}
+.mss-war-frontline-caption {font-size:10px;color:#aeb8c5;white-space:nowrap;}
+.mss-war-frontline-meter {width:100%;height:12px;display:flex;position:relative;overflow:visible;gap:3px;}
+.mss-war-frontline-meter > span:not(.mss-war-frontline-divider) {min-width:0;min-height:100%;border-radius:4px;}
+.mss-war-frontline-top {background:linear-gradient(90deg,#8a6329,#e2b75b);}
+.mss-war-frontline-bottom {background:linear-gradient(90deg,#79b5d1,#375f83);}
+.mss-war-frontline-divider {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;border:1px solid #ffffff30;border-radius:99px;padding:2px 5px;background:#151927;color:#fff;font-size:9px;font-weight:1000;line-height:1;}
+.mss-war-armies {margin-top:0!important;}
+.mss-war-army {min-height:0;}
+.mss-war-soldiers {grid-template-columns:repeat(5,minmax(0,1fr));}
+.mss-war-soldier.is-alive {box-shadow:inset 0 1px 0 #ffffff12;}
+.mss-war-soldier.is-out {box-shadow:inset 0 0 0 1px #0007;}
+/* Grande carte conservée : présentation en grille quand il y a peu de joueurs,
+   défilement du roster seulement pour les grandes parties. */
+.mss-br-players-arena {background-blend-mode:normal;}
+.mss-br-players-arena .mss-br-classic-roster.is-small-party {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;gap:9px;width:100%;align-items:stretch;}
+.mss-br-players-arena .mss-br-classic-roster.is-small-party .mss-br-classic-player {width:100%;max-width:none;min-width:0;border-radius:14px;padding:8px 10px;}
+.mss-br-players-arena .mss-br-classic-roster.is-small-party .mss-br-classic-identity {flex:1;}
+.mss-br-players-arena .mss-br-classic-player {background:rgba(9,13,22,.91);border:1px solid rgba(255,255,255,.23);}
+.mss-br-players-arena .mss-br-classic-player.is-active {background:linear-gradient(115deg,color-mix(in srgb,var(--mss-accent) 23%,#111724),#10151f);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mss-accent) 38%,transparent);}
+.mss-br-players-arena .mss-br-classic-avatar {width:45px;height:45px;flex:0 0 45px;border:2px solid rgba(255,255,255,.24);}
+.mss-br-players-arena .mss-br-classic-player.is-active .mss-br-classic-avatar {border-color:var(--mss-accent);}
+.mss-br-health-track {display:flex;gap:3px;margin-top:3px;min-width:0;}
+.mss-br-health-track i {flex:1 1 auto;max-width:16px;height:4px;border-radius:8px;background:rgba(255,255,255,.14);}
+.mss-br-health-track i.is-filled {background:#e68e9d;box-shadow:0 0 5px #e68e9d45;}
+@media(min-width:710px){
+ .mss-br-players-arena .mss-br-classic-roster.is-small-party {grid-template-columns:repeat(auto-fit,minmax(155px,1fr));}
+}
+@media(max-width:410px){
+ .mss-war-frontline {gap:5px;padding:7px;grid-template-columns:minmax(52px,1fr) minmax(90px,1.7fr) minmax(52px,1fr);}
+ .mss-war-frontline-side strong {font-size:21px;}
+ .mss-war-frontline-name {font-size:9px;}
+ .mss-war-frontline-caption {font-size:9px;}
+ .mss-br-players-arena .mss-br-classic-roster.is-small-party {gap:5px;}
+ .mss-br-players-arena .mss-br-classic-roster.is-small-party .mss-br-classic-player {padding:6px;gap:5px;}
+ .mss-br-players-arena .mss-br-classic-avatar {width:34px;height:34px;flex-basis:34px;}
+}
+@media(prefers-reduced-motion:reduce){.mss-br-health-track i {transition:none;}}

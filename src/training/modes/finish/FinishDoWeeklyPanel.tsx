@@ -1,16 +1,19 @@
 import React from "react";
-import { getFinishDoPriority, getFinishDoWeek, compareFinishDoWeeks, buildFinishDoTrainingPlan, type FinishDoProgress } from "./finishDoProgress";
+import { getFinishDoPriority, getFinishDoWeek, compareFinishDoWeeks, buildFinishDoTrainingPlan, getFinishDoPlanStatus, type FinishDoProgress } from "./finishDoProgress";
 import "./finishDoWeeklyPanel.css";
 
 /** Read-only, profile-scoped training progress; never includes competitive X01 games. */
-export default function FinishDoWeeklyPanel({ progress, onReview }: {
+export default function FinishDoWeeklyPanel({ progress, onReview, onPractice, lessonValidated = false }: {
   progress: FinishDoProgress;
   onReview?: (double: string) => void;
+  onPractice?: (double: string) => void;
+  lessonValidated?: boolean;
 }) {
   const week = getFinishDoWeek(progress);
   const priority = getFinishDoPriority(progress);
   const comparison = compareFinishDoWeeks(progress);
-  const plan = buildFinishDoTrainingPlan(progress);
+  const status = getFinishDoPlanStatus(progress, lessonValidated);
+  const plan = status.plan;
   const targets = Object.values(progress.aims).filter(row => row.attempts > 0)
     .sort((a, b) => b.attempts - a.attempts).slice(0, 4);
   return <section className="mss-finish-week" aria-label="Progression FINISH DO">
@@ -38,10 +41,18 @@ export default function FinishDoWeeklyPanel({ progress, onReview }: {
       <div className="mss-finish-week-plan-body">
         <p>{plan.objective}</p>
         {plan.sampleSize < 3 && <small>Parcours de découverte : aucune faiblesse n'est déduite avec moins de 3 lancers annoncés.</small>}
-        {plan.steps.map(step => <div key={step.id} className="mss-finish-week-plan-step">
-          <strong>{step.title}</strong><span>{step.instruction}</span>
-        </div>)}
-        {onReview && <button type="button" onClick={() => onReview(plan.focus)}>Ouvrir la leçon Awena pour {plan.focus} ›</button>}
+        {plan.steps.map(step => {
+          const complete = step.id === "placement" ? status.placementComplete : step.id === "precision" ? status.precisionComplete : status.checkoutComplete;
+          return <div key={step.id} className="mss-finish-week-plan-step">
+            <div className="mss-finish-week-plan-step-head"><strong>{step.title}</strong><small className={complete ? "is-done" : ""}>{complete ? "✓ Validé" : "À travailler"}</small></div>
+            <span>{step.instruction}</span>
+            {step.id === "precision" && <small>{status.attempts} lancers annoncés • {status.hits} touches • objectif {plan.tier === "discovery" ? "3 lancers" : `10 lancers et ${status.targetHits}/10 de précision`}</small>}
+            {step.id === "checkout" && <small>{status.checkouts} checkout(s) terminé(s) sur {plan.focus} depuis l'activation du suivi.</small>}
+            {step.id === "placement" && onReview && <button type="button" onClick={() => onReview(plan.focus)}>Apprendre et valider ›</button>}
+            {step.id === "precision" && onPractice && <button type="button" onClick={() => onPractice(plan.focus)}>Lancer l’exercice pratique ›</button>}
+            {step.id === "checkout" && onPractice && <button type="button" onClick={() => onPractice(plan.focus)}>S’entraîner au checkout ›</button>}
+          </div>;
+        })}
       </div>
     </details>
     {targets.length > 0 && <div className="mss-finish-week-targets">

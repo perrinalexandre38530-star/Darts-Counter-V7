@@ -920,7 +920,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
           {/* ✅ Carte Joueurs : ticker2 en fond (transparence) */}
           <div
-            className="mss-br-classic-players"
+            className="mss-br-classic-players mss-br-players-arena"
             aria-label="Ouvrir la liste complète des joueurs et leur ordre"
             role="button"
             tabIndex={0}
@@ -990,7 +990,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 background: "rgba(0,0,0,0.10)",
               }}
             >
-              <div className="mss-br-classic-roster" aria-label="Joueurs présents dans l'arène">
+              <div className={`mss-br-classic-roster${players.length <= 4 ? " is-small-party" : ""}`} aria-label="Joueurs présents dans l'arène">
                 {players.map((p, index) => (
                   <div key={p.id} className={`mss-br-classic-player${index === activeIndex && !ended ? " is-active" : ""}${!p.alive ? " is-eliminated" : ""}`}>
                     <div className="mss-br-classic-avatar">
@@ -999,6 +999,9 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     <div className="mss-br-classic-identity">
                       <strong title={p.name}>{p.name}</strong>
                       <small>{!p.alive ? "ÉLIMINÉ" : eliminationRule === "life_system" ? `♥ ${p.lives}/${baseLives}` : eliminationRule === "miss_x" ? `✕ ${p.misses}/${missLimit}` : "EN JEU"}</small>
+                      {p.alive && eliminationRule === "life_system" && <span className="mss-br-health-track" aria-label={`${p.lives} vies restantes`}>
+                        {Array.from({length: Math.min(baseLives, 12)}, (_, i) => <i key={i} className={i < p.lives ? 'is-filled' : ''} />)}
+                      </span>}
                     </div>
                     {index === activeIndex && !ended && <span className="mss-br-classic-turn">TOUR</span>}
                   </div>

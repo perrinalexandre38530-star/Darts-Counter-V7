@@ -53,7 +53,13 @@ export default function KiloDeMerdePlay(props:any){
     setUndoStack(stack=>[...stack.slice(-39),old]);
     setGame(changed);
   };
-  const choose=(index:number)=>{apply(g=>kiloSelectCard(g,index));setSelected(null);setRevealed(false);};
+  const choose=(index:number)=>{
+    // Le moteur compare le joueur qui a vu sa main au joueur actuellement actif.
+    // Un second appui pendant la transition ne peut pas agir sur la main suivante.
+    const confirmingPlayerId=activeId;
+    apply(g=>kiloSelectCard(g,index,confirmingPlayerId));
+    setSelected(null);setRevealed(false);
+  };
   const next=()=>apply(g=>kiloContinue(g));
   const penalize=(id:string,premature=false)=>{
     apply(g=>kiloPenalty(g,id,premature));

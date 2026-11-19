@@ -2116,17 +2116,26 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
    finalLives: payload.stateSnapshot.lives,
   };
   if(saved && Array.isArray(saved.rounds)) {
-   report.title = 'LE MEXICAIN';
+   const mariachi = saved.rounds.some((round:any)=>Boolean(round.contractLabel));
+   report.title = mariachi ? 'LE MEXICAIN · MARIACHI' : 'LE MEXICAIN';
    report.rounds = saved.rounds.length;
    report.unit = 'manches';
+   // Une cible numérique est sans signification en MARIACHI : l'objectif
+   // véritable est le contrat partagé (multiplicateurs, couleurs, secteurs…).
+   const objectives = saved.rounds.map((round:any)=>[
+    String(round.round), String(round.contractLabel || (Number(round.target)===21 ? 'BULL' : `SECTEUR ${round.target ?? '—'}`)),
+   ]);
+   report.details.push({title:'OBJECTIFS PAR MANCHE',columns:['RONDA','CIBLE / CONTRAT'],rows:objectives});
    const rows = saved.rounds.flatMap((round:any) =>
     (round.scores || []).map((sc:any) => {
      const playerName = (entry?.players || []).find((p:any) => String(p.id)===String(sc.id))?.name || String(sc.id);
      const lost = (round.losers || []).some((id:any) => String(id)===String(sc.id));
-     return [String(round.round), Number(round.target)===21 ? 'BULL' : String(round.target ?? '—'),
-      String(playerName), String(Number(sc.score)||0), lost ? String(Number(round.lifeLoss)||1) : '0'];
+     const awarded = round.bonuses?.[sc.id];
+     const bonus = awarded?.name ? `${awarded.name} +${Number(awarded.points)||0}` : '—';
+     return [String(round.round), String(playerName), String(Number(sc.score)||0), bonus,
+      lost ? String(Number(round.lifeLoss)||1) : '0'];
     }));
-   report.details.push({title:'MANCHES ET PERTES DE VIES',columns:['RONDA','CIBLE','JOUEUR','POINTS','VIES PERDUES'],rows});
+   report.details.push({title:'SCORES ET BONUS PAR MANCHE',columns:['RONDA','JOUEUR','POINTS VALIDÉS','BONUS INCLUS','VIES PERDUES'],rows});
    report.details.push({title:'VIES RESTANTES',columns:['JOUEUR','VIES'],
     rows: (entry?.players||[]).map((p:any)=>[String(p.name||p.id),String(Number(saved.finalLives?.[p.id]||0))])});
   }

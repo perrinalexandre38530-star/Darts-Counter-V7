@@ -1,7 +1,7 @@
 /** FINISH DO precision across accepted training attempts. Local, profile-scoped; not match History. */
 export type FinishAimProgress = { label: string; attempts: number; hits: number; singleHits: number; updatedAt: number };
 export type FinishDoDay = { date: string; sessions: number; darts: number; attempts: number; hits: number };
-export type FinishDoProgress = { version: 1; darts: number; sessions: number; aims: Record<string, FinishAimProgress>; days?: Record<string, FinishDoDay> };
+export type FinishDoProgress = { version: 1; darts: number; sessions: number; aims: Record<string, FinishAimProgress>; days?: Record<string, FinishDoDay>; checkoutByDouble?: Record<string, number> };
 const PREFIX = "mss.training.finish-do.precision.v1:";
 const validAim = (s: string) => s === "BULL50" || /^D(?:[1-9]|1[0-9]|20)$/.test(s);
 export function finishDoProgressKey(profileId?: string | null) { return PREFIX + encodeURIComponent(profileId || "guest"); }
@@ -25,11 +25,15 @@ export function loadFinishDoProgress(profileId?: string | null): FinishDoProgres
       const d = day as Partial<FinishDoDay>;
       days[date] = { date, sessions: num(d.sessions), darts: num(d.darts), attempts: num(d.attempts), hits: Math.min(num(d.attempts), num(d.hits)) };
     }
-    return { version: 1, darts: num(raw.darts), sessions: num(raw.sessions), aims, days };
+    const checkoutByDouble: Record<string, number> = {};
+    for (const [label, count] of Object.entries(raw.checkoutByDouble || {})) {
+      if (validAim(label)) checkoutByDouble[label] = num(count);
+    }
+    return { version: 1, darts: num(raw.darts), sessions: num(raw.sessions), aims, days, checkoutByDouble };
   } catch { return empty; }
 }
 export type FinishAimEvidence = { aimedDouble?: string; actual: string };
-export function saveFinishDoAttempt(profileId: string | null | undefined, evidence: FinishAimEvidence[]): FinishDoProgress {
+export function saveFinishDoAttempt(profileId: string | null | undefined, evidence: FinishAimEvidence[], finishedDouble?: string): FinishDoProgress {
   const progress = loadFinishDoProgress(profileId);
   progress.sessions += 1;
   progress.darts += evidence.length;
@@ -51,6 +55,11 @@ export function saveFinishDoAttempt(profileId: string | null | undefined, eviden
     progress.aims[label] = row;
   }
   days[date] = day;
+  // Only a verified winning last dart may validate a checkout step.
+  if (finishedDouble && validAim(finishedDouble) && evidence.at(-1)?.actual === finishedDouble) {
+    const byDouble = progress.checkoutByDouble || (progress.checkoutByDouble = {});
+    byDouble[finishedDouble] = (byDouble[finishedDouble] || 0) + 1;
+  }
   // Keep only recent daily buckets; old aggregate totals are never discarded.
   const dates = Object.keys(days).sort();
   for (const old of dates.slice(0, Math.max(0, dates.length - 120))) delete days[old];
@@ -142,4 +151,17 @@ export function buildFinishDoTrainingPlan(progress: FinishDoProgress): FinishDoT
     { id:"precision", title:"2 · Répéter", instruction:`Annonce ${focus} avant chaque lancer, puis saisis la touche réelle. Répète sur 10 fléchettes et consulte ta précision.`, target:focus, score },
     { id:"checkout", title:"3 · Finir", instruction:`Lance un FINISH DO à ${score} points et termine sur un double. Après chaque erreur, suis la nouvelle combinaison Awena.`, target:focus, score },
   ] };
+}
+
+/** Evidence-driven programme status. Existing V1 aggregates remain backwards compatible. */
+export function getFinishDoPlanStatus(progress: FinishDoProgress, lessonValidated: boolean) {
+  const plan = buildFinishDoTrainingPlan(progress);
+  const row = progress.aims[plan.focus];
+  const attempts = row?.attempts || 0;
+  const hits = row?.hits || 0;
+  const targetHits = plan.tier === "discovery" ? 0 : plan.tier === "foundation" ? 3 : plan.tier === "consistency" ? 6 : 7;
+  const precisionComplete = attempts >= (plan.tier === "discovery" ? 3 : 10) &&
+    (plan.tier === "discovery" || hits / attempts >= targetHits / 10);
+  const checkouts = progress.checkoutByDouble?.[plan.focus] || 0;
+  return { plan, placementComplete: lessonValidated, precisionComplete, checkoutComplete: checkouts > 0, attempts, hits, checkouts, targetHits };
 }

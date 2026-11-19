@@ -81,10 +81,11 @@ const VERSION_8_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
 
 // V9 playlist: preserve existing users’ selection while enabling the newly appended tracks
 // only when they previously had every available track enabled.
-const VERSION_9_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = NAVIGATION_MUSIC_TRACK_IDS.slice(0, -9);
+const VERSION_9_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = NAVIGATION_MUSIC_TRACK_IDS.slice(0, -13);
+const VERSION_10_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = NAVIGATION_MUSIC_TRACK_IDS.slice(0, -4);
 
 export const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = {
-  version: 10,
+  version: 11,
   masterEnabled: true,
   navigationMusicEnabled: true,
   navigationVolume: 0.22,
@@ -149,12 +150,15 @@ export function sanitizeAudioPreferences(value: unknown): AudioPreferences {
   const hadVersion9DefaultPlaylist = rawVersion === 9
     && storedEnabledTrackIds.length === VERSION_9_DEFAULT_TRACK_IDS.length
     && VERSION_9_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
-  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist || hadVersion5DefaultPlaylist || hadVersion6DefaultPlaylist || hadVersion7DefaultPlaylist || hadVersion8DefaultPlaylist || hadVersion9DefaultPlaylist
+  const hadVersion10DefaultPlaylist = rawVersion === 10
+    && storedEnabledTrackIds.length === VERSION_10_DEFAULT_TRACK_IDS.length
+    && VERSION_10_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist || hadVersion5DefaultPlaylist || hadVersion6DefaultPlaylist || hadVersion7DefaultPlaylist || hadVersion8DefaultPlaylist || hadVersion9DefaultPlaylist || hadVersion10DefaultPlaylist
     ? [...NAVIGATION_MUSIC_TRACK_IDS]
     : storedEnabledTrackIds;
 
   return {
-    version: 10,
+    version: 11,
     masterEnabled: raw.masterEnabled !== false,
     navigationMusicEnabled: raw.navigationMusicEnabled !== false,
     navigationVolume: clamp01(raw.navigationVolume, DEFAULT_AUDIO_PREFERENCES.navigationVolume),
@@ -207,7 +211,7 @@ export function setAudioPreferences(nextValue: unknown): AudioPreferences {
 }
 
 export function updateAudioPreferences(patch: Partial<AudioPreferences>): AudioPreferences {
-  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 9 });
+  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 11 });
 }
 
 export function resetAudioPreferences(): AudioPreferences {

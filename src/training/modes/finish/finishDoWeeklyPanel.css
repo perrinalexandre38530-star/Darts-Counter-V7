@@ -14,3 +14,8 @@
 .mss-finish-week-comparison{display:grid;gap:6px;padding:11px 12px;margin:10px 0;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(255,255,255,.035)}
 .mss-finish-week-comparison>strong{font-size:12px;color:#e6f5fa}.mss-finish-week-comparison>div{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#c6dce8}.mss-finish-week-comparison b{font-variant-numeric:tabular-nums;color:#f4fcff}.mss-finish-week-comparison small{font-size:11px;color:#9ec3d4;line-height:1.4}
 .mss-finish-week-plan{margin:10px 0;border:1px solid rgba(53,217,251,.25);border-radius:12px;overflow:hidden}.mss-finish-week-plan summary{cursor:pointer;padding:12px;font-size:12px;font-weight:800;color:#d8f6fb;list-style-position:inside}.mss-finish-week-plan-body{padding:0 12px 12px;display:grid;gap:9px}.mss-finish-week-plan-body p{margin:0;color:#bde0ed;font-size:12px}.mss-finish-week-plan-body small{font-size:11px;color:#a6c8d8}.mss-finish-week-plan-step{display:grid;gap:3px;padding:9px 10px;border-radius:10px;background:rgba(255,255,255,.045)}.mss-finish-week-plan-step strong{font-size:12px}.mss-finish-week-plan-step span{font-size:12px;line-height:1.5;color:#cbdde6}.mss-finish-week-plan-body button{justify-self:start;border:1px solid rgba(53,217,251,.48);background:#0a6880;border-radius:10px;color:white;padding:10px 12px;font-weight:800;cursor:pointer}
+
+/* Wave 15: compact evidence-based step validation. */
+.mss-finish-week-plan-step-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mss-finish-week-plan-step-head small{font-size:11px;color:#9ec2d0}.mss-finish-week-plan-step-head small.is-done{color:#8ee5b9}
+.mss-finish-week-plan-step button{margin-top:3px;justify-self:start;padding:8px 10px;font-size:11px}

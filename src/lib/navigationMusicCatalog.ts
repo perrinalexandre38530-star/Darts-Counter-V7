@@ -9,6 +9,10 @@ import newSuspiriaNightsUrl from "../assets/audio/navigation/suspiria_nights.m4a
 import newDarkRitualUrl from "../assets/audio/navigation/dark_ritual.m4a";
 import newDeepTactixUrl from "../assets/audio/navigation/deep_tactix.m4a";
 import newRisingSuspenseUrl from "../assets/audio/navigation/rising_suspense.m4a";
+import speedArcadeUrl from "../assets/audio/navigation/speed_arcade.m4a";
+import coincorpUrl from "../assets/audio/navigation/coin_corporation.m4a";
+import arcadia80sHorrorUrl from "../assets/audio/navigation/arcadia_80s_horror.m4a";
+import larcensUrl from "../assets/audio/navigation/larcens.m4a";
 import { contentPackAssetUrl } from "./contentPacks";
 
 const neonOverdriveUrl = contentPackAssetUrl("navigation-music", "ms_electrodyn_nav.webm");
@@ -267,6 +271,30 @@ export const NAVIGATION_MUSIC_TRACKS = [
     name: "Rising Suspense",
     subtitle: { fr: "Suspense progressif et ambiance cinématique", en: "Building suspense and cinematic atmosphere", es: "Suspenso creciente y atmósfera cinematográfica" },
     url: newRisingSuspenseUrl,
+  },
+  {
+    id: "speed_arcade",
+    name: "Speed Arcade",
+    subtitle: { fr: "Course électronique et énergie arcade", en: "Fast electronic drive and arcade energy", es: "Impulso electrónico rápido y energía arcade" },
+    url: speedArcadeUrl,
+  },
+  {
+    id: "coincorp",
+    name: "Coincorp",
+    subtitle: { fr: "Groove synthétique et pulsations rétro", en: "Synth-driven groove and retro pulses", es: "Groove sintético y pulsaciones retro" },
+    url: coincorpUrl,
+  },
+  {
+    id: "arcadia_80s_horror",
+    name: "Arcadia 80s Horror",
+    subtitle: { fr: "Synthwave horrifique et nostalgie des années 80", en: "Horror synthwave and 80s nostalgia", es: "Synthwave de terror y nostalgia de los 80" },
+    url: arcadia80sHorrorUrl,
+  },
+  {
+    id: "larcens",
+    name: "Larcens",
+    subtitle: { fr: "Électro cinématique sombre et rythmée", en: "Dark rhythmic cinematic electro", es: "Electro cinematográfica oscura y rítmica" },
+    url: larcensUrl,
   },
 ] as const;
 

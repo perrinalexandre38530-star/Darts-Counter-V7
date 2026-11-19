@@ -66,7 +66,12 @@ export function mariachiContract(options:any, seedText:string, round:number):Mar
 export function mariachiAccepts(d:GameDart, contract:MariachiContract):boolean {
   if(!contract?.enabled||!d||d.bed==='MISS')return false;
   if(['colors','custom'].includes(contract.kind)&&!contract.colors.length)return false;
-  if(d.bed==='OB'||d.bed==='IB')return contract.allowBull&&contract.colors.includes(mariachiBoardColor(d)!);
+  // Les BULL suivent aussi le contrat de multiplicateurs : BULL25 est un
+  // simple, BULL50 un double. Un contrat TRIPLES ne peut donc pas scorer un
+  // BULL50 rouge, même si ROUGE est une couleur autorisée.
+  if(d.bed==='OB'||d.bed==='IB')return contract.allowBull
+    && contract.beds.includes(d.bed==='OB'?'S':'D')
+    && contract.colors.includes(mariachiBoardColor(d)!);
   const n=Number(d.number||0);
   if(!contract.sectors.includes(n)||!contract.beds.includes(d.bed as any))return false;
   if(contract.parity==='even'&&n%2!==0)return false;

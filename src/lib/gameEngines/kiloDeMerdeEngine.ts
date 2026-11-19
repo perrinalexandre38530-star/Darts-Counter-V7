@@ -40,9 +40,12 @@ export function createKiloState(playerIds:string[], maxRounds:number):KiloState 
   return {playerIds:ids,hands,pile,kilos:Object.fromEntries(ids.map(id=>[id,0])),awarded:Object.fromEntries(ids.map(id=>[id,[]])),selections:{},selectorIndex:0,phase:ids.some(id=>kiloHasFour(hands[id]))?'slap':'select',rounds:[],maxRounds:Math.max(1,Math.floor(maxRounds)),winnerId:null,notice:ids.some(id=>kiloHasFour(hands[id]))?'Un joueur a déjà quatre cartes identiques : tout le monde tape sur le tas !':'Chaque joueur choisit secrètement une carte à passer au voisin de gauche.'};
 }
 export function kiloHasFour(hand:KiloCard[]) {return hand.length===4 && hand.every(c=>c.value===hand[0].value);}
-export function kiloSelectCard(state:KiloState, cardIndex:number):KiloState {
+export function kiloSelectCard(state:KiloState, cardIndex:number, expectedPlayerId?:string):KiloState {
   if(state.phase!=='select') return state;
   const id=state.playerIds[state.selectorIndex];
+  // Un clic différé / double clic ne doit jamais sélectionner une carte dans
+  // la main du joueur suivant sur un téléphone partagé.
+  if(expectedPlayerId !== undefined && expectedPlayerId !== id) return state;
   if(cardIndex<0||cardIndex>=state.hands[id].length) return state;
   const selections={...state.selections,[id]:cardIndex};
   const nextIndex=state.selectorIndex+1;

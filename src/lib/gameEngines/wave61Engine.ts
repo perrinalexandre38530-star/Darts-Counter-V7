@@ -4239,6 +4239,12 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
       state.config.modeOptions?.mexicainBonus === "yes");
     delta = result.total;
     hits = result.hits;
+    // La volée enregistrée (History, rapport, meilleure volée) doit afficher
+    // les points crédités par le contrat + bonus, et non les points bruts des
+    // fléchettes physiques, potentiellement hors contrat. `rawPoints` garde
+    // volontairement le total brut de la cible pour l'analyse de précision.
+    visitScore = delta;
+    st.bestVisit = Math.max(Number(input.statsByPlayer?.[player.id]?.bestVisit || 0), visitScore);
     state.scores[player.id] = Number(state.scores[player.id] || 0) + delta;
     state.progress[player.id] = state.scores[player.id];
     state.special.mexicainRoundScores[player.id] = delta;

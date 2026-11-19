@@ -193,12 +193,13 @@ const labelMap = {
   random: { fr: "Mixte", en: "Mixed" },
 } as const;
 
-export default function FinishDoTraining({ onExit, challenge = false, participantId }: { onExit: () => void; challenge?: boolean; participantId?: string | null }) {
+export default function FinishDoTraining({ onExit, challenge = false, participantId, initialTarget }: { onExit: () => void; challenge?: boolean; participantId?: string | null; initialTarget?: string }) {
+  const initialScore = initialTarget === "BULL50" ? 50 : /^D(?:[1-9]|1[0-9]|20)$/.test(initialTarget || "") ? Number(initialTarget!.slice(1)) * 2 : 40;
   const { lang } = useLang();
   const en = String(lang).toLowerCase().startsWith("en");
-  const [score, setScore] = React.useState(40);
+  const [score, setScore] = React.useState(initialScore);
   const [level, setLevel] = React.useState<"basic" | "advanced" | "random">("basic");
-  const [visitStart, setVisitStart] = React.useState(40);
+  const [visitStart, setVisitStart] = React.useState(initialScore);
   const [shots, setShots] = React.useState<Shot[]>([]);
   const [dartsUsed, setDartsUsed] = React.useState(0);
   const [won, setWon] = React.useState(false);
@@ -207,15 +208,15 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
   const [type, setType] = React.useState<"S" | "D" | "T">("S");
   const [attempts, setAttempts] = React.useState(0);
   const [successes, setSuccesses] = React.useState(0);
-  const [started, setStarted] = React.useState(false);
+  const [started, setStarted] = React.useState(!!initialTarget);
   const [activeDrill, setActiveDrill] = React.useState<string | null>(null);
-  const [showConfig, setShowConfig] = React.useState(true);
+  const [showConfig, setShowConfig] = React.useState(!initialTarget);
   const [showCoachDetails, setShowCoachDetails] = React.useState(false);
   const [history, setHistory] = React.useState<{ score: number; won: boolean; darts: number }[]>([]);
   const [showSessionDetails, setShowSessionDetails] = React.useState(false);
   const [completedShots, setCompletedShots] = React.useState<Shot[]>([]);
-  const [trackAim, setTrackAim] = React.useState(false);
-  const [aimedDouble, setAimedDouble] = React.useState("D20");
+  const [trackAim, setTrackAim] = React.useState(!!initialTarget);
+  const [aimedDouble, setAimedDouble] = React.useState(initialTarget || "D20");
   const [revisionChoice, setRevisionChoice] = React.useState<string | null>(null);
   const [showRevision, setShowRevision] = React.useState(false);
   const [career, setCareer] = React.useState(() => loadFinishDoProgress(participantId));
@@ -228,7 +229,7 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
     pendingResult.current = null;
     const hits = result.shots.filter((s) => s.dart.kind !== "MISS").length;
     setCompletedShots((prev) => [...prev, ...result.shots]);
-    setCareer(saveFinishDoAttempt(participantId, result.shots.map(s => ({ aimedDouble: s.aimedDouble, actual: s.dart.label }))));
+    setCareer(saveFinishDoAttempt(participantId, result.shots.map(s => ({ aimedDouble: s.aimedDouble, actual: s.dart.label })), result.won ? result.shots.at(-1)?.dart.label : undefined));
     recordTrainingSession(
       challenge ? "training_finish_challenge" : "training_finish_do",
       result.darts,
