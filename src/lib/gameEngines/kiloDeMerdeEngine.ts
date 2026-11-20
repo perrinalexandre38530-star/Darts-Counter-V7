@@ -13,6 +13,8 @@ export type KiloState = {
   selections: Record<string, number>;
   phase: 'select' | 'slap' | 'result' | 'finished';
   selectorIndex: number;
+  /** Révision de distribution/échange : empêche la réutilisation d’anciens boutons. */
+  exchangeEpoch: number;
   rounds: KiloRound[];
   maxRounds: number;
   winnerId: string | null;
@@ -37,11 +39,12 @@ export function createKiloState(playerIds:string[], maxRounds:number):KiloState 
   const pile=shuffle(cards.filter(c=>!selected.has(c.value)));
   const hands:Record<string,KiloCard[]>={};
   ids.forEach((id,i)=>hands[id]=distribution.slice(i*4,i*4+4).sort((a,b)=>a.value-b.value||a.suit-b.suit));
-  return {playerIds:ids,hands,pile,kilos:Object.fromEntries(ids.map(id=>[id,0])),awarded:Object.fromEntries(ids.map(id=>[id,[]])),selections:{},selectorIndex:0,phase:ids.some(id=>kiloHasFour(hands[id]))?'slap':'select',rounds:[],maxRounds:Math.max(1,Math.floor(maxRounds)),winnerId:null,notice:ids.some(id=>kiloHasFour(hands[id]))?'Un joueur a déjà quatre cartes identiques : tout le monde tape sur le tas !':'Chaque joueur choisit secrètement une carte à passer au voisin de gauche.'};
+  return {playerIds:ids,hands,pile,kilos:Object.fromEntries(ids.map(id=>[id,0])),awarded:Object.fromEntries(ids.map(id=>[id,[]])),selections:{},selectorIndex:0,exchangeEpoch:0,phase:ids.some(id=>kiloHasFour(hands[id]))?'slap':'select',rounds:[],maxRounds:Math.max(1,Math.floor(maxRounds)),winnerId:null,notice:ids.some(id=>kiloHasFour(hands[id]))?'Un joueur a déjà quatre cartes identiques : tout le monde tape sur le tas !':'Chaque joueur choisit secrètement une carte à passer au voisin de gauche.'};
 }
 export function kiloHasFour(hand:KiloCard[]) {return hand.length===4 && hand.every(c=>c.value===hand[0].value);}
-export function kiloSelectCard(state:KiloState, cardIndex:number, expectedPlayerId?:string):KiloState {
+export function kiloSelectCard(state:KiloState, cardIndex:number, expectedPlayerId?:string, expectedExchangeEpoch?:number):KiloState {
   if(state.phase!=='select') return state;
+  if(expectedExchangeEpoch !== undefined && expectedExchangeEpoch !== state.exchangeEpoch) return state;
   const id=state.playerIds[state.selectorIndex];
   // Un clic différé / double clic ne doit jamais sélectionner une carte dans
   // la main du joueur suivant sur un téléphone partagé.
@@ -59,16 +62,17 @@ export function kiloSelectCard(state:KiloState, cardIndex:number, expectedPlayer
     hands[pid]=[...without,fromRight].sort((a,b)=>a.value-b.value||a.suit-b.suit);
   });
   const four=state.playerIds.some(pid=>kiloHasFour(hands[pid]));
-  return {...state,hands,selections:{},selectorIndex:0,phase:four?'slap':'select',notice:four?'QUATRE CARTES IDENTIQUES ! Tout le monde tape sur le tas.':'Échange terminé : chaque joueur possède toujours quatre cartes. Recommencez.'};
+  return {...state,hands,selections:{},selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,phase:four?'slap':'select',notice:four?'QUATRE CARTES IDENTIQUES ! Tout le monde tape sur le tas.':'Échange terminé : chaque joueur possède toujours quatre cartes. Recommencez.'};
 }
 export function kiloPenalty(
   state:KiloState, loserId:string, premature=false,
-  expectedRound?:number, expectedPhase?:KiloState["phase"]
+  expectedRound?:number, expectedPhase?:KiloState["phase"], expectedExchangeEpoch?:number
 ):KiloState {
   // Empêcher les anciens boutons de pénalité (double tape / transition) de
   // sanctionner un autre pli ou une phase ultérieure.
   if(expectedRound !== undefined && expectedRound !== state.rounds.length) return state;
   if(expectedPhase !== undefined && expectedPhase !== state.phase) return state;
+  if(expectedExchangeEpoch !== undefined && expectedExchangeEpoch !== state.exchangeEpoch) return state;
   // Une tape prématurée est sanctionnée même avant la formation d'un carré.
   // Aucune carte en cours de sélection ne doit être échangée dans ce cas.
   if((premature ? state.phase!=='select' : state.phase!=='slap') || !state.playerIds.includes(loserId)) return state;
@@ -76,7 +80,7 @@ export function kiloPenalty(
   if(!card) {
     const min = Math.min(...state.playerIds.map(id=>state.kilos[id]));
     const leaders = state.playerIds.filter(id=>state.kilos[id]===min);
-    return {...state,phase:'finished',winnerId:leaders.length===1?leaders[0]:null,
+    return {...state,phase:'finished',winnerId:leaders.length===1?leaders[0]:null,exchangeEpoch:state.exchangeEpoch+1,
       notice:'Le tas de kilos est vide : partie terminée.'};
   }
   const flushed=card.value===7;
@@ -93,14 +97,14 @@ export function kiloPenalty(
   const winnerId=finished&&leaders.length===1?leaders[0]:null; // Ex æquo : pas de gagnant arbitraire.
   const noticePrefix=premature?'TAPE PRÉMATURÉE · ':'';
   const notice=noticePrefix+(flushed?`CHASSE D'EAU ! ${before} kg effacés. Les cartes de pénalité retournent au tas.`:`${kiloCardLabel(card.value)} : +${kiloCardPenalty(card.value)} kg pour le joueur pénalisé.`);
-  return {...state,kilos,awarded,pile,rounds,winnerId,selections:{},selectorIndex:0,phase:finished?'finished':'result',notice};
+  return {...state,kilos,awarded,pile,rounds,winnerId,selections:{},selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,phase:finished?'finished':'result',notice};
 }
 export function kiloContinue(state:KiloState):KiloState {
   if(state.phase!=='result') return state;
   const last=state.rounds[state.rounds.length-1];
   // Une tape prématurée n'interrompt que les sélections en cours :
   // les joueurs conservent leurs quatre cartes physiques.
-  if(last?.premature) return {...state,selections:{},phase:'select',selectorIndex:0,
+  if(last?.premature) return {...state,selections:{},phase:'select',selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,
     notice:'Tape prématurée sanctionnée. Les mains sont conservées : reprenez les échanges.'};
   // Après un carré, ne pas rejouer indéfiniment avec le même carré.
   // On redistribue uniquement les cartes déjà dans les mains, jamais les cartes
@@ -111,7 +115,7 @@ export function kiloContinue(state:KiloState):KiloState {
     hands[id]=inHands.slice(i*4,i*4+4).sort((a,b)=>a.value-b.value||a.suit-b.suit);
   });
   const four=state.playerIds.some(id=>kiloHasFour(hands[id]));
-  return {...state,hands,selections:{},phase:four?'slap':'select',selectorIndex:0,
+  return {...state,hands,selections:{},phase:four?'slap':'select',selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,
     notice:four?'NOUVEAU CARRÉ À LA DISTRIBUTION ! Tout le monde tape sur le tas.':'Nouvelle donne : les kilos sont conservés. Chaque joueur choisit une carte à passer à gauche.'};
 }
 export function kiloTotalCards(state:KiloState):number {

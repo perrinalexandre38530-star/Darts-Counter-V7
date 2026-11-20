@@ -590,3 +590,55 @@
 @media(min-width:900px) and (orientation:landscape){
  .mss-war-content {display:flex!important;}
 }
+
+
+/* V245 — finition MSS : hiérarchie stable, sans nouveau panneau ni règles de jeu. */
+.mss-war-content, .mss-br-content { scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; }
+.mss-war-content > *, .mss-br-content > div > * {min-width:0;}
+/* Ruban joueurs : proche de Killer, chaque joueur se lit en un regard. */
+.mss-combat-band { border-radius:18px; overflow:hidden; background:linear-gradient(180deg,#14161d,#0c0e14); }
+.mss-combat-band-scroll { display:flex; align-items:stretch; }
+.mss-combat-band-segment { min-height:62px; flex:0 0 auto; min-width:154px; padding:8px 12px; gap:9px; }
+.mss-combat-band-segment.is-active { background:linear-gradient(90deg,color-mix(in srgb,var(--roster-accent) 20%,#13151d),#16171e); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--roster-accent) 55%,transparent); }
+.mss-combat-band-copy {gap:4px;}
+.mss-combat-band-copy strong {font-size:14px;}
+.mss-combat-band-copy small {font-size:12px;letter-spacing:.01em;}
+/* Joueur actif LOTERIE : avatar lisible, score dominant, objectif court à droite. */
+.mss-combat-active-card-v219 {border-radius:18px;overflow:hidden;}
+.mss-combat-active-card-v219 .mss-combat-active-main {grid-template-columns:minmax(0,1fr) minmax(150px,.82fr);gap:8px;padding:9px;}
+.mss-combat-active-card-v219 .mss-combat-active-identity {min-width:0;background:linear-gradient(120deg,rgba(255,255,255,.04),transparent);border-radius:12px;}
+.mss-combat-active-card-v219 .mss-combat-active-avatar {width:64px;height:64px;flex-basis:64px;box-shadow:0 0 0 3px #0004;}
+.mss-combat-active-card-v219 .mss-combat-active-copy {min-width:0;}
+.mss-combat-active-card-v219 .mss-combat-active-copy small {line-height:1.15;}
+.mss-combat-active-card-v219 .mss-combat-active-goal {background:linear-gradient(150deg,#12141c,#090b12);border-color:color-mix(in srgb,var(--combat-accent) 32%,transparent);}
+.mss-combat-active-card-v219 .mss-combat-active-goal p {max-width:30ch;font-weight:600;opacity:.88;}
+.mss-combat-bottomnav {border-radius:14px;min-height:47px;align-items:stretch;}
+.mss-combat-nav-item {min-height:42px;border-radius:10px;}
+.mss-combat-nav-glyph {font-size:21px;}
+/* WARFARE : deux plateaux différenciés, rangs réguliers, état prioritaire. */
+.mss-war-armies {gap:9px!important;align-items:start;}
+.mss-war-army {overflow:hidden;}
+.mss-war-soldiers {grid-template-columns:repeat(5,minmax(0,1fr));gap:6px!important;}
+.mss-war-soldiers .mss-war-soldier {position:relative;font-variant-numeric:tabular-nums;font-size:16px!important;font-weight:900;}
+.mss-war-army.is-active .mss-war-army-label {text-shadow:0 0 12px color-mix(in srgb,var(--army-side) 35%,transparent);}
+.mss-war-army-progress {border-radius:99px;overflow:hidden;}
+/* BATTLE ROYALE : grande carte illustrée préservée, contenu lisible en surimpression. */
+.mss-br-players-arena {isolation:isolate;box-shadow:0 10px 25px #0005;}
+.mss-br-players-arena .mss-br-classic-roster {width:100%;}
+.mss-br-players-arena .mss-br-classic-player {background:rgba(7,10,17,.85);border:1px solid rgba(255,255,255,.2);}
+.mss-br-players-arena .mss-br-classic-player.is-active {background:linear-gradient(110deg,color-mix(in srgb,var(--mss-accent) 19%,#11131b),rgba(8,12,20,.93));}
+.mss-br-players-arena .mss-br-classic-identity strong {color:#fff;}
+.mss-br-players-arena .mss-br-classic-roster.is-small-party {gap:8px;}
+@media(max-width:619px) {
+ .mss-war-armies {grid-template-columns:1fr!important;}
+ .mss-combat-active-card-v219 .mss-combat-active-main {grid-template-columns:minmax(0,1fr) minmax(122px,.85fr);gap:5px;padding:6px;}
+ .mss-combat-active-card-v219 .mss-combat-active-avatar {width:42px;height:42px;flex-basis:42px;}
+ .mss-combat-band-segment {min-width:132px;min-height:53px;padding:6px 8px;}
+ .mss-combat-band-copy strong {font-size:12px;}
+ .mss-combat-band-copy small {font-size:10px;}
+ .mss-war-soldiers .mss-war-soldier {font-size:14px!important;}
+}
+@media(min-width:760px) and (orientation:landscape) {
+ .mss-war-armies {grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+}
+@media(prefers-reduced-motion:reduce){.mss-combat-band *, .mss-war-army *{transition:none!important;}}

@@ -178,6 +178,11 @@ export type FinishDoCycle = {
   baselineCheckouts: number;
   goalAttempts: number;
   goalHits: number;
+  /** Stage progression is sequential: prior darts cannot validate later stages. */
+  stage?: 1 | 2 | 3 | 4;
+  precisionStartAttempts?: number;
+  precisionStartHits?: number;
+  checkoutStartCount?: number;
   completedAt?: number;
 };
 export type FinishDoCycleJournal = { version: 1; active: FinishDoCycle; completed: FinishDoCycle[] };
@@ -199,6 +204,7 @@ export function createFinishDoCycle(progress: FinishDoProgress, startedAt = Date
     baselineCheckouts: progress.checkoutByDouble?.[plan.focus] || 0,
     goalAttempts,
     goalHits,
+    stage: 1,
   };
 }
 function validCycle(value: any): value is FinishDoCycle {
@@ -221,34 +227,70 @@ export function loadFinishDoCycleJournal(profileId: string | null | undefined, p
   try { localStorage.setItem(finishDoCycleKey(profileId), JSON.stringify(fresh)); } catch {}
   return fresh;
 }
-export function evaluateFinishDoCycle(
-  cycle: FinishDoCycle,
-  progress: FinishDoProgress,
-  lesson?: { latest?: number; updatedAt?: number } | null,
-) {
-  const row = progress.aims[cycle.focus];
-  const attempts = Math.max(0, (row?.attempts || 0) - cycle.baselineAttempts);
-  const hits = Math.max(0, (row?.hits || 0) - cycle.baselineHits);
-  const checkouts = Math.max(0, (progress.checkoutByDouble?.[cycle.focus] || 0) - cycle.baselineCheckouts);
-  const placementComplete = !!lesson && (lesson.updatedAt || 0) > cycle.startedAt && (lesson.latest || 0) >= 80;
-  const precisionComplete = attempts >= cycle.goalAttempts &&
-    (cycle.goalHits === 0 || hits / attempts >= cycle.goalHits / cycle.goalAttempts);
-  const checkoutComplete = checkouts >= 1;
-  return { attempts, hits, checkouts, placementComplete, precisionComplete, checkoutComplete,
-    complete: placementComplete && precisionComplete && checkoutComplete };
-}
-/** Explicit promotion: only a fully verified cycle can be archived and replaced. */
-export function advanceFinishDoCycle(
+/** Advance at most one stage per evaluation. A new step starts with fresh counters. */
+export function syncFinishDoCycleStages(
   profileId: string | null | undefined,
   progress: FinishDoProgress,
   lesson?: { latest?: number; updatedAt?: number } | null,
 ): FinishDoCycleJournal {
   const journal = loadFinishDoCycleJournal(profileId, progress);
+  const active = journal.active;
+  const stage = active.stage || 1; // V235 cycles migrate conservatively, not retroactively
+  const row = progress.aims[active.focus];
+  const totalAttempts = row?.attempts || 0;
+  const totalHits = row?.hits || 0;
+  const totalCheckouts = progress.checkoutByDouble?.[active.focus] || 0;
+  let next: FinishDoCycle | null = null;
+  if (stage === 1 && lesson && (lesson.updatedAt || 0) > active.startedAt && (lesson.latest || 0) >= 80) {
+    next = { ...active, stage: 2, precisionStartAttempts: totalAttempts, precisionStartHits: totalHits };
+  } else if (stage === 2) {
+    const attempts = Math.max(0, totalAttempts - (active.precisionStartAttempts ?? active.baselineAttempts));
+    const hits = Math.max(0, totalHits - (active.precisionStartHits ?? active.baselineHits));
+    if (attempts >= active.goalAttempts && hits >= active.goalHits) {
+      next = { ...active, stage: 3, checkoutStartCount: totalCheckouts };
+    }
+  } else if (stage === 3 && totalCheckouts > (active.checkoutStartCount ?? active.baselineCheckouts)) {
+    next = { ...active, stage: 4 };
+  }
+  if (!next) return journal;
+  const updated = { ...journal, active: next };
+  try {
+    localStorage.setItem(finishDoCycleKey(profileId), JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent("mss-finish-do-cycle", { detail: { profileId: profileId || "guest" } }));
+  } catch { /* no persistent storage: the UI still reflects the current cycle */ }
+  return updated;
+}
+
+export function evaluateFinishDoCycle(
+  cycle: FinishDoCycle,
+  progress: FinishDoProgress,
+  _lesson?: { latest?: number; updatedAt?: number } | null,
+) {
+  const row = progress.aims[cycle.focus];
+  const attempts = Math.max(0, (row?.attempts || 0) - (cycle.precisionStartAttempts ?? cycle.baselineAttempts));
+  const hits = Math.max(0, (row?.hits || 0) - (cycle.precisionStartHits ?? cycle.baselineHits));
+  const checkouts = Math.max(0, (progress.checkoutByDouble?.[cycle.focus] || 0) - (cycle.checkoutStartCount ?? cycle.baselineCheckouts));
+  const stage = cycle.stage || 1;
+  return {
+    attempts, hits, checkouts,
+    placementComplete: stage >= 2,
+    precisionComplete: stage >= 3,
+    checkoutComplete: stage >= 4,
+    complete: stage === 4,
+  };
+}
+/** Explicit promotion: only a sequentially validated cycle can be archived. */
+export function advanceFinishDoCycle(
+  profileId: string | null | undefined,
+  progress: FinishDoProgress,
+  lesson?: { latest?: number; updatedAt?: number } | null,
+): FinishDoCycleJournal {
+  const journal = syncFinishDoCycleStages(profileId, progress, lesson);
   if (!evaluateFinishDoCycle(journal.active, progress, lesson).complete) return journal;
   const now = Date.now();
   const next: FinishDoCycleJournal = {
     version: 1,
-    active: createFinishDoCycle(progress, now + 1),
+    active: createFinishDoCycle(progress, now),
     completed: [...journal.completed, { ...journal.active, completedAt: now }].slice(-30),
   };
   try {

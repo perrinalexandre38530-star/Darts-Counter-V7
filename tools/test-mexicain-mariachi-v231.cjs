@@ -216,4 +216,39 @@ assert.equal(scoresSection.rows[2][3],'TORTILLA +20');
 assert.equal(scoresSection.rows[1][4],'1');
 assert.equal(livesSection.rows.find(row=>row[0]==='Bravo')[1],'1');
 
-console.log('✅ MARIACHI V236 : contrats, bots, exports et garde-fous clavier portrait/paysage.');
+// V245: five real FIESTA rounds, equal scores and deterministic contract history.
+// This exercises the engine loop rather than merely checking a text marker.
+let fullFiesta = start({...fiestaOptions,mexicainBonus:'yes'},p,5);
+const contractLabels=[];
+for(let r=0;r<5;r++){
+  const expected=getMexicainContract(fullFiesta);
+  assert(expected?.label && mariachiLegalDarts(expected).length>0,'each FIESTA round has a playable contract');
+  contractLabels.push(expected.label);
+  for(let turn=0;turn<p.length;turn++) fullFiesta=playWave61Visit(fullFiesta,[miss(),miss(),miss()]);
+  const historyRow=fullFiesta.special.mexicainHistory[r];
+  assert.equal(historyRow.contractLabel,expected.label,'contract recorded for the correct round');
+  assert.deepEqual(historyRow.losers,[],'general equality cannot cost a life');
+  assert.equal(historyRow.scores.length,3,'all players completed the same contract');
+  assert.deepEqual([fullFiesta.lives.a,fullFiesta.lives.b,fullFiesta.lives.bot],[3,3,3]);
+}
+assert.equal(new Set(contractLabels).size,5,'FIESTA rotates through five distinct contracts');
+assert.equal(fullFiesta.phase,'finished','five-round cap ends normally without casualties');
+const savedFiesta=cloneWave61State(JSON.parse(JSON.stringify(fullFiesta)));
+assert.deepEqual(savedFiesta.special.mexicainHistory.map(x=>x.contractLabel),contractLabels,
+  'the complete FIESTA contract timeline survives serialization');
+
+// Screens must never label a MARIACHI contract as an unrelated random CIBLE.
+const configSrc=fs.readFileSync(path.join(__dirname,'../src/pages/Wave61SharedConfig.tsx'),'utf8');
+const endSrc=fs.readFileSync(path.join(__dirname,'../src/pages/wave61/MexicainFinalSummary.tsx'),'utf8');
+assert.match(playSrc,/entry\.contractLabel \|\|/,'history overlay uses the saved contract label');
+assert.match(playSrc,/inclus dans le score/,'floating history identifies already credited bonuses');
+assert.match(configSrc,/FIESTA · EXEMPLE DES 5 FAMILLES/,'config previews the FIESTA rotation');
+assert.match(endSrc,/inclus dans chaque total/,'end recap distinguishes bonus from additional points');
+for(const file of ['src/pages/Wave61SharedConfig.tsx','src/pages/wave61/MexicainFinalSummary.tsx']){
+  const filename=path.join(__dirname,'..',file);
+  const transpile=ts.transpileModule(fs.readFileSync(filename,'utf8'),{fileName:filename,
+    reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}});
+  assert.deepEqual((transpile.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error),[],file);
+}
+
+console.log('✅ MARIACHI V245 : FIESTA 5 manches, égalité totale, historique, règles et écran final.');

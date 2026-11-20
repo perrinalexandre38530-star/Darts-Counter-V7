@@ -550,10 +550,10 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
         const enemyAlive = activeArmy === 'TOP' ? aliveBottom.length : aliveTop.length;
         const stats = getStats(activePlayer?.id);
         return <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
-          label={activeArmy} value={`${ownAlive}/10`} detail={`SOLDATS · ${activeArmy}`}
-          objective={`Il reste ${enemyAlive} cible${enemyAlive > 1 ? 's' : ''} ennemie${enemyAlive > 1 ? 's' : ''}.`}
+          label={activeArmy} value={`${ownAlive}/10`} detail="SOLDATS EN VIE"
+          objective="Détruis les positions ennemies."
           rightTitle="ENNEMIS À ÉLIMINER" rightValue={enemyAlive}
-          rightDetail={<span>🎯 Zones {zonesLabel} · {stats.kills||0} élimination(s) · {stats.darts||0} flèche(s)</span>} />;
+          rightDetail={<span>Zones {zonesLabel} · {stats.kills||0} K.O.</span>} />;
       })()}
       <TacticalMatchPanels placement="actions" kind="warfare" activeId={activePlayer?.id} round={Math.max(cursorTop,cursorBottom)+1} logs={visitHistoryRef.current} accent={theme.primary}
         players={[...teams.TOP.map(p=>({...p,alive:aliveTop.length>0,team:'TOP',score:aliveTop.length})),...teams.BOTTOM.map(p=>({...p,alive:aliveBottom.length>0,team:'BOTTOM',score:aliveBottom.length}))]}

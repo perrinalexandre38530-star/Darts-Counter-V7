@@ -907,10 +907,10 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           <TacticalMatchPanels placement="players" kind="battle" players={players} activeId={activePlayer?.id} round={roundIndex+1} target={fmtTarget(target)}
             objective="Survivre jusqu'au dernier round" rules={[]} configuration={[]} accent={theme.primary} />
           <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
-            label={`ROUND ${roundIndex+1}/${TARGETS.length}`} value={`${currentThrow.length}/${dartsPerTurn}`} detail="FLÉCHETTES DE LA VOLÉE"
-            objective={`Touche ${fmtTarget(target)} avant de valider.`}
+            label={`ROUND ${roundIndex+1}/${TARGETS.length}`} value={`${currentThrow.length}/${dartsPerTurn}`} detail="FLÉCHETTES JOUÉES"
+            objective="Touche la cible pour survivre."
             rightTitle="CIBLE À TOUCHER" rightValue={fmtTarget(target)}
-            rightDetail={<><span>♥ {activePlayer?.lives??0} vie(s) · {aliveCount}/{players.length} survivants</span><div className="mss-combat-darts"><ThrowBlocks total={dartsPerTurn} darts={currentThrow}/></div></>}>
+            rightDetail={<div className="mss-combat-darts"><ThrowBlocks total={dartsPerTurn} darts={currentThrow}/></div>}>
             {ended&&<span>{players.find(p=>p.alive)?.name||'Partie'} · {t('common.finished','Partie terminée')}</span>}
           </MssCombatActiveCard>
           <TacticalMatchPanels placement="actions" kind="battle" players={players} activeId={activePlayer?.id} round={roundIndex+1} target={fmtTarget(target)} logs={visitHistoryRef.current} mapEnabled={!!cfg?.tacticalMapEnabled} accent={theme.primary}
@@ -967,7 +967,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     background: theme.primary + "1a",
                   }}
                 >
-                  Voir l’ordre ↗
+                  ↗
                 </span>
               )}
               </div>

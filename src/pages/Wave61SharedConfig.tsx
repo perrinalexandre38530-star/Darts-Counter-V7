@@ -714,7 +714,9 @@ export default function Wave61SharedConfig(props: any) {
             })}
           </div></div> : null}
           {["parity","custom","fiesta"].includes(modeOptions.mariachiMode) ? <OptionRow label="Numéros"><OptionSelect value={modeOptions.mariachiParity || "even"} options={[{value:"even",label:"PAIRS"},{value:"odd",label:"IMPAIRS"},...(modeOptions.mariachiMode==='custom'?[{value:'all',label:'PAIRS et IMPAIRS'}]:[])]} onChange={(v:any)=>setModeOptions(prev=>({...prev,mariachiParity:v}))}/></OptionRow> : null}
-          <div className="mex-mariachi-contract-preview"><strong>CONTRAT EXEMPLE</strong><span>{mariachiPreview?.label}</span><small>{mariachiPreview ? mariachiLegalDarts(mariachiPreview).length : 0} impacts possibles · les autres valent 0</small></div>
+          <div className="mex-mariachi-contract-preview"><strong>{modeOptions.mariachiMode === "fiesta" ? "FIESTA · EXEMPLE DES 5 FAMILLES" : "CONTRAT EXEMPLE"}</strong>
+            {modeOptions.mariachiMode === "fiesta" ? <><small>Ordre indicatif : le tirage réel des contrats est effectué au lancement de la partie.</small>{Array.from({length:5},(_,i)=>mariachiContract(modeOptions,"mariachi-preview",i)).map((example,i)=><span key={i}>Exemple {i+1} · {example.label} <small>({mariachiLegalDarts(example).length} impacts possibles)</small></span>)}</> : <><span>{mariachiPreview?.label}</span><small>{mariachiPreview ? mariachiLegalDarts(mariachiPreview).length : 0} impacts possibles · les autres valent 0</small></>}
+          </div>
           {!mariachiValid ? <p role="alert" className="mex-mariachi-error">Contrat impossible : adapte les secteurs, les multiplicateurs ou les couleurs avant de jouer.</p> : null}
         </div> : null}
       </section> : null}

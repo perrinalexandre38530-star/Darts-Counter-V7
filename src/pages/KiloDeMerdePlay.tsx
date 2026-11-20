@@ -57,7 +57,8 @@ export default function KiloDeMerdePlay(props:any){
     // Le moteur compare le joueur qui a vu sa main au joueur actuellement actif.
     // Un second appui pendant la transition ne peut pas agir sur la main suivante.
     const confirmingPlayerId=activeId;
-    apply(g=>kiloSelectCard(g,index,confirmingPlayerId));
+    const exchangeEpoch=game.exchangeEpoch;
+    apply(g=>kiloSelectCard(g,index,confirmingPlayerId,exchangeEpoch));
     setSelected(null);setRevealed(false);
   };
   const next=()=>apply(g=>kiloContinue(g));
@@ -65,7 +66,8 @@ export default function KiloDeMerdePlay(props:any){
     // Un bouton issu d'une ancienne phase ne peut pas pénaliser le tour suivant.
     const expectedRound=game.rounds.length;
     const expectedPhase=game.phase;
-    apply(g=>kiloPenalty(g,id,premature,expectedRound,expectedPhase));
+    const expectedExchangeEpoch=game.exchangeEpoch;
+    apply(g=>kiloPenalty(g,id,premature,expectedRound,expectedPhase,expectedExchangeEpoch));
     setSelected(null);setRevealed(false);setPrematureChoice(false);
   };
   const undo=()=>{
