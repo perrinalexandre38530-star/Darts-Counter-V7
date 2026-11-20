@@ -3,6 +3,7 @@ import "./wave61/MexicainFiesta.css";
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
 import { buildMexicainRoundStandings } from "../lib/gameEngines/mexicainStandings";
+import { mexicainLiveRoundStatus } from "../lib/gameEngines/mexicainPresentation";
 import { getMexicainContract } from "../lib/gameEngines/wave61Engine";
 import { mexicainScoreDarts, mariachiAccepts, type MariachiContract } from "../lib/gameEngines/mexicainMariachi";
 import { shouldShowWave61VisitRecap, isWave61VisitRecapBlocking, releaseMexicainPendingBotRecap } from "../lib/gameEngines/mexicainTurnFlow";
@@ -1357,8 +1358,8 @@ function MexicainScoreDetail({ state, currentThrow, tab, onTabChange }: any) {
   const maxValue=Math.max(1,...lines.flatMap((l:any)=>l.values));
   return <div className="mex-score-detail">
     <nav className="mex-score-tabs" aria-label="Détails des scores">{tabs.map(t=><button type="button" key={t.id} className={tab===t.id?"selected":""} onClick={()=>onTabChange(t.id)}><MexIcon name={t.icon} size={17}/><span>{t.label}</span></button>)}</nav>
-    {tab==="round"?<div className="mex-score-rows"><h4>RONDA {round} · {getMexicainContract(state)?.label || `CIBLE ${Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20)===21?"BULL":state?.special?.mexicainTargets?.[state?.roundIndex]}`}</h4>{players.map(p=><div key={p.id}><b>{p.name}</b><strong>{activeScores[p.id]==null?(String(p.id)===String(activeId)&&currentThrow?.length?`${pendingScore} PTS · ${pendingResult.bonusName ? pendingResult.bonusName + ' +' + pendingResult.bonus : 'SAISIE EN COURS'}`:"EN ATTENTE"):`${Number(activeScores[p.id])} PTS VALIDÉS`}</strong></div>)}</div>:null}
-    {tab==="recap"?<div className="mex-score-history">{history.length?history.slice().reverse().map((h:any,i:number)=><section key={i}><h4>RONDA {h.round} · {h.contractLabel||`CIBLE ${h.target===21?"BULL":h.target}`}</h4>{(h.scores||[]).map((sc:any)=><div key={sc.id}><span>{players.find((p:any)=>String(p.id)===String(sc.id))?.name||sc.id}</span><strong>{sc.score} PTS {h.bonuses?.[sc.id]?.name?`· ${h.bonuses[sc.id].name} +${h.bonuses[sc.id].points}`:''} {h.losers?.includes(sc.id)?`· −${h.lifeLoss} ♥`:""}</strong></div>)}</section>):<p>Aucune manche terminée pour le moment.</p>}</div>:null}
+    {tab==="round"?<div className="mex-score-rows"><h4>RONDA {round} · {getMexicainContract(state)?.label || `CIBLE ${Number(state?.special?.mexicainTargets?.[state?.roundIndex]||20)===21?"BULL":state?.special?.mexicainTargets?.[state?.roundIndex]}`}</h4>{players.map(p=><div key={p.id}><b>{p.name}</b><strong>{activeScores[p.id]==null?(state.eliminated?.[p.id] ? "ÉLIMINÉ" : String(p.id)===String(activeId)&&currentThrow?.length?`${pendingScore} PTS · ${pendingResult.bonusName ? pendingResult.bonusName + ' +' + pendingResult.bonus : 'SAISIE EN COURS'}`:"EN ATTENTE"):`${Number(activeScores[p.id])} PTS VALIDÉS`}</strong></div>)}</div>:null}
+    {tab==="recap"?<div className="mex-score-history">{history.length?history.slice().reverse().map((h:any,i:number)=><section key={i}><h4>RONDA {h.round} · {h.contractLabel||`CIBLE ${h.target===21?"BULL":h.target}`}</h4>{(h.scores||[]).map((sc:any)=><div key={sc.id}><span>{players.find((p:any)=>String(p.id)===String(sc.id))?.name||sc.id}</span><strong>{sc.score} PTS {h.bonuses?.[sc.id]?.name?`· ${h.bonuses[sc.id].name} +${h.bonuses[sc.id].points} (inclus)` : ''} {h.losers?.includes(sc.id)?`· −${h.lifeLoss} ♥`:""}</strong></div>)}</section>):<p>Aucune manche terminée pour le moment.</p>}</div>:null}
     {tab==="survival"?<div className="mex-score-evolution">
       <h4>ÉVOLUTION DES VIES · SURVIE</h4>
       {history.length ? <>
@@ -1383,20 +1384,20 @@ function MexicainPanel({ state, accent, detailed = false, avatarFor }: any) {
   const last = (state?.special?.mexicainHistory || []).slice(-1)[0];
   const active = state?.players?.[state?.activePlayerIndex]?.id;
   const living = (state?.players || []).filter((p:any) => !state?.eliminated?.[p.id]);
-  const scores = Object.values(current).map((s:any)=>Number(s||0));
-  const min = scores.length ? Math.min(...scores) : null;
+
   return <section className={`mex-fiesta-scoreboard ${detailed ? "mex-detailed" : "mex-compact"}`} data-mexicain-panel="1" aria-label="Tableau de manche du Mexicain">
     {detailed ? <div className="mex-score-head"><span><b>RONDA {Number(state?.roundIndex || 0)+1}</b></span><span>{living.length} SURVIVANTS</span><span className="mex-score-darts">{[0,1,2].map(i=><img key={i} src={cricketDartSvg} alt=""/>)}</span></div> : null}
     <div className={`mex-target-stage mex-target-art ${contract?'mex-target-is-mariachi':''}`} role="group" aria-label={contract?`Contrat commun : ${contract.label}`:`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">{contract ? "🎺 CONTRAT MARIACHI" : state?.config?.modeOptions?.targetMode === "mexico" ? "MEXICO · OBJECTIF" : "OBJECTIF"}</span><strong className="mex-target-number">{target}</strong>{contract ? <small className="mex-target-contract-label">{contract.label}</small> : null}</div>
     {detailed ? <div className="mex-player-grid">{(state?.players||[]).map((p:any)=>{
       const out=!!state?.eliminated?.[p.id]; const hearts=Math.max(0,Number(state?.lives?.[p.id]||0));
-      const value=current[p.id];const isLow=value!=null && min!=null && Number(value)===min && scores.length>1 && !scores.every(s=>s===min);
+      const value=current[p.id];
+      const roundStatus=mexicainLiveRoundStatus(state,p.id);
       const avatar = typeof avatarFor === "function" ? avatarFor(p.id) : null;
       return <div key={p.id} className={`mex-player-tile ${active===p.id?"mex-active":""} ${out?"mex-out":""}`}>
         {avatar ? <div className="mex-player-avatar-bg" style={{backgroundImage:`url(${avatar})`}} aria-hidden="true"/> : null}
         <div className="mex-player-tile-shade" aria-hidden="true"/>
         <div className="mex-player-top"><b>{String(p.name||"Joueur").toUpperCase()}</b><strong>{value == null ? "—" : value}</strong></div>
-        <div className="mex-player-bottom"><span aria-label={`${hearts} vies`}>{"♥ ".repeat(Math.min(hearts,7)) || "☠"}</span><small>{out?"ÉLIMINÉ":isLow?"EN DANGER":value==null?"EN ATTENTE":"PTS VALIDES"}</small></div>
+        <div className="mex-player-bottom"><span aria-label={`${hearts} vies`}>{"♥ ".repeat(Math.min(hearts,7)) || "☠"}</span><small>{roundStatus}</small></div>
       </div>;
     })}</div> : null}
     {detailed && last ? <div className="mex-round-result">🌶️ {last.losers?.length ? `Manche précédente : ${last.losers.map((id:string)=>state.players.find((p:any)=>p.id===id)?.name||id).join(", ")} · -${last.lifeLoss} vie(s)` : "Manche précédente : égalité générale, aucune vie perdue"}</div> : null}

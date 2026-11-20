@@ -29,6 +29,8 @@ export default function KiloDeMerdePlay(props:any){
   const [revealed,setRevealed]=React.useState(false);
   const [rules,setRules]=React.useState(false);
   const [prematureChoice,setPrematureChoice]=React.useState(false);
+  // Demander confirmation avant toute pénalité : la dernière est irréversible une fois la partie enregistrée.
+  const [pendingPenalty,setPendingPenalty]=React.useState<{id:string;premature:boolean;round:number;phase:KiloState['phase'];epoch:number}|null>(null);
   const [undoStack,setUndoStack]=React.useState<KiloState[]>([]);
   const liveGameRef=React.useRef(game);
   liveGameRef.current=game;
@@ -63,12 +65,16 @@ export default function KiloDeMerdePlay(props:any){
   };
   const next=()=>apply(g=>kiloContinue(g));
   const penalize=(id:string,premature=false)=>{
-    // Un bouton issu d'une ancienne phase ne peut pas pénaliser le tour suivant.
-    const expectedRound=game.rounds.length;
-    const expectedPhase=game.phase;
-    const expectedExchangeEpoch=game.exchangeEpoch;
-    apply(g=>kiloPenalty(g,id,premature,expectedRound,expectedPhase,expectedExchangeEpoch));
-    setSelected(null);setRevealed(false);setPrematureChoice(false);
+    // Ne jamais sanctionner sur une simple sélection du nom : confirmation explicite.
+    if(!game.playerIds.includes(id) || (premature ? game.phase!=='select' : game.phase!=='slap')) return;
+    setPendingPenalty({id,premature,round:game.rounds.length,phase:game.phase,epoch:game.exchangeEpoch});
+  };
+  const confirmPenalty=()=>{
+    const pending=pendingPenalty;
+    if(!pending)return;
+    // Les boutons d'une fenêtre ancienne ne peuvent pas agir sur un nouveau cycle.
+    apply(g=>kiloPenalty(g,pending.id,pending.premature,pending.round,pending.phase,pending.epoch));
+    setPendingPenalty(null);setSelected(null);setRevealed(false);setPrematureChoice(false);
   };
   const undo=()=>{
     if(game.phase==='finished'||!undoStack.length)return;
@@ -76,7 +82,7 @@ export default function KiloDeMerdePlay(props:any){
     liveGameRef.current=previous;
     setUndoStack(stack=>stack.slice(0,-1));
     setGame(previous);
-    setSelected(null);setRevealed(false);setPrematureChoice(false);
+    setSelected(null);setRevealed(false);setPrematureChoice(false);setPendingPenalty(null);
   };
   const card=(c:any,i:number,click?:()=>void,chosen=false)=> <button key={`${c.suit}-${c.value}-${i}`} type="button" onClick={click} disabled={!click} style={{...cardStyle(chosen),cursor:click?'pointer':'default'}} aria-label={`${kiloCardLabel(c.value)} carte`}><img draggable={false} src={mssPresidentCardUrl(c.suit,c.value)} alt={`${kiloCardLabel(c.value)}`} style={{width:67,height:96,objectFit:'fill',borderRadius:7}}/></button>;
   const rank=[...game.playerIds].sort((a,b)=>game.kilos[a]-game.kilos[b]);
@@ -97,8 +103,21 @@ export default function KiloDeMerdePlay(props:any){
         {!revealed?<button onClick={()=>setRevealed(true)} style={{width:'100%',minHeight:52,background:'#efc45a',color:'#14130b',border:0,borderRadius:14,fontWeight:1000}}>JE SUIS {label(activeId)} · VOIR MA MAIN</button>:<><div style={{display:'flex',gap:5,overflowX:'auto',padding:'10px 0'}}>{hands.map((c,i)=>card(c,i,()=>setSelected(i),selected===i))}</div><div style={{fontSize:11,color:'#b8d4c8',margin:'5px 0 12px'}}>Ta main est cachée entre chaque joueur. Ne montre pas tes cartes aux adversaires.</div><button disabled={selected===null} onClick={()=>choose(selected!)} style={{width:'100%',minHeight:52,background:selected===null?'#4a4f4c':'#efc45a',color:'#161713',border:0,borderRadius:14,fontWeight:1000}}>PASSER LA CARTE À GAUCHE</button></>}
       </section>:null}
       {game.phase==='slap'?<section style={{...block,borderColor:'#f9d073'}}><div style={{color:GOLD,fontSize:20,fontWeight:1100,textAlign:'center'}}>✋ TOUT LE MONDE TAPE SUR LE TAS !</div><div style={{fontSize:12,color:'#cce8db',textAlign:'center',margin:'8px 0 15px'}}>Un joueur a quatre cartes identiques. Choisissez le dernier joueur à avoir tapé (ou celui ayant tapé trop tôt).</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(135px,1fr))',gap:8}}>{game.playerIds.map(id=><button key={id} onClick={()=>penalize(id)} style={{border:'1px solid #ffb48f',borderRadius:12,padding:10,color:'#fff',background:'#662d20',display:'flex',alignItems:'center',gap:8}}><ProfileAvatar profile={profile(id)} size={30}/><b>{label(id)}</b></button>)}</div></section>:null}
-      {game.phase==='result'||game.phase==='finished'?<section style={{...block,textAlign:'center'}}><div style={{fontSize:30}}>🚽</div><div style={{color:GOLD,fontSize:18,fontWeight:1100}}>{game.rounds.at(-1)?.flushed?"CHASSE D'EAU !":'PÉNALITÉ DU TAS'}</div><div style={{fontSize:12,margin:'8px 0 6px',fontWeight:900,color:'#f5dca8'}}>Joueur pénalisé : {label(game.rounds.at(-1)?.loserId||'')}</div><div style={{fontSize:12,margin:'8px 0 14px'}}>{game.notice}</div>{game.phase==='finished'?<><div style={{fontSize:22,color:'#9cf0ba',fontWeight:1100}}>🏆 {game.winnerId?label(game.winnerId):`EX ÆQUO · ${rank.filter(id=>game.kilos[id]===game.kilos[rank[0]]).map(label).join(" / ")}`}</div><div style={{fontSize:12}}>{game.winnerId?"Victoire au plus faible total de kilos.":"Égalité au plus faible total de kilos."}</div><button onClick={()=>{savedOnce.current=false;const fresh=createKiloState(ids,Number(cfg.rounds||5));liveGameRef.current=fresh;setGame(fresh);setUndoStack([]);setSelected(null);setRevealed(false);setPrematureChoice(false)}} style={{...cardStyle(),background:'#efc45a',color:'#161313',padding:'14px 28px',marginTop:12}}>REJOUER</button></>:<button onClick={next} style={{border:0,borderRadius:12,padding:'13px 22px',background:GOLD,color:'#12120b',fontWeight:1000}}>{game.rounds.at(-1)?.premature?'REPRENDRE LES ÉCHANGES':'NOUVELLE DONNE'}</button>}</section>:null}
+      {game.phase==='result'||game.phase==='finished'?<section style={{...block,textAlign:'center'}}><div style={{fontSize:30}}>🚽</div><div style={{color:GOLD,fontSize:18,fontWeight:1100}}>{game.rounds.at(-1)?.flushed?"CHASSE D'EAU !":'PÉNALITÉ DU TAS'}</div><div style={{fontSize:12,margin:'8px 0 6px',fontWeight:900,color:'#f5dca8'}}>Joueur pénalisé : {label(game.rounds.at(-1)?.loserId||'')}</div><div style={{fontSize:12,margin:'8px 0 14px'}}>{game.notice}</div>{game.phase==='finished'?<><div style={{fontSize:22,color:'#9cf0ba',fontWeight:1100}}>🏆 {game.winnerId?label(game.winnerId):`EX ÆQUO · ${rank.filter(id=>game.kilos[id]===game.kilos[rank[0]]).map(label).join(" / ")}`}</div><div style={{fontSize:12}}>{game.winnerId?"Victoire au plus faible total de kilos.":"Égalité au plus faible total de kilos."}</div><button onClick={()=>{savedOnce.current=false;const fresh=createKiloState(ids,Number(cfg.rounds||5));liveGameRef.current=fresh;setGame(fresh);setUndoStack([]);setSelected(null);setRevealed(false);setPrematureChoice(false);setPendingPenalty(null)}} style={{...cardStyle(),background:'#efc45a',color:'#161313',padding:'14px 28px',marginTop:12}}>REJOUER</button></>:<button onClick={next} style={{border:0,borderRadius:12,padding:'13px 22px',background:GOLD,color:'#12120b',fontWeight:1000}}>{game.rounds.at(-1)?.premature?'REPRENDRE LES ÉCHANGES':'NOUVELLE DONNE'}</button>}</section>:null}
     </main>
+    {pendingPenalty?<div role="dialog" aria-modal="true" aria-label="Confirmer la pénalité" onClick={()=>setPendingPenalty(null)} style={{position:'fixed',inset:0,zIndex:9998,background:'#000d',display:'grid',placeItems:'center',padding:14}}>
+      <div onClick={e=>e.stopPropagation()} style={{...block,width:'min(420px,100%)',textAlign:'center',display:'grid',gap:14,padding:20}}>
+        <div style={{fontSize:30}}>✋</div>
+        <div style={{fontWeight:1000,fontSize:18,color:GOLD}}>{pendingPenalty.premature?'TAPE PRÉMATURÉE':'DERNIER À TAPER'}</div>
+        <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap:10}}><ProfileAvatar profile={profile(pendingPenalty.id)} size={42}/><strong style={{fontSize:17}}>{label(pendingPenalty.id)}</strong></div>
+        <div style={{fontSize:13,color:'#d8e8dc'}}>Confirmer la pénalité de ce joueur ? Il prendra la prochaine carte du tas. {pendingPenalty.premature?'Les choix d’échange en cours seront annulés.':'Une nouvelle donne suivra, sauf si la partie se termine.'}</div>
+        {game.rounds.length+1>=game.maxRounds?<div style={{fontSize:12,color:'#ffcf95',fontWeight:900}}>ATTENTION : dernière pénalité, le classement final sera enregistré.</div>:null}
+        <div style={{display:'flex',gap:8}}>
+          <button type="button" onClick={()=>setPendingPenalty(null)} style={{flex:1,padding:13,borderRadius:12,border:'1px solid #e8d6a066',background:'#28312e',color:'#fff',fontWeight:900}}>ANNULER</button>
+          <button type="button" onClick={confirmPenalty} style={{flex:1,padding:13,borderRadius:12,border:0,background:GOLD,color:'#191611',fontWeight:1000}}>CONFIRMER</button>
+        </div>
+      </div>
+    </div>:null}
     {rules?<div role="dialog" aria-modal="true" onClick={()=>setRules(false)} style={{position:'fixed',inset:0,zIndex:9999,background:'#000c',display:'grid',placeItems:'center',padding:12}}><div onClick={e=>e.stopPropagation()} style={{...block,width:'min(620px,100%)',maxHeight:'88vh',overflowY:'auto',lineHeight:1.55,fontSize:13}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><b style={{color:GOLD}}>🚽 RÈGLES · KILO DE MERDE</b><button onClick={()=>setRules(false)} style={{background:'transparent',border:0,color:GOLD,fontSize:24}}>×</button></div><p><b>But :</b> avoir le moins de kilos à la fin des tours choisis.</p><p><b>Paquet :</b> 52 cartes. Chaque joueur reçoit quatre cartes. Les 7 sont réservés au tas central. La sélection des autres valeurs dépend du nombre de joueurs.</p><p><b>Échanges :</b> chacun choisit une carte et la passe à son voisin de gauche. L'application effectue l'échange après tous les choix.</p><p><b>Tape prématurée :</b> si quelqu’un tape avant qu’un carré soit annoncé, désigne-le avec le bouton dédié : il pioche une pénalité et les choix de cartes en cours sont annulés.</p><p><b>Quatre cartes identiques :</b> tout le monde tape sur le tas. Le dernier (ou celui qui tape trop tôt) récupère la première carte du tas et sa valeur en kilos.</p><p><b>Barème :</b> 2–10 = valeur de la carte ; Valet 11 ; Dame 12 ; Roi 13 ; As 100 kg.</p><p><b>Chasse d'eau :</b> si la carte du tas est un 7, tous les kilos du joueur sont annulés et ses cartes de pénalité retournent au tas.</p><p style={{color:'#c8e0d6',fontSize:11}}>Adaptation MSS sur appareil partagé : le dernier à taper est désigné manuellement. Le joueur doit veiller à garder sa main secrète.</p><button onClick={()=>setRules(false)} style={{background:GOLD,border:0,borderRadius:12,padding:12,fontWeight:1000,width:'100%'}}>J'AI COMPRIS</button></div></div>:null}
   </div>;
 }

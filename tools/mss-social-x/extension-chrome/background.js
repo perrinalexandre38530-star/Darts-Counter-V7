@@ -30,10 +30,15 @@ async function waitForTabReady(tabId, timeoutMs = 30000) {
 chrome.action.onClicked.addListener(async (tab) => {
   try {
     if (!tab.id) throw new Error('Onglet Chrome introuvable.');
-    if (!tab.url?.startsWith('https://x.com/multisportsscor')) {
+    if (!/^https:\/\/x\.com\/(?:multisportsscor(?:\/|$)|settings\/profile(?:\/|$))/.test(tab.url || '')) {
       await chrome.tabs.update(tab.id, { url: TARGET });
       await waitForTabReady(tab.id);
     }
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      files: ['page-bridge.js']
+    });
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['content.js']

@@ -59,6 +59,12 @@ export const PERSISTENT_LOCAL_STORAGE_RULES: readonly PersistentLocalStorageRule
   // WAVE 9 — journal de migration legacy, account-scoped et portable.
   { key: "dc_legacy_migration_v1", domain: "legacy_migration", scope: "account", portable: true, maxBytes: 500_000, notes: "Journal idempotent des sources legacy déjà migrées et des quarantaines." },
 
+  // FINISH DO — états par profil, distincts de History V4 et des caches statistiques.
+  // Le suffixe :<profileId encodé> est reconnu par persistentLocalStorageRule.
+  // Import idempotent (remplacement JSON, jamais addition des compteurs).
+  { key: "mss.training.finish-do.precision.v1", domain: "training", scope: "account", portable: true, maxBytes: 750_000, notes: "Agrégats de précision DO par profil, non dérivés de History V4." },
+  { key: "mss.training.finish-do.cycles.v1", domain: "training", scope: "account", portable: true, maxBytes: 180_000, notes: "Cycle guidé courant et archivage des cycles terminés." },
+
   // FIT PERF — données utilisateur.
   { key: "mss-fit-perf-sessions-v1", domain: "fit", scope: "account", portable: true, maxBytes: 2_500_000 },
   { key: "mss-fit-custom-programs-v1", domain: "fit", scope: "account", portable: true, maxBytes: 2_500_000 },

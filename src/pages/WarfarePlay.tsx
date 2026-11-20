@@ -551,7 +551,7 @@ export default function WarfarePlay({ go, config, onFinish }: Props) {
         const stats = getStats(activePlayer?.id);
         return <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
           label={activeArmy} value={`${ownAlive}/10`} detail="SOLDATS EN VIE"
-          objective="Détruis les positions ennemies."
+          objective="Élimine les soldats adverses."
           rightTitle="ENNEMIS À ÉLIMINER" rightValue={enemyAlive}
           rightDetail={<span>Zones {zonesLabel} · {stats.kills||0} K.O.</span>} />;
       })()}

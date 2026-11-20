@@ -1,9 +1,11 @@
 import React from 'react';
 import { buildMexicainRoundStandings } from '../../lib/gameEngines/mexicainStandings';
+import { mexicainVariantName } from '../../lib/gameEngines/mexicainPresentation';
 
 /** Final Mexicain recap, derived exclusively from the authoritative finished state. */
 export default function MexicainFinalSummary({ state, profiles = [] }: { state: any; profiles?: any[] }) {
   const history = Array.isArray(state?.special?.mexicainHistory) ? state.special.mexicainHistory : [];
+  const variantName = mexicainVariantName(state?.config?.modeOptions);
   const players = Array.isArray(state?.players) ? state.players : [];
   const profileMap = new Map(profiles.map((p: any) => [String(p.id), p]));
   const initialLives = state?.config?.modeOptions?.progressive === 'survival' ? 5 : 3;
@@ -18,7 +20,7 @@ export default function MexicainFinalSummary({ state, profiles = [] }: { state: 
   const [section, setSection] = React.useState<'classement' | 'manches' | 'vies'>('classement');
   const initial = { background: 'linear-gradient(120deg,rgba(12,79,50,.42),rgba(21,21,27,.92) 48%,rgba(116,31,29,.36))', border: '1px solid rgba(239,194,107,.54)', borderRadius: 14, padding: 10 } as React.CSSProperties;
   return <section data-mexicain-final-summary="1" style={{...initial,display:'grid',gap:10,color:'#fff',width:'100%',boxSizing:'border-box'}}>
-    <header style={{display:'flex',gap:8,justifyContent:'space-between',alignItems:'center',flexWrap:'wrap'}}><strong style={{color:'#ffe0a1',fontSize:13}}>🇲🇽 BILAN DE LA FIESTA</strong><span style={{fontSize:10,color:'#e9d7b9'}}>{history.length} manches jouées · {players.length} participants</span></header>
+    <header style={{display:'flex',gap:8,justifyContent:'space-between',alignItems:'center',flexWrap:'wrap'}}><strong style={{color:'#ffe0a1',fontSize:13}}>🇲🇽 BILAN {variantName === 'LE MEXICAIN' ? 'DU MEXICAIN' : variantName}</strong><span style={{fontSize:10,color:'#e9d7b9'}}>{history.length} manches jouées · {players.length} participants</span></header>
     <nav aria-label="Bilan du Mexicain" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:5}}>
       {(['classement','manches','vies'] as const).map(key => <button key={key} type="button" onClick={()=>setSection(key)} aria-pressed={section===key} style={{border:`1px solid ${section===key?'#ffd17c':'#8d755d'}`,borderRadius:9,background:section===key?'#77542c':'#171a1e',padding:'9px 4px',color:'#fff4d9',fontWeight:900,fontSize:10,cursor:'pointer'}}>{key==='classement'?'CLASSEMENT':key==='manches'?'RONDA PAR RONDA':'VIES'}</button>)}
     </nav>

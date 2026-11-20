@@ -251,4 +251,31 @@ for(const file of ['src/pages/Wave61SharedConfig.tsx','src/pages/wave61/Mexicain
   assert.deepEqual((transpile.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error),[],file);
 }
 
-console.log('✅ MARIACHI V245 : FIESTA 5 manches, égalité totale, historique, règles et écran final.');
+// V250: truthful, state-driven labels for every variant; no premature life penalty
+// in the partial RONDA scoreboard and no "EN ATTENTE" for eliminated players.
+const {mexicainVariantName,mexicainLiveRoundStatus} = require('../src/lib/gameEngines/mexicainPresentation.ts');
+assert.equal(mexicainVariantName({targetMode:'fixed'}),'LE MEXICAIN');
+assert.equal(mexicainVariantName({targetMode:'mexico'}),'MEXICO');
+assert.equal(mexicainVariantName({mariachiEnabled:'yes',mariachiMode:'colors'}),'MARIACHI');
+assert.equal(mexicainVariantName({targetMode:'mexico',mariachiEnabled:'yes',mariachiMode:'fiesta'}),'FIESTA');
+const uiState={players:p,eliminated:{},special:{mexicainRoundScores:{a:20}}};
+assert.equal(mexicainLiveRoundStatus(uiState,'a'),'PTS VALIDÉS');
+assert.equal(mexicainLiveRoundStatus(uiState,'b'),'EN ATTENTE');
+uiState.special.mexicainRoundScores.b=20;
+assert.equal(mexicainLiveRoundStatus(uiState,'a'),'ÉGALITÉ PROVISOIRE');
+uiState.special.mexicainRoundScores.b=50;
+assert.equal(mexicainLiveRoundStatus(uiState,'a'),'DERNIER PROVISOIRE');
+assert.equal(mexicainLiveRoundStatus(uiState,'b'),'PTS VALIDÉS');
+uiState.eliminated.a=true;
+assert.equal(mexicainLiveRoundStatus(uiState,'a'),'ÉLIMINÉ');
+assert.match(playSrc,/mexicainLiveRoundStatus\(state,p\.id\)/);
+assert.match(playSrc,/state\.eliminated\?\.\[p\.id\] \? "ÉLIMINÉ"/);
+assert.match(playSrc,/\(inclus\)` : ''/,'the in-game recap must not suggest bonus is added twice');
+assert.match(endSrc,/mexicainVariantName\(state\?\.config\?\.modeOptions\)/);
+const presentationFile=path.join(__dirname,'../src/lib/gameEngines/mexicainPresentation.ts');
+const presentationTranspile=ts.transpileModule(fs.readFileSync(presentationFile,'utf8'),{
+  fileName:presentationFile,reportDiagnostics:true,
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext},
+});
+assert.deepEqual((presentationTranspile.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error),[]);
+console.log('✅ MARIACHI V250 : étiquettes finales par variante, classement provisoire, éliminés et bonus inclus.');

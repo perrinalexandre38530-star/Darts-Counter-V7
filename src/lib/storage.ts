@@ -2114,6 +2114,28 @@ export async function importRegisteredAppDataSnapshot(
   }
 }
 
+/** FINISH DO : la restauration de ces deux clés est idempotente.
+ * Les sauvegardes transportent un état JSON complet, pas des deltas à sommer.
+ * On refuse les objets malformés pour ne pas effacer une progression saine.
+ */
+function validPortableFinishDoState(key: string, value: string): boolean {
+  const precision = key.startsWith("mss.training.finish-do.precision.v1:");
+  const cycles = key.startsWith("mss.training.finish-do.cycles.v1:");
+  if (!precision && !cycles) return true;
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || parsed.version !== 1 || typeof parsed !== "object") return false;
+    if (precision) {
+      return typeof parsed.aims === "object" && parsed.aims !== null &&
+        Number.isSafeInteger(parsed.darts) && parsed.darts >= 0 &&
+        Number.isSafeInteger(parsed.sessions) && parsed.sessions >= 0;
+    }
+    return parsed.active && typeof parsed.active === "object" &&
+      typeof parsed.active.focus === "string" &&
+      Array.isArray(parsed.completed);
+  } catch { return false; }
+}
+
 function importLocalStorageDc(map: Record<string, string>) {
   if (typeof window === "undefined") return;
   if (!map || typeof map !== "object") return;
@@ -2121,16 +2143,19 @@ function importLocalStorageDc(map: Record<string, string>) {
   let restoredDartSets = false;
   let restoredBots = false;
   let restoredTeams = false;
+  let restoredFinishDo = false;
 
   for (const [k, v] of Object.entries(map)) {
     if (!shouldExportLocalStorageDcKey(k, typeof v === "string" ? v : String(v ?? ""))) continue;
     try {
       const nextValue = String(v ?? "");
+      if (!validPortableFinishDoState(k, nextValue)) continue;
       const previousValue = window.localStorage.getItem(k);
       if (previousValue !== nextValue) window.localStorage.setItem(k, nextValue);
       if (LS_DARTSETS_KEYS.includes(k as any) || LS_ACTIVE_DARTSET_KEYS.includes(k as any)) restoredDartSets = restoredDartSets || previousValue !== nextValue;
       if ((k === "dc_bots_v1" || k === "dc_bots_avatars_v1") && previousValue !== nextValue) restoredBots = true;
       if (k === "dc-teams-v1" && previousValue !== nextValue) restoredTeams = true;
+      if ((k.startsWith("mss.training.finish-do.precision.v1:") || k.startsWith("mss.training.finish-do.cycles.v1:")) && previousValue !== nextValue) restoredFinishDo = true;
       if (k === "babyfoot_league_store_v1") {
         try { window.dispatchEvent(new Event("babyfoot-leagues-updated")); } catch {}
         try { window.dispatchEvent(new Event("dc:babyfoot-leagues-updated")); } catch {}
@@ -2143,6 +2168,12 @@ function importLocalStorageDc(map: Record<string, string>) {
   } catch {}
   try {
     if (restoredBots) window.dispatchEvent(new Event("dc:bots-changed"));
+  } catch {}
+  try {
+    if (restoredFinishDo) {
+      window.dispatchEvent(new Event("mss-finish-do-progress"));
+      window.dispatchEvent(new Event("mss-finish-do-cycle"));
+    }
   } catch {}
   try {
     if (restoredTeams) {

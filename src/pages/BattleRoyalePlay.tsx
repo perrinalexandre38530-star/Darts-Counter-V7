@@ -908,7 +908,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             objective="Survivre jusqu'au dernier round" rules={[]} configuration={[]} accent={theme.primary} />
           <MssCombatActiveCard name={activePlayer?.name||'Joueur'} avatar={activePlayer?.avatarDataUrl} accent={theme.primary}
             label={`ROUND ${roundIndex+1}/${TARGETS.length}`} value={`${currentThrow.length}/${dartsPerTurn}`} detail="FLÉCHETTES JOUÉES"
-            objective="Touche la cible pour survivre."
+            objective="Une touche valide pour survivre."
             rightTitle="CIBLE À TOUCHER" rightValue={fmtTarget(target)}
             rightDetail={<div className="mss-combat-darts"><ThrowBlocks total={dartsPerTurn} darts={currentThrow}/></div>}>
             {ended&&<span>{players.find(p=>p.alive)?.name||'Partie'} · {t('common.finished','Partie terminée')}</span>}
