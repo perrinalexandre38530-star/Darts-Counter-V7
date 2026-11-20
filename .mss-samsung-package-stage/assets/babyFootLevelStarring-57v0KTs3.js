@@ -1,1 +1,0 @@
-import{a as o}from"./babyfootStatsAggregate-jTDOMcxR.js";function n(r,e,t){return Number.isFinite(r)?Math.max(e,Math.min(t,r)):e}const a=180;function u(r){return Math.round(n(Number(r)||0,0,100)/100*a)}function m(r){return!r||!Number(r.matches||0)?0:u(o(r))}export{u as a,m as b};

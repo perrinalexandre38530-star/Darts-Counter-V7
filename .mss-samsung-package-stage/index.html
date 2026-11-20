@@ -5,7 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <title>MULTISPORTS SCORING</title>
-    <script type="module" crossorigin src="./assets/index-CnsRLgDP.js"></script>
+    <!-- Compatibilité JavaScript Samsung Tizen 6.5 : exécuter AVANT le bundle ESM.
+         Les moteurs X01 et plusieurs jeux emploient structuredClone. -->
+    <script>
+      (function () {
+        if (typeof globalThis.structuredClone === "function") return;
+        function clone(value, seen) {
+          if (value === null || typeof value !== "object") return value;
+          if (seen.has(value)) return seen.get(value);
+          if (value instanceof Date) return new Date(value.getTime());
+          if (value instanceof RegExp) return new RegExp(value.source, value.flags);
+          if (value instanceof ArrayBuffer) return value.slice(0);
+          if (ArrayBuffer.isView(value)) {
+            if (value instanceof DataView) return new DataView(clone(value.buffer, seen), value.byteOffset, value.byteLength);
+            return new value.constructor(value);
+          }
+          if (value instanceof Map) {
+            var m = new Map(); seen.set(value, m);
+            value.forEach(function (v, k) { m.set(clone(k, seen), clone(v, seen)); });
+            return m;
+          }
+          if (value instanceof Set) {
+            var s = new Set(); seen.set(value, s);
+            value.forEach(function (v) { s.add(clone(v, seen)); });
+            return s;
+          }
+          var result = Array.isArray(value) ? [] : {};
+          seen.set(value, result);
+          Object.keys(value).forEach(function (key) {
+            result[key] = clone(value[key], seen);
+          });
+          return result;
+        }
+        globalThis.structuredClone = function (value) { return clone(value, new Map()); };
+        globalThis.__MSS_TIZEN_STRUCTURED_CLONE_COMPAT__ = "V240";
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-CmYHbCqA.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-lQ_j48_w.css">
   </head>
   <body>

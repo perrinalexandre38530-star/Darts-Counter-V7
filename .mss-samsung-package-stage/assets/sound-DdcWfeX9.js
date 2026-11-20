@@ -1,1 +1,0 @@
-import{bm as a,P as s}from"./App-CCV9aCrA.js";function c(r){const t=String(r||"").toLowerCase(),e=["180","bust","victory","game-intro","shanghai"].some(o=>t.includes(o))?"arcade":"impact";if(a(e))try{const o=new Audio(`/sounds/${r}.mp3`);o.volume=s(.9,e),o.play().catch(()=>{})}catch(o){console.warn("Erreur lecture son:",r,o)}}export{c as p};
