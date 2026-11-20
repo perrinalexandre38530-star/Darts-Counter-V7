@@ -1,19 +1,28 @@
 import React from "react";
-import { getFinishDoPriority, getFinishDoWeek, compareFinishDoWeeks, buildFinishDoTrainingPlan, getFinishDoPlanStatus, type FinishDoProgress } from "./finishDoProgress";
+import { getFinishDoPriority, getFinishDoWeek, compareFinishDoWeeks, loadFinishDoCycleJournal, evaluateFinishDoCycle, advanceFinishDoCycle, finishDoLessonForAim, type FinishDoProgress } from "./finishDoProgress";
 import "./finishDoWeeklyPanel.css";
 
 /** Read-only, profile-scoped training progress; never includes competitive X01 games. */
-export default function FinishDoWeeklyPanel({ progress, onReview, onPractice, lessonValidated = false }: {
+export default function FinishDoWeeklyPanel({ progress, onReview, onPractice, academyProgress, participantId }: {
   progress: FinishDoProgress;
   onReview?: (double: string) => void;
   onPractice?: (double: string) => void;
-  lessonValidated?: boolean;
+  academyProgress?: Record<string, { latest?: number; updatedAt?: number }>;
+  participantId?: string | null;
 }) {
   const week = getFinishDoWeek(progress);
   const priority = getFinishDoPriority(progress);
   const comparison = compareFinishDoWeeks(progress);
-  const status = getFinishDoPlanStatus(progress, lessonValidated);
-  const plan = status.plan;
+  const [journal, setJournal] = React.useState(() => loadFinishDoCycleJournal(participantId, progress));
+  React.useEffect(() => setJournal(loadFinishDoCycleJournal(participantId, progress)), [participantId, progress]);
+  const cycle = journal.active;
+  const evidence = evaluateFinishDoCycle(cycle, progress, academyProgress?.[finishDoLessonForAim(cycle.focus)]);
+  const cycleScore = cycle.focus === "BULL50" ? 50 : Number(cycle.focus.slice(1)) * 2;
+  const cycleSteps = [
+    { id: "placement", title: "1 · Comprendre", instruction: `Revois la leçon de ${cycle.focus}, puis valide le quiz avec au moins 80/100.`, target: cycle.focus, score: cycleScore },
+    { id: "precision", title: "2 · Répéter", instruction: `Annonce ${cycle.focus} avant chaque lancer : ${cycle.goalAttempts} lancers et ${cycle.goalHits} touches minimum pour ce cycle.`, target: cycle.focus, score: cycleScore },
+    { id: "checkout", title: "3 · Finir", instruction: `Réussis un checkout sur ${cycle.focus} après les deux premières étapes.`, target: cycle.focus, score: cycleScore },
+  ] as const;
   const targets = Object.values(progress.aims).filter(row => row.attempts > 0)
     .sort((a, b) => b.attempts - a.attempts).slice(0, 4);
   return <section className="mss-finish-week" aria-label="Progression FINISH DO">
@@ -37,22 +46,24 @@ export default function FinishDoWeeklyPanel({ progress, onReview, onPractice, le
       <small>{comparison.deltaPoints === null ? "Comparaison de précision indisponible : il faut des doubles annoncés sur les deux périodes." : `${comparison.deltaPoints > 0 ? "+" : ""}${comparison.deltaPoints} points de précision par rapport aux 7 jours précédents.`}</small>
     </div>
     <details className="mss-finish-week-plan">
-      <summary>Programme Awena · {plan.tierName} · {plan.focus}</summary>
+      <summary>Programme Awena · {cycle.focus} · {evidence.complete ? "Cycle terminé" : `${Number(evidence.placementComplete) + Number(evidence.precisionComplete) + Number(evidence.checkoutComplete)}/3`}</summary>
       <div className="mss-finish-week-plan-body">
-        <p>{plan.objective}</p>
-        {plan.sampleSize < 3 && <small>Parcours de découverte : aucune faiblesse n'est déduite avec moins de 3 lancers annoncés.</small>}
-        {plan.steps.map(step => {
-          const complete = step.id === "placement" ? status.placementComplete : step.id === "precision" ? status.precisionComplete : status.checkoutComplete;
+        <p>Cycle commencé le {new Date(cycle.startedAt).toLocaleDateString("fr-FR")} · niveau {cycle.tier} · cible {cycle.focus}. Seuls les résultats obtenus depuis ce départ comptent.</p>
+        {cycleSteps.map((step, index) => {
+          const complete = step.id === "placement" ? evidence.placementComplete : step.id === "precision" ? evidence.precisionComplete : evidence.checkoutComplete;
+          const unlocked = index === 0 || (index === 1 ? evidence.placementComplete : evidence.placementComplete && evidence.precisionComplete);
           return <div key={step.id} className="mss-finish-week-plan-step">
-            <div className="mss-finish-week-plan-step-head"><strong>{step.title}</strong><small className={complete ? "is-done" : ""}>{complete ? "✓ Validé" : "À travailler"}</small></div>
+            <div className="mss-finish-week-plan-step-head"><strong>{step.title}</strong><small className={complete ? "is-done" : ""}>{complete ? "✓ Validé" : unlocked ? "À travailler" : "Verrouillé"}</small></div>
             <span>{step.instruction}</span>
-            {step.id === "precision" && <small>{status.attempts} lancers annoncés • {status.hits} touches • objectif {plan.tier === "discovery" ? "3 lancers" : `10 lancers et ${status.targetHits}/10 de précision`}</small>}
-            {step.id === "checkout" && <small>{status.checkouts} checkout(s) terminé(s) sur {plan.focus} depuis l'activation du suivi.</small>}
-            {step.id === "placement" && onReview && <button type="button" onClick={() => onReview(plan.focus)}>Apprendre et valider ›</button>}
-            {step.id === "precision" && onPractice && <button type="button" onClick={() => onPractice(plan.focus)}>Lancer l’exercice pratique ›</button>}
-            {step.id === "checkout" && onPractice && <button type="button" onClick={() => onPractice(plan.focus)}>S’entraîner au checkout ›</button>}
+            {step.id === "precision" && <small>{evidence.attempts}/{cycle.goalAttempts} lancers annoncés • {evidence.hits} touches • objectif {cycle.goalHits} touches sur {cycle.goalAttempts}</small>}
+            {step.id === "checkout" && <small>{evidence.checkouts} checkout(s) sur {cycle.focus} depuis le début de ce cycle.</small>}
+            {step.id === "placement" && !complete && onReview && <button type="button" onClick={() => onReview(cycle.focus)}>Apprendre et valider ›</button>}
+            {step.id === "precision" && unlocked && !complete && onPractice && <button type="button" onClick={() => onPractice(cycle.focus)}>Lancer l’exercice pratique ›</button>}
+            {step.id === "checkout" && unlocked && !complete && onPractice && <button type="button" onClick={() => onPractice(cycle.focus)}>S’entraîner au checkout ›</button>}
           </div>;
         })}
+        {evidence.complete && <button type="button" className="mss-finish-next-cycle" onClick={() => setJournal(advanceFinishDoCycle(participantId, progress, academyProgress?.[finishDoLessonForAim(cycle.focus)]))}>✓ Cycle validé · Passer au cycle suivant ›</button>}
+        <small>{journal.completed.length} cycle(s) clôturé(s) sur cet appareil.</small>
       </div>
     </details>
     {targets.length > 0 && <div className="mss-finish-week-targets">

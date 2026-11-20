@@ -1760,7 +1760,10 @@ export default function SamsungTvApp() {
     const poll = async () => {
       try {
         applySnapshot(await fetchViewerSnapshot(sessionId));
-      } catch {}
+      } catch (error: any) {
+        // Invalid/expired Viewer code must not be shown as an active link.
+        if (alive && Number(error?.status || 0) === 404) setConnectionStatus("error");
+      }
       if (alive) pollTimer = window.setTimeout(poll, 2200);
     };
     void poll();

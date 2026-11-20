@@ -1,0 +1,1 @@
+const c="dc_dice_state_v1";function a(){try{const t=localStorage.getItem(c);if(!t)return null;const e=JSON.parse(t);return e&&typeof e=="object"?e:null}catch{return null}}function r(t){try{localStorage.setItem(c,JSON.stringify(t))}catch{}}function o(){try{localStorage.removeItem(c)}catch{}}export{o as c,a as l,r as s};

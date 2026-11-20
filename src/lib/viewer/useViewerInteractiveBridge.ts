@@ -359,6 +359,16 @@ export function useViewerInteractiveBridge({
         if (target === current.tab && !data.params) return;
         try { current.go(target as any, data.params || undefined); } catch {}
       },
+      onStatus: (status) => {
+        // Re-publish the complete state after EVERY reconnect. Route changes
+        // sent while offline are otherwise lost when the TV joins later.
+        if (status !== "connected") return;
+        window.setTimeout(() => {
+          if (getActiveViewerSession()?.sessionId !== sessionId) return;
+          publishTvState("host_reconnected");
+          publishNavigation("host_reconnected");
+        }, 0);
+      },
       onLifecycle: (data) => {
         if (data?.type === "join" && data?.role === "guest") {
           window.setTimeout(() => {

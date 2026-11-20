@@ -1,0 +1,1 @@
+const t="dc-score-input-method";function s(r,e){return r==="visit_score"?(e==null?void 0:e.allowVisitScore)===!1?"keypad":"visit_score":r==="keypad"||r==="dartboard"||r==="presets"||r==="voice"?r:"keypad"}export{t as S,s};

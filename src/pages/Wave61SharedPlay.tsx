@@ -1241,6 +1241,15 @@ function MexicainTargetInput({ state, currentThrow, setCurrentThrow, onValidate,
   const bull = targetNumber === 21;
   const contract:MariachiContract|null = getMexicainContract(state);
   const [selectedMultiplier,setSelectedMultiplier]=React.useState<1|2|3>(1);
+  // A FIESTA contract may switch from DOUBLES to TRIPLES between rounds.
+  // Start each new round on a legal multiplier, but still let the player select
+  // a forbidden multiplier deliberately to record a real zero-point impact.
+  const contractKey = `${state?.roundIndex ?? 0}:${contract?.kind ?? "classic"}:${contract?.beds?.join("") ?? ""}`;
+  React.useEffect(() => {
+    if (!contract?.enabled) return;
+    const preferred: 1|2|3 = contract.beds.includes("S") ? 1 : contract.beds.includes("D") ? 2 : 3;
+    setSelectedMultiplier(preferred);
+  }, [contractKey]);
   const locked = currentThrow.length >= 3 || state.phase !== "playing";
   const combo=mexicainScoreDarts((currentThrow||[]).map(uiToGameDart),targetNumber,contract,state?.config?.modeOptions?.mexicainBonus==='yes');
   const append = (mult: number, isMiss = false, selectedNumber?:number) => {
@@ -1267,7 +1276,7 @@ function MexicainTargetInput({ state, currentThrow, setCurrentThrow, onValidate,
           return <button key={n} type="button" disabled={locked} aria-label={`${selectedMultiplier===3?'Triple':selectedMultiplier===2?'Double':'Simple'} ${n} ${valid?'autorisé':'hors contrat'}`} className={`mex-hit-${selectedMultiplier===3?'triple':selectedMultiplier===2?'double':'single'} ${valid?'is-in-contract':'is-out-contract'}`} onClick={()=>append(selectedMultiplier,false,n)}>{n}</button>;
         })}
       </div>
-      <div className="mex-target-keys mex-mariachi-actions">
+      <div className="mex-target-keys mex-mariachi-actions" data-mexicain-actions="1" aria-label="Actions de la volée">
         <button className={`mex-hit-bull25 ${mariachiAccepts({bed:'OB'},contract)?'is-in-contract':'is-out-contract'}`} disabled={locked} onClick={()=>append(1,false,25)}>BULL25</button>
         <button className={`mex-hit-bull50 ${mariachiAccepts({bed:'IB'},contract)?'is-in-contract':'is-out-contract'}`} disabled={locked} onClick={()=>append(2,false,25)}>BULL50</button>
         <button className="mex-hit-miss" disabled={locked} onClick={()=>append(1,true)}>MISS</button>
@@ -2546,7 +2555,7 @@ export default function Wave61SharedPlay(props: any) {
           {spec.id !== "mexicain" ? <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={compactHeight ? 2 : 3} /> : null}
         </section>
 
-        <section data-wave61-zone="input" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <section data-wave61-zone="input" aria-label={spec.id === "mexicain" ? "Clavier du Mexicain" : undefined} style={{ minWidth: 0, minHeight: 0, overflowX: "hidden", overflowY: spec.id === "mexicain" ? "auto" : "hidden", overscrollBehaviorY: spec.id === "mexicain" ? "contain" : undefined, WebkitOverflowScrolling: spec.id === "mexicain" ? "touch" : undefined, display: "flex", flexDirection: "column" }}>
           {!activeIsBot ? (spec.id === "mexicain" ? <MexicainTargetInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} />) : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}

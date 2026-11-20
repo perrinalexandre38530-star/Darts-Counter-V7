@@ -153,4 +153,67 @@ for (const relative of ['src/lib/gameEngines/mexicainMariachi.ts',
   });
   assert.equal((result.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error).length,0,relative);
 }
-console.log('✅ MARIACHI V231 : contrats, couleurs BULL, bonus, bots, reprises, historique et export cohérents.');
+
+// V236 non-browser regression guards: landscape keypad must remain scrollable,
+// the submit row pinned, portrait targets large enough, and FIESTA changes
+// start with a valid multiplier while off-contract shots remain selectable.
+const playSrc=fs.readFileSync(path.join(__dirname,'../src/pages/Wave61SharedPlay.tsx'),'utf8');
+const cssSrc=fs.readFileSync(path.join(__dirname,'../src/pages/wave61/MexicainFiesta.css'),'utf8');
+assert.match(playSrc,/overflowY: spec\.id === "mexicain" \? "auto" : "hidden"/);
+assert.match(playSrc,/data-mexicain-actions="1"/);
+assert.match(playSrc,/const contractKey =/);
+assert.match(playSrc,/setSelectedMultiplier\(preferred\)/);
+assert.match(cssSrc,/\.mex-fiesta-play\[data-wave61-landscape="three-zone"\] \.mex-mariachi-actions\s*\{[^}]*position:sticky;/);
+assert.match(cssSrc,/\.mex-fiesta-portrait \.mex-mariachi-actions > button \{[^}]*min-height:44px!important;/);
+for(const file of ['src/pages/Wave61SharedPlay.tsx']){
+ const filePath=path.join(__dirname,'..',file);
+ const result=ts.transpileModule(fs.readFileSync(filePath,'utf8'),{
+  fileName:filePath,reportDiagnostics:true,
+  compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext},
+ });
+ assert.equal((result.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error).length,0,file);
+}
+
+
+// Exercise the real History V4 -> export view-model (without browser canvas).
+// Unlike a regex alone, this checks the MARIACHI contract, score, bonus and
+// remaining lives actually returned to the multipage PDF/PNG renderer.
+const vm = require('node:vm');
+const reportModule = {exports:{}};
+const reportCompiled = ts.transpileModule(exportSrc, {compilerOptions:{
+  module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true,
+}}).outputText;
+vm.runInNewContext(reportCompiled,{
+ exports:reportModule.exports,console,
+ require(spec){
+  if(spec.includes('challengeFullReport'))return{enrichChallengeReport:report=>report};
+  if(spec.includes('historyDartsModeReport'))return{enrichHistoricalDartsModeReport:report=>report};
+  if(spec.includes('historySportReport'))return{applyHistoricalSportResult:report=>report};
+  if(spec.includes('shoveAPennyHistoryReport'))return{enrichShoveHistoryReport:report=>report};
+  if(spec==='fflate')return{zipSync:()=>new Uint8Array([])};
+  if(spec.endsWith('.png')||spec.endsWith('.webp'))return spec;
+  throw Error('Unexpected export import: '+spec);
+ }
+});
+const exampleReport=reportModule.exports.visualReportFromHistory({
+ kind:'darts',game:{mode:'mexicain'},players:[{id:'a',name:'Alpha'},{id:'b',name:'Bravo'}],
+ summary:{mode:'mexicain',rankings:[{id:'a',name:'Alpha',score:320,rank:1},{id:'b',name:'Bravo',score:0,rank:2}],
+  mexicain:{rounds:[
+   {round:1,target:20,contractLabel:'MULTISECTEURS · 5 · 10 · 20',scores:[{id:'a',score:200},{id:'b',score:0}],bonuses:{a:{name:'ENCHILADAS',points:80}},losers:['b'],lifeLoss:1},
+   {round:2,target:8,contractLabel:'DOUBLES / TRIPLES · 8',scores:[{id:'a',score:120},{id:'b',score:0}],bonuses:{a:{name:'TORTILLA',points:20}},losers:['b'],lifeLoss:1},
+  ],finalLives:{a:3,b:1}}}
+});
+assert.equal(exampleReport.title,'LE MEXICAIN · MARIACHI');
+assert.equal(exampleReport.unit,'manches');
+assert.equal(exampleReport.rounds,2);
+const contractSection=exampleReport.details.find(s=>s.title==='OBJECTIFS PAR MANCHE');
+const scoresSection=exampleReport.details.find(s=>s.title==='SCORES ET BONUS PAR MANCHE');
+const livesSection=exampleReport.details.find(s=>s.title==='VIES RESTANTES');
+assert.equal(contractSection.rows[1][1],'DOUBLES / TRIPLES · 8');
+assert.equal(scoresSection.rows[0][2],'200','export must never add the bonus twice');
+assert.equal(scoresSection.rows[0][3],'ENCHILADAS +80');
+assert.equal(scoresSection.rows[2][3],'TORTILLA +20');
+assert.equal(scoresSection.rows[1][4],'1');
+assert.equal(livesSection.rows.find(row=>row[0]==='Bravo')[1],'1');
+
+console.log('✅ MARIACHI V236 : contrats, bots, exports et garde-fous clavier portrait/paysage.');

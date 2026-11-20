@@ -1,0 +1,1 @@
+const e=""+new URL("zone_petit_simple-CMeAd0nP.webp",import.meta.url).href,n=""+new URL("zone_gros_simple-zo4MP6TC.webp",import.meta.url).href,i=""+new URL("zone_petit_simple_en-WCv43Agi.webp",import.meta.url).href,o=""+new URL("zone_gros_simple_en-BzDv4jo3.webp",import.meta.url).href;export{i as a,n as b,o as c,e as s};

@@ -61,12 +61,24 @@ export function kiloSelectCard(state:KiloState, cardIndex:number, expectedPlayer
   const four=state.playerIds.some(pid=>kiloHasFour(hands[pid]));
   return {...state,hands,selections:{},selectorIndex:0,phase:four?'slap':'select',notice:four?'QUATRE CARTES IDENTIQUES ! Tout le monde tape sur le tas.':'Échange terminé : chaque joueur possède toujours quatre cartes. Recommencez.'};
 }
-export function kiloPenalty(state:KiloState,loserId:string,premature=false):KiloState {
+export function kiloPenalty(
+  state:KiloState, loserId:string, premature=false,
+  expectedRound?:number, expectedPhase?:KiloState["phase"]
+):KiloState {
+  // Empêcher les anciens boutons de pénalité (double tape / transition) de
+  // sanctionner un autre pli ou une phase ultérieure.
+  if(expectedRound !== undefined && expectedRound !== state.rounds.length) return state;
+  if(expectedPhase !== undefined && expectedPhase !== state.phase) return state;
   // Une tape prématurée est sanctionnée même avant la formation d'un carré.
   // Aucune carte en cours de sélection ne doit être échangée dans ce cas.
   if((premature ? state.phase!=='select' : state.phase!=='slap') || !state.playerIds.includes(loserId)) return state;
   const card=state.pile[0];
-  if(!card) return {...state,phase:'finished',notice:'Le tas de kilos est vide : partie terminée.'};
+  if(!card) {
+    const min = Math.min(...state.playerIds.map(id=>state.kilos[id]));
+    const leaders = state.playerIds.filter(id=>state.kilos[id]===min);
+    return {...state,phase:'finished',winnerId:leaders.length===1?leaders[0]:null,
+      notice:'Le tas de kilos est vide : partie terminée.'};
+  }
   const flushed=card.value===7;
   const before=state.kilos[loserId];
   const kilos={...state.kilos,[loserId]:flushed?0:before+kiloCardPenalty(card.value)};

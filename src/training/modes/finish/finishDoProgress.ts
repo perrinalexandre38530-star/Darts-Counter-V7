@@ -165,3 +165,95 @@ export function getFinishDoPlanStatus(progress: FinishDoProgress, lessonValidate
   const checkouts = progress.checkoutByDouble?.[plan.focus] || 0;
   return { plan, placementComplete: lessonValidated, precisionComplete, checkoutComplete: checkouts > 0, attempts, hits, checkouts, targetHits };
 }
+
+
+/** FINISH DO guided cycles. Independent of match history and of the legacy V1 totals. */
+export type FinishDoCycle = {
+  id: string;
+  focus: string;
+  tier: FinishDoTrainingPlan["tier"];
+  startedAt: number;
+  baselineAttempts: number;
+  baselineHits: number;
+  baselineCheckouts: number;
+  goalAttempts: number;
+  goalHits: number;
+  completedAt?: number;
+};
+export type FinishDoCycleJournal = { version: 1; active: FinishDoCycle; completed: FinishDoCycle[] };
+const CYCLE_PREFIX = "mss.training.finish-do.cycles.v1:";
+export const finishDoCycleKey = (profileId?: string | null) => CYCLE_PREFIX + encodeURIComponent(profileId || "guest");
+
+export function createFinishDoCycle(progress: FinishDoProgress, startedAt = Date.now()): FinishDoCycle {
+  const plan = buildFinishDoTrainingPlan(progress);
+  const row = progress.aims[plan.focus];
+  const goalAttempts = plan.tier === "discovery" ? 3 : 10;
+  const goalHits = plan.tier === "discovery" ? 0 : plan.tier === "foundation" ? 3 : plan.tier === "consistency" ? 6 : 7;
+  return {
+    id: `${startedAt}-${plan.focus}`,
+    focus: plan.focus,
+    tier: plan.tier,
+    startedAt,
+    baselineAttempts: row?.attempts || 0,
+    baselineHits: row?.hits || 0,
+    baselineCheckouts: progress.checkoutByDouble?.[plan.focus] || 0,
+    goalAttempts,
+    goalHits,
+  };
+}
+function validCycle(value: any): value is FinishDoCycle {
+  return !!value && validAim(String(value.focus || "")) && Number.isFinite(value.startedAt) && value.startedAt > 0 &&
+    ["discovery", "foundation", "consistency", "mastery"].includes(value.tier) &&
+    ["baselineAttempts", "baselineHits", "baselineCheckouts", "goalAttempts", "goalHits"].every(key =>
+      Number.isSafeInteger(value[key]) && value[key] >= 0);
+}
+export function loadFinishDoCycleJournal(profileId: string | null | undefined, progress: FinishDoProgress): FinishDoCycleJournal {
+  try {
+    const stored = JSON.parse(localStorage.getItem(finishDoCycleKey(profileId)) || "null");
+    if (stored?.version === 1 && validCycle(stored.active)) return {
+      version: 1,
+      active: stored.active,
+      completed: Array.isArray(stored.completed) ? stored.completed.filter(validCycle).slice(-30) : [],
+    };
+  } catch { /* local storage may be disabled */ }
+  // No retroactive validation of older sessions: the cycle starts at current counters.
+  const fresh: FinishDoCycleJournal = { version: 1, active: createFinishDoCycle(progress), completed: [] };
+  try { localStorage.setItem(finishDoCycleKey(profileId), JSON.stringify(fresh)); } catch {}
+  return fresh;
+}
+export function evaluateFinishDoCycle(
+  cycle: FinishDoCycle,
+  progress: FinishDoProgress,
+  lesson?: { latest?: number; updatedAt?: number } | null,
+) {
+  const row = progress.aims[cycle.focus];
+  const attempts = Math.max(0, (row?.attempts || 0) - cycle.baselineAttempts);
+  const hits = Math.max(0, (row?.hits || 0) - cycle.baselineHits);
+  const checkouts = Math.max(0, (progress.checkoutByDouble?.[cycle.focus] || 0) - cycle.baselineCheckouts);
+  const placementComplete = !!lesson && (lesson.updatedAt || 0) > cycle.startedAt && (lesson.latest || 0) >= 80;
+  const precisionComplete = attempts >= cycle.goalAttempts &&
+    (cycle.goalHits === 0 || hits / attempts >= cycle.goalHits / cycle.goalAttempts);
+  const checkoutComplete = checkouts >= 1;
+  return { attempts, hits, checkouts, placementComplete, precisionComplete, checkoutComplete,
+    complete: placementComplete && precisionComplete && checkoutComplete };
+}
+/** Explicit promotion: only a fully verified cycle can be archived and replaced. */
+export function advanceFinishDoCycle(
+  profileId: string | null | undefined,
+  progress: FinishDoProgress,
+  lesson?: { latest?: number; updatedAt?: number } | null,
+): FinishDoCycleJournal {
+  const journal = loadFinishDoCycleJournal(profileId, progress);
+  if (!evaluateFinishDoCycle(journal.active, progress, lesson).complete) return journal;
+  const now = Date.now();
+  const next: FinishDoCycleJournal = {
+    version: 1,
+    active: createFinishDoCycle(progress, now + 1),
+    completed: [...journal.completed, { ...journal.active, completedAt: now }].slice(-30),
+  };
+  try {
+    localStorage.setItem(finishDoCycleKey(profileId), JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent("mss-finish-do-cycle", { detail: { profileId: profileId || "guest" } }));
+  } catch {}
+  return next;
+}

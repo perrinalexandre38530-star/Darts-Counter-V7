@@ -24,10 +24,11 @@ export type ViewerRealtimeConnection = {
 };
 
 function wsBase() {
-  return String(DEFAULT_VIEWER_API_URL || "")
-    .replace(/^https:/i, "wss:")
-    .replace(/^http:/i, "ws:")
-    .replace(/\/+$/, "");
+  // HTTP and WebSocket must point to the same Viewer backend. The TV build
+  // may override the Worker URL; previously the socket silently ignored it.
+  const env = (import.meta as any)?.env || {};
+  const base = String(env.VITE_VIEWER_API_URL || env.VITE_ONLINE_API_URL || DEFAULT_VIEWER_API_URL || "");
+  return base.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:").replace(/\/+$/, "");
 }
 
 export function viewerRealtimeUrl(sessionId: string) {
@@ -43,6 +44,8 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
   let reconnectTimer: number | null = null;
   let heartbeatTimer: number | null = null;
   let reconnectAttempt = 0;
+  let joined = false;
+  let lastPongAt = 0;
   const queue: string[] = [];
 
   const status = (next: ViewerRealtimeStatus) => {
@@ -51,7 +54,7 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
 
   const rawSend = (payload: any) => {
     const text = JSON.stringify(payload);
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WebSocket.OPEN && joined) {
       try {
         ws.send(text);
         return true;
@@ -66,7 +69,7 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
   };
 
   const flushQueue = () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !joined) return;
     while (queue.length) {
       const text = queue.shift();
       if (!text) continue;
@@ -87,6 +90,11 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
     if (heartbeatTimer != null) window.clearInterval(heartbeatTimer);
     heartbeatTimer = window.setInterval(() => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      // A socket can remain OPEN while the TV/phone lost its network route.
+      if (lastPongAt && Date.now() - lastPongAt > 50000) {
+        try { ws.close(4000, "viewer_heartbeat_timeout"); } catch {}
+        return;
+      }
       try { ws.send(JSON.stringify({ kind: "ping", at: Date.now() })); } catch {}
     }, 18000);
   };
@@ -102,9 +110,10 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
       return;
     }
 
+    const currentSocket = ws;
     ws.addEventListener("open", () => {
-      reconnectAttempt = 0;
-      status("connected");
+      if (closed || ws !== currentSocket) return;
+      joined = false;
       try {
         ws?.send(JSON.stringify({
           kind: "join",
@@ -114,14 +123,30 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
           playerId: role === "host" ? "phone" : "samsung-tv",
         }));
       } catch {}
-      flushQueue();
-      startHeartbeat();
+      // Wait for the server's join acknowledgement before claiming connected.
     });
 
     ws.addEventListener("message", (event) => {
+      if (closed || ws !== currentSocket) return;
       let message: any = null;
       try { message = JSON.parse(String(event.data || "")); } catch { return; }
       if (!message || typeof message !== "object") return;
+      if (message.kind === "welcome") return;
+      if (message.kind === "pong") { lastPongAt = Date.now(); return; }
+      if (message.kind === "info" && !joined) {
+        joined = true;
+        reconnectAttempt = 0;
+        lastPongAt = Date.now();
+        status("connected");
+        flushQueue();
+        startHeartbeat();
+        return;
+      }
+      if (message.kind === "error") {
+        status("error");
+        try { currentSocket?.close(4001, "viewer_server_error"); } catch {}
+        return;
+      }
       if (message.kind === "command") {
         try { options.onCommand?.(message.data); } catch {}
       } else if (message.kind === "snapshot") {
@@ -132,6 +157,9 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
     });
 
     ws.addEventListener("close", () => {
+      if (ws !== currentSocket) return;
+      joined = false;
+      lastPongAt = 0;
       if (heartbeatTimer != null) window.clearInterval(heartbeatTimer);
       heartbeatTimer = null;
       if (closed) return;
@@ -152,7 +180,7 @@ export function createViewerRealtimeConnection(options: Options): ViewerRealtime
     sendCommand: (data) => rawSend({ kind: "command", data }),
     sendSnapshot: (snapshot) => rawSend({ kind: "snapshot", data: snapshot }),
     sendLifecycle: (data) => rawSend({ kind: "lifecycle", data }),
-    isOpen: () => !!ws && ws.readyState === WebSocket.OPEN,
+    isOpen: () => !!ws && ws.readyState === WebSocket.OPEN && joined,
     close: () => {
       closed = true;
       if (reconnectTimer != null) window.clearTimeout(reconnectTimer);

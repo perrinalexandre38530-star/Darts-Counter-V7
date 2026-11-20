@@ -967,7 +967,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     background: theme.primary + "1a",
                   }}
                 >
-                  {t("common.round", "Round")} {roundIndex + 1}/{TARGETS.length}
+                  Voir l’ordre ↗
                 </span>
               )}
               </div>
@@ -1008,22 +1008,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 ))}
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 999,
-                    border: `1px solid ${theme.borderSoft}`,
-                    background: "rgba(0,0,0,0.22)",
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 1100,
-                  }}
-                >
-                  ↗
-                </div>
-              </div>
+
             </div>
           </div>
 

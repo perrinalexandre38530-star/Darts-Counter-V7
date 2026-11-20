@@ -19,3 +19,8 @@
 .mss-finish-week-plan-step-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .mss-finish-week-plan-step-head small{font-size:11px;color:#9ec2d0}.mss-finish-week-plan-step-head small.is-done{color:#8ee5b9}
 .mss-finish-week-plan-step button{margin-top:3px;justify-self:start;padding:8px 10px;font-size:11px}
+
+/* Wave 16 — cycle milestones remain in the collapsible programme. */
+.mss-finish-next-cycle{width:100%;background:rgba(23,125,89,.22)!important;border-color:rgba(119,239,177,.55)!important;text-align:center;font-size:12px!important;min-height:42px}
+.mss-finish-week-plan-step-head small{white-space:nowrap}
+@media(max-width:480px){.mss-finish-week-plan summary{font-size:11px}.mss-finish-week-plan-step{padding:9px}.mss-finish-week-plan-step button{max-width:100%;white-space:normal;text-align:left}}

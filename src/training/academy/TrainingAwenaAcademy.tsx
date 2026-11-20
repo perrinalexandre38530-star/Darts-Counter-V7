@@ -15,9 +15,13 @@ import {
   loadAcademyQuizStats, saveAcademyQuizRound, type AcademyQuizStats,
 } from "./academyStore";
 import "./trainingAwenaAcademy.css";
-import { loadFinishDoProgress, getFinishDoPriority, finishDoLessonForAim, buildFinishDoTrainingPlan } from "../modes/finish/finishDoProgress";
+import { loadFinishDoProgress, getFinishDoPriority, finishDoLessonForAim } from "../modes/finish/finishDoProgress";
 import FinishDoWeeklyPanel from "../modes/finish/FinishDoWeeklyPanel";
 import FinishDoTraining from "../modes/finish/FinishDoTraining";
+import {
+  academyCoachCompletedCount, academyCoachNextStep, completeAcademyCoachStep,
+  loadOrCreateAcademyCoachPlan, type AcademyCoachPlan,
+} from "./academyCoach";
 
 type AcademyScreen = "learn" | "practice" | "quiz" | "review" | "progress";
 type LessonPhase = "intro" | "quiz" | "practice" | "result";
@@ -40,9 +44,20 @@ const SCREEN_TABS: { id: AcademyScreen; label: string; icon: React.ComponentProp
 const FAMILY_ICONS: Record<AcademyLesson["family"], React.ComponentProps<typeof BottomNavIcon>["name"]> = {
   scoring: "stats", doubles: "tournaments", checkout: "games", precision: "profiles",
 };
+const COACH_ICONS: Record<"review" | "lesson" | "practice" | "quiz", React.ComponentProps<typeof BottomNavIcon>["name"]> = {
+  review: "agenda", lesson: "home", practice: "games", quiz: "messages",
+};
+function coachForProfile(profileId: string | null | undefined): AcademyCoachPlan {
+  const finishFocus = getFinishDoPriority(loadFinishDoProgress(profileId));
+  const finishLesson = finishFocus ? finishDoLessonForAim(finishFocus.label) : null;
+  return loadOrCreateAcademyCoachPlan(
+    profileId, CATALOGUE, loadAcademyProgress(profileId), loadAcademyReviews(profileId), finishLesson,
+  );
+}
 
 export default function TrainingAwenaAcademy({ participantId }: { participantId?: string | null }) {
   const [screen, setScreen] = React.useState<AcademyScreen>("learn");
+  const [finishPracticeTarget, setFinishPracticeTarget] = React.useState<string | null>(null);
   const [lesson, setLesson] = React.useState<AcademyLesson | null>(null);
   const [phase, setPhase] = React.useState<LessonPhase>("intro");
   const [quizIndex, setQuizIndex] = React.useState(0);
@@ -64,7 +79,9 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const [progressPage, setProgressPage] = React.useState(0);
   const [finishOnly, setFinishOnly] = React.useState(false);
   const [finishProgress, setFinishProgress] = React.useState(() => loadFinishDoProgress(participantId));
-  const [activeFinishPractice, setActiveFinishPractice] = React.useState<string | null>(null);
+  const [coachPlan, setCoachPlan] = React.useState<AcademyCoachPlan>(() => coachForProfile(participantId));
+  const [coachSelectedIndex, setCoachSelectedIndex] = React.useState(() => academyCoachNextStep(coachForProfile(participantId)));
+  const [coachActiveStep, setCoachActiveStep] = React.useState<number | null>(null);
   const [round, setRound] = React.useState<AcademyQuizItem[]>([]);
   const [roundIndex, setRoundIndex] = React.useState(0);
   const [roundAnswers, setRoundAnswers] = React.useState<number[]>([]);
@@ -77,13 +94,17 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   React.useEffect(() => {
     setProgress(loadAcademyProgress(participantId));
     setFinishProgress(loadFinishDoProgress(participantId));
-    setActiveFinishPractice(null);
     setQuizStats(loadAcademyQuizStats(participantId));
     setReviewJournal(loadAcademyReviews(participantId));
     setLesson(null);
+    setFinishPracticeTarget(null);
     setPhase("intro");
     setRound([]);
     setRoundFinished(false);
+    const freshCoach = coachForProfile(participantId);
+    setCoachPlan(freshCoach);
+    setCoachSelectedIndex(academyCoachNextStep(freshCoach));
+    setCoachActiveStep(null);
   }, [participantId]);
   React.useEffect(() => () => { voiceSeq.current += 1; void awenaVoice.stop(); }, []);
 
@@ -130,7 +151,25 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const progressPageCount = Math.max(1, Math.ceil(CATALOGUE.length / PROGRESS_PER_PAGE));
   const visibleProgress = CATALOGUE.slice(progressPage * PROGRESS_PER_PAGE, (progressPage + 1) * PROGRESS_PER_PAGE);
   const questionTotal = React.useMemo(() => CATALOGUE.reduce((total, item) => total + getAcademyQuestions(item).length, 0), []);
+  const coachDone = academyCoachCompletedCount(coachPlan);
+  const coachSelected = coachPlan.steps[coachSelectedIndex] || coachPlan.steps[0];
+  React.useEffect(() => {
+    // Refresh a new local Monday plan when the player returns to the academy.
+    const fresh = coachForProfile(participantId);
+    if (fresh.week !== coachPlan.week) {
+      setCoachPlan(fresh);
+      setCoachSelectedIndex(academyCoachNextStep(fresh));
+      setCoachActiveStep(null);
+    }
+  }, [participantId, screen, coachPlan.week]);
 
+  const markCoachCompleted = (index: number | null) => {
+    if (index === null || !coachPlan.steps[index]) return;
+    const fresh = completeAcademyCoachStep(participantId, coachPlan, index);
+    setCoachPlan(fresh);
+    setCoachSelectedIndex(academyCoachNextStep(fresh));
+    setCoachActiveStep(null);
+  };
 
   const openFinishCourse = (practice = false) => {
     void awenaVoice.stop(); voiceSeq.current += 1;
@@ -146,8 +185,9 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const noteAnswer = (questionId: string, isCorrect: boolean, origin: AcademyAnswerOrigin) => {
     setReviewJournal(saveAcademyAnswer(participantId, questionId, isCorrect, origin));
   };
-  const beginLesson = (next: AcademyLesson, skipTheory = false) => {
+  const beginLesson = (next: AcademyLesson, skipTheory = false, coachStep: number | null = null) => {
     void awenaVoice.stop(); voiceSeq.current += 1;
+    setCoachActiveStep(coachStep);
     const fresh = newAcademyRun(next.practice);
     runRef.current = fresh;
     setRun(fresh); setLesson(next); setQuizIndex(0); setQuizAnswers([]);
@@ -158,7 +198,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   };
   const closeLesson = () => {
     void awenaVoice.stop(); voiceSeq.current += 1;
-    setLesson(null); setSavedScore(null); setPhase("intro");
+    setLesson(null); setSavedScore(null); setPhase("intro"); setCoachActiveStep(null);
   };
   const submitLessonAnswer = () => {
     if (!activeQuestion || choice === null || checked) return;
@@ -195,16 +235,19 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
         practiceWon: next.won, darts: next.darts, busts: next.busts,
       }));
       setSavedScore(score); setPhase("result");
+      markCoachCompleted(coachActiveStep);
     }
   };
   const switchScreen = (next: AcademyScreen) => {
     void awenaVoice.stop(); voiceSeq.current += 1;
+    setCoachActiveStep(null);
     setScreen(next); setLesson(null); setPhase("intro");
     setRound([]); setRoundIndex(0); setRoundAnswers([]); setRoundChoice(null);
     setRoundChecked(false); setRoundFinished(false);
     setRoundMode(next === "review" ? "review" : "express");
   };
-  const newQuizRound = () => {
+  const startQuizRound = (coachStep: number | null = null) => {
+    setCoachActiveStep(coachStep);
     const items = makeAcademyQuizRound(CATALOGUE, 10, quizStats.rounds + 1);
     setRoundMode("express");
     setRound(items); setRoundIndex(0); setRoundAnswers([]);
@@ -212,12 +255,25 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     setScreen("quiz"); setLesson(null);
     if (items[0]) speak(`Quiz express MSS ! Dix questions pour entraîner tes réflexes. Première question. ${items[0].question}`);
   };
-  const newReviewRound = () => {
+  const newQuizRound = () => startQuizRound(null);
+  const startReviewRound = (coachStep: number | null = null) => {
+    setCoachActiveStep(coachStep);
     const items = makeAcademyReviewRound(CATALOGUE, reviewJournal, 10);
     setRoundMode("review"); setRound(items); setRoundIndex(0); setRoundAnswers([]);
     setRoundChoice(null); setRoundChecked(false); setRoundFinished(false);
     setScreen("review"); setLesson(null);
     if (items[0]) speak(`Révisions personnalisées. ${items.length} questions choisies à partir de tes erreurs. Première question : ${items[0].question}`);
+  };
+  const newReviewRound = () => startReviewRound(null);
+  const startCoachSession = (index: number) => {
+    const step = coachPlan.steps[index];
+    if (!step) return;
+    const target = step.lessonId ? CATALOGUE.find(item => item.id === step.lessonId) : null;
+    setCoachSelectedIndex(index);
+    if (step.action === "quiz") { startQuizRound(index); return; }
+    if (step.action === "review" && reviewInsights.due > 0) { startReviewRound(index); return; }
+    // If all revisions were resolved elsewhere, the original lesson is still useful.
+    if (target) beginLesson(target, step.action === "practice", index);
   };
   const verifyRoundAnswer = () => {
     const item = round[roundIndex];
@@ -233,6 +289,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
       const count = quizCorrectCount(round, roundAnswers);
       if (roundMode === "express") setQuizStats(saveAcademyQuizRound(participantId, count, round.length));
       setRoundFinished(true);
+      markCoachCompleted(coachActiveStep);
       speak(`${roundMode === "review" ? "Révision terminée" : "Quiz terminé"} ! Tu as ${count} bonnes réponses sur ${round.length}. ${roundMode === "review" ? "Les points à revoir ont été actualisés." : ""}`);
       return;
     }
@@ -288,9 +345,16 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   </>;
 
   const currentRoundQuestion = round[roundIndex];
-  if (activeFinishPractice) return <FinishDoTraining key={activeFinishPractice} participantId={participantId} initialTarget={activeFinishPractice} onExit={() => { setActiveFinishPractice(null); setFinishProgress(loadFinishDoProgress(participantId)); }} />;
-
-  return <section className="mssAwenaAcademy" aria-label="Académie Awena, leçons et quiz de fléchettes MSS">
+  return finishPracticeTarget ? <FinishDoTraining
+    key={`${participantId || "guest"}-${finishPracticeTarget}`}
+    participantId={participantId}
+    initialTarget={finishPracticeTarget}
+    onExit={() => {
+      setFinishPracticeTarget(null);
+      setFinishProgress(loadFinishDoProgress(participantId));
+      setScreen("progress");
+    }}
+  /> : <section className="mssAwenaAcademy" aria-label="Académie Awena, leçons et quiz de fléchettes MSS">
     <div className="mssAcademyHero">
       <img src="/awena/awena-bot-medallion.webp" alt="Awena, coach MSS" loading="lazy" />
       <div className="mssAcademyHeroText">
@@ -319,6 +383,35 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     </div>
 
     {!lesson && (screen === "learn" || screen === "practice") && <>
+      {screen === "learn" && <section className="mssAcademyCoach" aria-label="Programme personnel Awena">
+        <div className="mssAcademyCoachHeading">
+          <span className="mssAcademyCoachLogo" aria-hidden="true"><BottomNavIcon name="stats" size={21} /></span>
+          <div><small>AWENA · COACH PERSONNEL</small><strong>MON PROGRAMME DE LA SEMAINE</strong><span>3 séances courtes · parcours ajusté à ton profil</span></div>
+          <div className="mssAcademyCoachCount"><strong>{coachDone}/3</strong><small>RÉALISÉES</small></div>
+        </div>
+        <div className="mssAcademyCoachTrack" role="progressbar" aria-label="Avancement du programme hebdomadaire" aria-valuemin={0} aria-valuemax={3} aria-valuenow={coachDone}>
+          <span style={{ width: `${coachDone / 3 * 100}%` }} />
+        </div>
+        <div className="mssAcademyCoachSteps" role="group" aria-label="Choisir une séance de la semaine">
+          {coachPlan.steps.map((step, index) => <button key={step.id} type="button" onClick={() => setCoachSelectedIndex(index)}
+            className={`${index === coachSelectedIndex ? "active" : ""} ${step.completedAt !== null ? "done" : ""}`}
+            aria-label={`Séance ${index + 1} : ${step.title}${step.completedAt !== null ? ", réalisée" : ""}`} aria-pressed={index === coachSelectedIndex}>
+            <span aria-hidden="true"><BottomNavIcon name={COACH_ICONS[step.action]} size={18} /></span>
+            <span>SÉANCE {index + 1}</span><b aria-hidden="true">{step.completedAt !== null ? "✓" : index === coachSelectedIndex ? "•" : ""}</b>
+          </button>)}
+        </div>
+        <div className="mssAcademyCoachDetail">
+          <div><small>{coachSelected?.completedAt !== null ? "SÉANCE TERMINÉE" : `SÉANCE ${coachSelectedIndex + 1} · ${coachSelected?.minutes || 4} MIN ENV.`}</small>
+            <strong>{coachSelected?.title}</strong><p>{coachSelected?.detail}</p></div>
+          <div className="mssAcademyCoachActions">
+            <button type="button" className="voice" aria-label="Écouter le programme avec Awena" onClick={() => speak(`Cette semaine, je te propose trois séances adaptées à ton entraînement. Séance ${coachSelectedIndex + 1} : ${coachSelected?.title}. ${coachSelected?.detail}`)}>
+              <BottomNavIcon name="live" size={18} />
+            </button>
+            <button type="button" className="primary" onClick={() => startCoachSession(coachSelectedIndex)}>{coachSelected?.completedAt !== null ? "REFAIRE" : "LANCER"} ›</button>
+          </div>
+        </div>
+        {coachDone === 3 && <p className="mssAcademyCoachComplete">Programme terminé ! Les trois séances sont enregistrées pour cette semaine. Tu peux refaire un exercice ou continuer librement.</p>}
+      </section>}
       <div className="mssAcademyFinishSpotlight">
         <div className="mssAcademyFinishIcon"><BottomNavIcon name="games" size={22} /></div>
         <div><small>PARCOURS DOUBLE OUT</small><strong>FINISHS DO · COMBINAISONS & PLANS B</strong><span>Des sorties à mémoriser, des solutions après un raté et des quiz avec Awena.</span></div>
@@ -460,13 +553,15 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     </div>}
 
     {screen === "progress" && !lesson && <div className="mssAcademyProgress">
-      <FinishDoWeeklyPanel progress={finishProgress}
-        lessonValidated={(progress[finishDoLessonForAim(buildFinishDoTrainingPlan(finishProgress).focus)]?.best || 0) >= 80}
-        onReview={(aim) => {
-          const selected = CATALOGUE.find(item => item.id === finishDoLessonForAim(aim));
-          if (selected) beginLesson(selected);
-        }}
-        onPractice={(aim) => setActiveFinishPractice(aim)} />
+      <button type="button" className="mssAcademyCoachProgress" onClick={() => { switchScreen("learn"); setCoachSelectedIndex(academyCoachNextStep(coachPlan)); }}>
+        <span className="mssAcademyCoachLogo" aria-hidden="true"><BottomNavIcon name="stats" size={20} /></span>
+        <span><small>MON PROGRAMME AWENA</small><strong>{coachDone} / 3 séances réalisées cette semaine</strong></span>
+        <span aria-hidden="true">›</span>
+      </button>
+      <FinishDoWeeklyPanel progress={finishProgress} academyProgress={progress} participantId={participantId} onPractice={(target) => setFinishPracticeTarget(target)} onReview={(aim) => {
+        const selected = CATALOGUE.find(item => item.id === finishDoLessonForAim(aim));
+        if (selected) beginLesson(selected);
+      }} />
       <div className="mssAcademyStats"><div><small>LEÇONS EXPLORÉES</small><strong>{attempted}/{CATALOGUE.length}</strong></div><div><small>MAÎTRISÉES (80+)</small><strong>{mastered}</strong></div><div><small>EXERCICES</small><strong>{attempts}</strong></div></div>
       <div className="mssAcademyStats mssAcademyQuizStats"><div><small>QUIZ EXPRESS</small><strong>{quizStats.rounds}</strong></div><div><small>MEILLEUR QUIZ</small><strong>{quizStats.best}%</strong></div><div><small>RÉPONSES JUSTES</small><strong>{quizStats.correct}/{quizStats.questions}</strong></div></div>
       <button type="button" className="mssAcademyReviewFocus" onClick={() => switchScreen("review")}>

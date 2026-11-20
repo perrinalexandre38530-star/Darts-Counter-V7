@@ -780,3 +780,61 @@
   .mssAcademyFinishSpotlight button{padding:8px;font-size:10px}
   .mssAcademyFinishSpotlight span{display:none}
 }
+
+/* V231 Coach personnel — one compact weekly card; BottomNav line icons only. */
+.mssAcademyCoach{
+  margin:10px 0 12px;
+  padding:clamp(11px,1.5vw,16px);
+  border:1px solid rgba(79,215,238,.3);
+  border-radius:16px;
+  background:linear-gradient(135deg,rgba(11,37,52,.94),rgba(15,20,36,.97));
+  color:#effaff;
+}
+.mssAcademyCoachHeading{display:flex;align-items:center;gap:11px;min-width:0}
+.mssAcademyCoachLogo{display:grid;place-items:center;flex:0 0 37px;width:37px;height:37px;border-radius:11px;color:#78e8fc;background:rgba(39,220,255,.1);border:1px solid rgba(39,220,255,.18)}
+.mssAcademyCoachHeading>div:nth-child(2){flex:1;min-width:0}
+.mssAcademyCoachHeading small,.mssAcademyCoachDetail small,.mssAcademyCoachProgress small{display:block;color:#80e1f6;font-size:9px;letter-spacing:.5px;font-weight:850}
+.mssAcademyCoachHeading strong{display:block;font-size:clamp(12px,1.5vw,15px);font-weight:950;line-height:1.3;margin:2px 0}
+.mssAcademyCoachHeading>div:nth-child(2)>span{display:block;font-size:10px;color:#a9c4d2}
+.mssAcademyCoachCount{text-align:right;white-space:nowrap}
+.mssAcademyCoachCount strong{display:block;font-size:20px;line-height:1;font-weight:950;color:#8af2c9}
+.mssAcademyCoachCount small{font-size:8px;margin-top:4px}
+.mssAcademyCoachTrack{height:4px;background:rgba(255,255,255,.1);border-radius:99px;margin:11px 0;overflow:hidden}
+.mssAcademyCoachTrack>span{height:100%;display:block;background:linear-gradient(90deg,#24c8e9,#83f2c5);transition:width .2s ease}
+.mssAcademyCoachSteps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.mssAcademyCoachSteps button{display:flex;justify-content:center;align-items:center;gap:5px;min-width:0;min-height:35px;padding:6px 7px;color:#b5cfdd;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.09);border-radius:10px;font-size:10px;font-weight:850}
+.mssAcademyCoachSteps button.active{color:#eafdff;background:rgba(39,220,255,.12);border-color:rgba(39,220,255,.45)}
+.mssAcademyCoachSteps button.done{border-color:rgba(111,239,178,.32)}
+.mssAcademyCoachSteps button.done b{color:#83f2c5}
+.mssAcademyCoachSteps button>span:first-child{display:grid;place-items:center;flex:0 0 auto}
+.mssAcademyCoachSteps b{display:inline-block;min-width:9px;color:#67e7fb;font-size:12px}
+.mssAcademyCoachDetail{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 1px 0;min-width:0}
+.mssAcademyCoachDetail>div:first-child{flex:1;min-width:0}
+.mssAcademyCoachDetail strong{display:block;margin:3px 0;font-size:13px;line-height:1.3}
+.mssAcademyCoachDetail p{margin:0;color:#a9c4d2;font-size:11px;line-height:1.4}
+.mssAcademyCoachActions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.mssAcademyCoachActions button{min-height:36px;padding:8px 10px;border-radius:10px;font-size:10px;font-weight:900;border:1px solid rgba(95,221,255,.24);color:#daedfa;background:rgba(255,255,255,.04)}
+.mssAcademyCoachActions button.primary{border:0;color:#041924;background:linear-gradient(180deg,#36def5,#16a9d5)}
+.mssAcademyCoachActions button.voice{width:36px;display:grid;place-items:center;padding:7px}
+.mssAcademyCoachComplete{margin:11px 0 0;color:#8df4c4;font-size:11px;line-height:1.4}
+.mssAcademyCoachProgress{display:flex;align-items:center;width:100%;gap:11px;text-align:left;margin:0 0 11px;padding:11px;border:1px solid rgba(39,220,255,.22);border-radius:13px;background:rgba(39,220,255,.05);color:#f0fcff}
+.mssAcademyCoachProgress>span:nth-child(2){flex:1;min-width:0}
+.mssAcademyCoachProgress strong{display:block;font-size:12px;margin-top:4px}
+.mssAcademyCoachProgress>span:last-child{font-size:23px;color:#66e3f7}
+@media(max-width:540px){
+  .mssAcademyCoachHeading{gap:8px}
+  .mssAcademyCoachLogo{width:31px;height:31px;flex-basis:31px}
+  .mssAcademyCoachHeading>div:nth-child(2)>span{display:none}
+  .mssAcademyCoachHeading strong{font-size:12px}
+  .mssAcademyCoachSteps button{gap:3px;padding:6px 3px;font-size:9px}
+  .mssAcademyCoachSteps button>span:first-child svg{width:15px;height:15px}
+  .mssAcademyCoachDetail{align-items:flex-start;gap:8px}
+  .mssAcademyCoachDetail strong{font-size:12px}
+  .mssAcademyCoachDetail p{font-size:10px}
+  .mssAcademyCoachActions button.primary{font-size:9px;padding:8px}
+}
+@media(max-width:360px){
+  .mssAcademyCoachDetail{flex-wrap:wrap}
+  .mssAcademyCoachActions{width:100%;justify-content:flex-end}
+}
+@media(prefers-reduced-motion:reduce){.mssAcademyCoachTrack>span{transition:none}}

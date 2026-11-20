@@ -415,3 +415,46 @@
 .mex-fiesta-play .mex-combo-notice{display:flex;justify-content:center;align-items:center;gap:8px;margin:4px 0;padding:3px 8px;border:1px solid #e3ba6b99;background:#5d401d88;color:#ffe2a3;border-radius:9px;font-size:10px;min-height:22px}
 .mex-fiesta-play .mex-combo-notice strong{font-size:11px;letter-spacing:.5px}
 .mex-fiesta-play .mex-combo-notice span{font-weight:900}
+
+/* V236 — MARIACHI : keypad accessible on small phones and three-column
+   landscape. The parent scrolls; VALIDATE / UNDO remain visible at the end
+   of the scroll region. Only the Mexicain is affected. */
+.mex-fiesta-play[data-wave61-landscape="three-zone"] [data-wave61-zone="input"] > .mex-target-input {
+  flex:0 0 auto;
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+.mex-fiesta-play[data-wave61-landscape="three-zone"] [data-wave61-zone="input"] {
+  scrollbar-gutter:stable;
+}
+.mex-fiesta-play[data-wave61-landscape="three-zone"] .mex-mariachi-actions {
+  position:sticky;
+  bottom:0;
+  z-index:3;
+  padding:5px 1px calc(5px + env(safe-area-inset-bottom))!important;
+  border-top:1px solid #f2c57a55;
+  border-radius:0 0 10px 10px;
+  background:#10141cf5;
+  box-shadow:0 -6px 12px #0009;
+}
+/* Portrait: two balanced rows provide wider 44px+ targets, avoiding tiny
+   five-column labels BULL50/ANNULER/VALIDER on 320px devices. */
+@media (orientation:portrait) and (max-width:540px) {
+  .mex-fiesta-portrait .mex-mariachi-actions {
+    grid-template-columns:repeat(6,minmax(0,1fr));
+    gap:6px;
+  }
+  .mex-fiesta-portrait .mex-mariachi-actions > button:nth-child(-n+3) {grid-column:span 2}
+  .mex-fiesta-portrait .mex-mariachi-actions > button:nth-child(n+4) {grid-column:span 3}
+  .mex-fiesta-portrait .mex-mariachi-actions > button {
+    min-height:44px!important;
+    font-size:clamp(10px,3vw,12px);
+  }
+}
+@media (orientation:landscape) and (max-height:480px) {
+  .mex-fiesta-play[data-wave61-landscape="three-zone"] .mex-mariachi-keytop {margin:1px 0 3px;gap:4px}
+  .mex-fiesta-play[data-wave61-landscape="three-zone"] .mex-mariachi-numgrid {gap:3px;margin-bottom:3px}
+  .mex-fiesta-play[data-wave61-landscape="three-zone"] .mex-mariachi-numgrid > button {min-height:28px;font-size:10px}
+  .mex-fiesta-play[data-wave61-landscape="three-zone"] .mex-mariachi-actions > button {min-height:34px!important;font-size:clamp(8px,1.2vw,11px)}
+}
