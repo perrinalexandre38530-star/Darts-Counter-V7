@@ -525,3 +525,46 @@ html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="
 html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="native"] {
   overflow-y: auto !important;
 }
+
+/* MSS TV V241: full-width gameplay, no sidebar navigation while playing.
+   The phone menu layout remains unchanged. */
+html[data-mss-samsung-tv-shared-app="1"][data-msc-gameplay="1"] {
+  --msc-landscape-rail-width: 0px !important;
+  --msc-bottom-nav-space: 0px !important;
+}
+html[data-mss-samsung-tv-shared-app="1"][data-msc-gameplay="1"] :is(
+  .bottom-nav, [data-bottom-nav], nav.bottom-nav
+) {
+  display: none !important;
+}
+html[data-mss-samsung-tv-shared-app="1"][data-msc-gameplay="1"] .dc-themed-route[data-msc-game-screen="play"] {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"][data-msc-gameplay="1"] .dc-themed-route[data-msc-game-screen="play"] :is(
+  [data-mss-auto-play-root="1"], [data-mss-auto-play-zone-host="1"]
+) {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+html[data-mss-samsung-tv-shared-app="1"][data-msc-gameplay="1"] .mss-tv-shared-app-hint {
+  display: none !important;
+}
+
+/* Restore the native phone GAMES layout on the TV. The original landscape
+   two-column shell remains; prevent TV-only overrides from clipping the
+   catalogue and hub action cards in the secondary pane. */
+html[data-mss-samsung-tv-shared-app="1"] .msc-games-secondary {
+  display: block !important;
+  visibility: visible !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+  opacity: 1 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .msc-games-secondary > div {
+  visibility: visible !important;
+}

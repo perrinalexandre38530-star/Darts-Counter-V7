@@ -8162,7 +8162,7 @@ case "babyfoot_team_edit":
   // P’TIT 1 fait exception : son écran de jeu exploite toute la largeur disponible en paysage,
   // comme en portrait, afin de préserver le couple panneau joueur + keypad sans débordement.
   const forceFullscreenPlay = tab === "ptit_hun_play" || (tab === "bss_king_play" && isLandscapeViewport);
-  const showBottomNav = tab !== "live" && appChromeAllowed && !forceFullscreenPlay && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
+  const showBottomNav = tab !== "live" && appChromeAllowed && !forceFullscreenPlay && !(isSamsungTvNativeApp && isGamePlayRoute) && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
 
 
   return (

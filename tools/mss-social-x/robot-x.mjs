@@ -58,28 +58,76 @@ async function getLoggedInHandle(page) {
   return href;
 }
 
+// Cette étape gère le seul point humain possible : une vérification Google/X.
+// La session TinyFish (cloud) ne peut pas être lue depuis un Chrome Playwright local.
+// Ce navigateur dédié conserve sa session de lancement en lancement.
 async function ensureLoggedIn(page) {
-  info('Ouverture du compte X MSS dans le navigateur du robot.');
+  info('ETAPE 1/3 : contrôle de la connexion X du navigateur dédié.');
   await page.goto(PROFILE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await delay(2500);
+  await delay(1600);
   let logged = await getLoggedInHandle(page);
   if (logged) {
     assertCorrectAccount(logged);
+    info('Compte @multisportsscor déjà connecté : aucune reconnexion nécessaire.');
     return;
   }
-  info('Une connexion X est nécessaire UNE SEULE FOIS dans cette fenêtre. Connecte le compte MSS, puis le robot reprendra automatiquement.');
-  await page.goto('https://x.com/i/flow/login', { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-  const until = Date.now() + 20 * 60 * 1000;
+
+  info('Première utilisation : Chrome local n\'hérite PAS de la connexion TinyFish dans le cloud.');
+  info('Le robot va ouvrir la connexion Google de X. Il faut uniquement confirmer la connexion MSS si Google le demande.');
+  info('NE PAS cliquer sur « Suivre » et NE PAS créer de nouveau compte : le compte X MSS existe déjà.');
+  await page.goto('https://x.com/i/flow/login', {
+    waitUntil: 'domcontentloaded', timeout: 60000
+  }).catch(() => {});
+  await delay(1800);
+
+  // Cliquer une seule fois sur l'authentification Google si le bouton est présent.
+  // Si X modifie son interface, l'utilisateur peut le cliquer dans le Chrome ouvert.
+  const googleLogin = page.getByRole('button', {
+    name: /continuer avec google|se connecter avec google|sign in with google|continue with google/i
+  }).first();
+  const googleByText = page.getByText(
+    /continuer avec google|se connecter avec google|sign in with google|continue with google/i
+  ).first();
+  try {
+    if (await googleLogin.isVisible({ timeout: 4500 }).catch(() => false)) {
+      await googleLogin.click({ timeout: 5000 });
+      info('Le robot a choisi « Continuer avec Google ». Valider le compte Google MSS si demandé.');
+    } else if (await googleByText.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await googleByText.click({ timeout: 5000 });
+      info('Le robot a choisi la connexion Google. Valider le compte MSS si demandé.');
+    } else {
+      info('Bouton Google non trouvé automatiquement. Dans Chrome, cliquer une fois sur « Continuer avec Google ».');
+    }
+  } catch (err) {
+    info('Connexion Google : clic non disponible (' + err.message.slice(0,100) + '). Le navigateur reste ouvert.');
+  }
+
+  // Sur certains flux OAuth, X réutilise la page initiale et Google ouvre un onglet.
+  // Nous surveillons la page X principale ; les onglets supplémentaires restent accessibles.
+  info('Le robot vérifie automatiquement la connexion toutes les 2 secondes, pendant 15 minutes au maximum.');
+  const until = Date.now() + 15 * 60 * 1000;
+  let lastReminder = 0;
   while (Date.now() < until) {
-    logged = await getLoggedInHandle(page).catch(() => null);
-    if (logged) {
-      assertCorrectAccount(logged);
-      info('Compte X MSS connecté et vérifié.');
-      return;
+    try {
+      if (!page.isClosed()) {
+        logged = await getLoggedInHandle(page);
+        if (logged) {
+          assertCorrectAccount(logged);
+          info('Compte X OFFICIEL vérifié : @multisportsscor. Le robot reprend le téléversement.');
+          return;
+        }
+      }
+    } catch (err) {
+      // Si la session est un AUTRE compte X, arrêter immédiatement, même si la page est instable.
+      if (/SÉCURITÉ/.test(err.message)) throw err;
+    }
+    if (Date.now() - lastReminder > 60000) {
+      info('En attente d\'une connexion X MSS. Terminer uniquement la validation Google dans le Chrome du robot.');
+      lastReminder = Date.now();
     }
     await delay(2000);
   }
-  throw new Error('Connexion X non confirmée après 20 minutes. Aucun fichier téléversé.');
+  throw new Error('Connexion X MSS non constatée. Aucun logo ni couverture envoyé. Relancer le CMD après connexion.');
 }
 
 async function snapshotMedia(page) {

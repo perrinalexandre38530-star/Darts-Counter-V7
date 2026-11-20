@@ -79,6 +79,9 @@ export function isViewerRemoteTabAllowed(tab: string) {
   if (REMOTE_ALLOWED_TABS.has(value)) return true;
   // Une TV connectée peut ouvrir les véritables écrans PLAY de l'application.
   if (isViewerGameplayRoute(value)) return true;
+  // Every game exposes its own play/config routes. Permit remote-control
+  // navigation to these published game routes (not arbitrary account routes).
+  if (/^[a-z][a-z0-9_.-]{0,95}_(?:config|play)(?:_v[0-9]+)?$/.test(value)) return true;
 
   // Les écrans TV peuvent ouvrir les configurations de jeu déjà existantes
   // sans transformer la télécommande en routeur arbitraire. On limite aux
@@ -132,6 +135,11 @@ export function sanitizeViewerRouteParams(params: any) {
   if (!params || typeof params !== "object") return null;
   const allowedKeys = [
     "screenTab",
+    // GAMES is a three-level menu: hub / favorites / full catalogue.
+    // Losing gamesView was forcing the TV back onto the empty-looking hub.
+    "gamesView",
+    "gamesCategory",
+    "gamesSubCategory",
     "mode",
     "sport",
     "organizationId",

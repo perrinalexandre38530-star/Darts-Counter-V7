@@ -1623,6 +1623,10 @@ export default function SamsungTvApp() {
   const sharedAppBootRef = React.useRef<SamsungTvNativeAppBoot | null>(null);
   // Une mise à jour du score ne doit jamais réinitialiser AppRoot et sa partie.
   const lastMirroredRouteRef = React.useRef("");
+  // The phone is authoritative for leaving gameplay. A stale snapshot can survive
+  // several HTTP polls after exit and must never reopen the previous match.
+  const phoneLeftGameRef = React.useRef(false);
+
   const applyMirroredBoot = React.useCallback((boot: SamsungTvNativeAppBoot) => {
     const route = JSON.stringify({
       sessionId: boot.sessionId, tab: boot.tab, sportId: boot.sportId,
@@ -1681,6 +1685,9 @@ export default function SamsungTvApp() {
     saveLastCode(clean);
     setSessionId(clean);
     setSnapshot(null);
+    snapshotRef.current = null;
+    phoneLeftGameRef.current = false;
+    lastMirroredRouteRef.current = "";
     setPhoneNavigation(null);
     phoneNavigationRef.current = null;
     setScreen("hub");
@@ -1724,7 +1731,7 @@ export default function SamsungTvApp() {
       snapshotRef.current = next;
       setSnapshot(next);
       const hasGame = Array.isArray(next.players) && next.players.length > 0 && next.phase !== "lobby";
-      if (hasGame && autoFollowGameRef.current) {
+      if (hasGame && autoFollowGameRef.current && !phoneLeftGameRef.current) {
         const currentState = tvStateRef.current;
         const currentNav = phoneNavigationRef.current;
         const route = currentNav?.gameplay ? currentNav.tab : sharedRouteForSnapshot(next);
@@ -1835,6 +1842,13 @@ export default function SamsungTvApp() {
         };
         phoneNavigationRef.current = nav;
         setPhoneNavigation(nav);
+        // A non-game route is an explicit EXIT from the phone. Invalidate the
+        // previous match snapshot so that polling cannot bounce back into play.
+        phoneLeftGameRef.current = !nav.gameplay;
+        if (!nav.gameplay) {
+          snapshotRef.current = null;
+          setSnapshot(null);
+        }
 
         // Companion V8 : lorsque la vraie application partagée est ouverte,
         // toute navigation du téléphone remonte vers la même route/composant TV.
@@ -2477,7 +2491,18 @@ export default function SamsungTvApp() {
           boot={sharedAppBoot}
           snapshot={snapshot}
           onNavigate={(tab, params) => {
-            if (sessionId) sendNavigate(tab, params);
+            // Avoid bouncing an echoed phone navigation back through WebSocket.
+            // A local remote-control action is forwarded only if it changes route
+            // or meaningful route params relative to the phone's latest state.
+            if (!sessionId) return;
+            const nav = phoneNavigationRef.current;
+            const clean = (value: any) => {
+              if (!value || typeof value !== "object") return {};
+              const { source, tvNative, ...rest } = value;
+              return rest;
+            };
+            if (nav?.tab === tab && JSON.stringify(clean(nav.params)) === JSON.stringify(clean(params))) return;
+            sendNavigate(tab, params);
           }}
           onExit={() => {
             const localStandalone = sharedAppBoot.storeMode === "local";

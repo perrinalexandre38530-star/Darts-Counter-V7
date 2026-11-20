@@ -35,8 +35,16 @@ if not exist "runtime\node_modules\playwright\index.mjs" (
   )
 )
 echo.
-echo Une fenetre Chrome dediee peut demander UNE connexion au compte X officiel.
-echo Le robot choisira lui-meme le logo et la couverture deja presents dans assets\.
+echo ETAPE 1 : le robot ouvre son navigateur Chrome securise.
+echo ETAPE 2 : si necessaire, il tente de cliquer "Continuer avec Google".
+echo           Ne choisis pas "S'inscrire" : le compte X MSS existe deja !
+echo           Valide simplement le compte Google MSS si demande.
+echo ETAPE 3 : le robot installe lui-meme le logo et la couverture.
+echo           NE PAS cliquer "Suivre" ni selectionner les images manuellement.
+echo           Le robot enregistre ensuite un rapport.
+echo.
+echo IMPORTANT : ce Chrome dedie ne partage pas les cookies TinyFish (cloud).
+echo Une seule connexion initiale peut etre necessaire, ensuite elle est conservee.
 echo.
 node robot-x.mjs
 if errorlevel 1 (

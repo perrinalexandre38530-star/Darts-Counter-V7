@@ -1,37 +1,32 @@
-# PATCH V7(239) — ROBOT SOCIAL X MSS — AUCUN PACKAGE.JSON FOURNI
+# CORRECTIF DU LANCEUR ROBOT X — 20 NOVEMBRE 2026
 
-**Base comparée : `Darts-Counter-V7(239).zip`.**
+Ce petit patch remplace **uniquement** `robot-x.mjs`, le lanceur `DEMARRER_ROBOT_X.cmd` et cette notice.
+Le `package.json` de MULTISPORTS SCORING n'est **pas** inclus ni modifié.
+Le dossier `assets` et ses deux images officielles installées précédemment restent inchangés.
 
-Ce ZIP contient **uniquement de nouveaux fichiers** dans `tools/mss-social-x/`.
-Il ne contient ni `package.json`, ni `pnpm-lock.yaml`, ni fichier de l'application remplacé.
+## Pourquoi X montrait la page « Se connecter » ?
 
-## Installation sans risque pour le projet
-1. Dans le projet V7(239) (sur PC), extraire le ZIP **à la racine du projet**, en conservant l'arborescence `tools/mss-social-x/`.
-2. Ne déplacer aucun fichier à la racine du projet. Ne pas remplacer `package.json` : il doit rester celui de l'application (230 lignes dans le ZIP V239).
-3. Pour exécuter le robot sur Windows, double-cliquer `tools/mss-social-x/DEMARRER_ROBOT_X.cmd`.
-4. La dépendance Playwright est installée **uniquement** dans `tools/mss-social-x/runtime/` lors du lancement, sans modifier le package ou le lockfile du projet. Cette installation requiert une connexion Internet.
-5. Une session Chrome dédiée est utilisée. Si X exige une authentification, elle doit être effectuée une fois dans la fenêtre du navigateur du robot. Le robot ne lit pas les mots de passe dans les fichiers.
+Le navigateur Chrome ouvert par le CMD est **indépendant** de la session TinyFish distante.
+Il ne peut pas réutiliser automatiquement la connexion X déjà créée dans TinyFish.
+Le robot ne peut donc pas modifier un profil tant qu'il n'est pas connecté à X localement.
 
-## Périmètre strict
-- Compte ciblé : https://x.com/multisportsscor (arrêt si un autre compte est identifié).
-- Avatar : `assets/MSS_LOGO_OFFICIEL.jpg` (image originale du propriétaire).
-- Couverture : `assets/MSS_COUVERTURE_OFFICIELLE.jpg` (image originale du propriétaire).
-- Ne modifie pas la biographie, le site, la sécurité, les posts, le dépôt GitHub ou le code métier MSS.
-- Rapports et captures locales : `%LOCALAPPDATA%\MSS_ROBOTS\X_OFFICIEL\rapports`.
+## Procédure minimale
 
-**Statut :** patch de code et tests locaux validés. Publication effective des images sur X NON vérifiée tant que le robot n'a pas été exécuté sur un PC connecté au compte.
+1. Remplace les trois fichiers du correctif dans `tools/mss-social-x/`.
+2. Double-clique `DEMARRER_ROBOT_X.cmd`.
+3. **Le robot essaie lui-même de choisir « Continuer avec Google »** sur l'écran de connexion X.
+4. Si Google demande de choisir un compte, sélectionne **multisports.scoring@gmail.com** et valide sa connexion / vérification sur l'appareil approprié. N'envoie aucun code dans le chat.
+5. Ne crée pas de compte supplémentaire et ne clique pas sur « Suivre » sur le profil public. L'agent doit reconnaître **@multisportsscor** avant de toucher aux images.
+6. Dès que le compte X est reconnu connecté, l'agent sélectionne lui-même le logo officiel et la couverture depuis `assets/` et demande l'enregistrement.
+7. Vérifie le rapport : `%LOCALAPPDATA%\MSS_ROBOTS\X_OFFICIEL\rapports\`.
 
-## Fichiers fournis
-- `tools/mss-social-x/DEMARRER_ROBOT_X.cmd`
-- `tools/mss-social-x/robot-x.mjs`
-- `tools/mss-social-x/robot-utils.mjs`
-- `tools/mss-social-x/assets/MSS_LOGO_OFFICIEL.jpg`
-- `tools/mss-social-x/assets/MSS_COUVERTURE_OFFICIELLE.jpg`
-- `tools/mss-social-x/tests/robot-utils.test.mjs`
-- `tools/mss-social-x/LISEZ_MOI.md`
+Si une confirmation Google réapparaît, elle relève de la sécurité du compte et ne doit pas être contournée.
+La session locale du Chrome dédié est conservée pour les prochains lancements.
 
-## Intégrité du package existant
-- Avant patch, `package.json` V239 : 230 lignes ; SHA-256 `57cceaba95ca61d716613644abf0770eb5768ce763641192c0c2e441ac743a05`.
-- Après patch : exactement le même fichier, non inclus dans l'archive du correctif.
+## Sécurité
 
-Pour les projets déjà mis à jour depuis V239, ce module ne modifie toujours aucun fichier existant : seul le dossier `tools/mss-social-x/` est ajouté.
+- Aucun changement à la racine du projet ou à `package.json`.
+- Aucun nouveau compte créé, aucune publication, aucun paiement.
+- Upload refusé si le compte connecté n'est pas **@multisportsscor**.
+- Le robot conserve la biographie et le site du profil.
+- Statut **non vérifié** tant que le rapport n'annonce pas explicitement `SUCCES_CONFIRME`.
