@@ -4,6 +4,7 @@
 // =============================================================
 
 import React from "react";
+import MSSCardDeckPicker from "../components/cards/MSSCardDeckPicker";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
@@ -172,6 +173,7 @@ export default function PresidentConfig(props: any) {
   </section>;
 
   const reign = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>FORMAT DU RÈGNE</div>
+    <MSSCardDeckPicker />
     <OptionRow label="Manches"><OptionSelect value={rounds} options={[1,3,5,7,10]} onChange={(v: any) => setRounds(Number(v) as any)} /></OptionRow>
     {variant === "classic" ? <div style={rowHelp}>Les 52 cartes sont distribuées entièrement. Certains joueurs reçoivent une carte de plus quand le partage n'est pas exact.</div> : <OptionRow label="Cartes / joueur"><OptionSelect value={handSize} options={[6,8,10,12,14,16]} onChange={(v: any) => setHandSize(Number(v))} /></OptionRow>}
     <div style={{ ...rowHelp, color: primary, fontWeight: 900 }}>{variant === "classic" ? "Paquet classique de 52 cartes sans Joker : tout le paquet est distribué." : "PRÉSIDENT CHAOS : paquet MSS de 54 cartes (52 + 2 Jokers uniques)."}</div>

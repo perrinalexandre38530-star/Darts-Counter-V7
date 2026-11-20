@@ -4,6 +4,7 @@
 // =============================================================
 
 import React from "react";
+import MSSCardDeckPicker from "../components/cards/MSSCardDeckPicker";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
@@ -156,6 +157,7 @@ export default function KiloDeMerdeConfig(props: any) {
   </section>;
 
   const reign = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>FORMAT DE LA PARTIE</div>
+    <MSSCardDeckPicker />
     <OptionRow label="Tours / pénalités"><OptionSelect value={rounds} options={[1,3,5,7,10]} onChange={(v: any) => setRounds(Number(v) as any)} /></OptionRow>
     <div style={rowHelp}>4 cartes par joueur. Les cartes 7 restent dans le tas central et déclenchent la chasse d’eau.</div>
     <div style={{ ...rowHelp, color: primary, fontWeight: 900 }}>Paquet unique de 52 cartes, aucun Joker et aucun 7 dans les mains.</div>

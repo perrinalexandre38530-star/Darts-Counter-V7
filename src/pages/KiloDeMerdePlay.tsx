@@ -7,7 +7,7 @@ import ProfileAvatar from '../components/ProfileAvatar';
 import tickerKiloFr from "../assets/tickers/ticker_kilo_de_merde_fr.webp";
 import tickerKiloEn from "../assets/tickers/ticker_kilo_de_merde_en.webp";
 import { useLang } from "../contexts/LangContext";
-import { mssPresidentCardUrl } from '../lib/mssLegendsDeck';
+import { mssVisualPresidentCardUrl as mssPresidentCardUrl } from '../lib/mssCardDeck';
 import { createKiloState, kiloSelectCard, kiloPenalty, kiloContinue, kiloCardLabel, kiloHasFour, type KiloState } from '../lib/gameEngines/kiloDeMerdeEngine';
 const GOLD='#f6c765';
 const cardStyle=(selected=false):React.CSSProperties=>({border:`2px solid ${selected?GOLD:'transparent'}`,borderRadius:12,padding:3,background:selected?'#efbf5433':'transparent',flex:'0 0 auto',cursor:'pointer',transform:selected?'translateY(-5px)':undefined});

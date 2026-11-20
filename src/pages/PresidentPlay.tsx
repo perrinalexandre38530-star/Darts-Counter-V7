@@ -12,7 +12,7 @@ import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import tickerPresident from "../assets/tickers/ticker_president.png";
 import awenaAdviceBubble from "../assets/president/awena_conseils.webp";
-import { mssPresidentCardUrl, mssJokerCardUrl } from "../lib/mssLegendsDeck";
+import { mssVisualPresidentCardUrl as mssPresidentCardUrl, mssVisualJokerUrl as mssJokerCardUrl, mssVisualJokerLabel } from "../lib/mssCardDeck";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
@@ -130,7 +130,7 @@ function PlayingCard({ value, mini = false, ghost = false, suitIndex = 0 }: {
 }
 /** Joker granted by BULL in CHAOS: an effect, not an extra dealt card. */
 function PresidentJokerCard({ variant = "hawaii-501", mini = false }: { variant?: "hawaii-501" | "king-of-bling"; mini?: boolean }) {
-  return <img src={mssJokerCardUrl(variant)} alt={variant === "hawaii-501" ? "Joker HAWAII 501" : "Joker KING OF BLING"}
+  return <img src={mssJokerCardUrl(variant)} alt={`Joker ${mssVisualJokerLabel(variant)}`}
     loading="lazy" decoding="async" draggable={false}
     style={{display:"block",width:mini?43:58,height:mini?61:82,objectFit:"fill",flex:"0 0 auto"}}/>;
 }

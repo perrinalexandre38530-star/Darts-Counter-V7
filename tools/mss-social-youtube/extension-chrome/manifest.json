@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "MSS — Visuels officiels YouTube",
+  "version": "1.0.0",
+  "description": "Installe les images officielles MSS sur la chaîne YouTube existante, sans ouvrir de session Google séparée.",
+  "permissions": ["scripting", "tabs"],
+  "host_permissions": ["https://studio.youtube.com/*"],
+  "action": { "default_title": "MSS : ajouter les visuels officiels à YouTube" },
+  "background": { "service_worker": "background.js" },
+  "web_accessible_resources": [{
+    "resources": ["assets/MSS_LOGO_OFFICIEL.jpg", "assets/MSS_COUVERTURE_YOUTUBE_2048x1152.jpg"],
+    "matches": ["https://studio.youtube.com/*"]
+  }]
+}

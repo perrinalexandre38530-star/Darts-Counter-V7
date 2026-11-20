@@ -6,6 +6,8 @@ import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 
 import React from "react";
+import MSSCardDeckPicker from "../components/cards/MSSCardDeckPicker";
+import { getMSSCardDeck, mssCardDeckLabel } from "../lib/mssCardDeck";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
@@ -95,6 +97,7 @@ export default function DartsPokerConfig(props: any) {
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets || {});
   const [showDeckGallery, setShowDeckGallery] = React.useState(false);
+  const [currentCardDeck, setCurrentCardDeck] = React.useState(getMSSCardDeck);
   const [showBadgeGallery, setShowBadgeGallery] = React.useState(false);
 
   function togglePlayer(idRaw: string) {
@@ -181,7 +184,8 @@ export default function DartsPokerConfig(props: any) {
     <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>{[["POUVOIRS",powersEnabled ? "ON" : "OFF",BLUE],["JOKER",jokerEnabled ? "ON" : "OFF",GOLD],["CONTRAT",contractsEnabled ? "ON" : "OFF",RED],["CONSEILS",assistanceEnabled ? "ON" : "OFF",GREEN]].map(([label,value,color]: any) => <div key={label} style={{ borderRadius: 11, padding: 8, textAlign: "center", border: `1px solid ${color}44`, background: `${color}0a` }}><div style={{ color: soft, fontSize: 6.3 }}>{label}</div><div style={{ color, fontSize: 9, fontWeight: 1150, marginTop: 2 }}>{value}</div></div>)}</div>
     <div style={{ marginTop: 9, padding: 9, borderRadius: 12, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.26)" }}><div style={{ color: "#fff", fontSize: 8.5, fontWeight: 1050, textAlign: "center" }}>UNE MANCHE</div><div style={{ color: soft, fontSize: 7.5, marginTop: 4, textAlign: "center" }}>20 cartes visibles → 1 dart chacun → 6 darts/joueur → pouvoirs → meilleure main de 5 → showdown → points</div></div>
     <div style={{ marginTop: 9, padding: "7px 8px 5px", borderRadius: 14, border: "1px solid rgba(246,194,86,.26)", background: "radial-gradient(circle at 50% 0%,rgba(246,194,86,.08),rgba(255,255,255,.015) 70%)" }}>
-      <div style={{ textAlign: "center", color: GOLD, fontSize: 7.5, fontWeight: 1100, letterSpacing: .8 }}>DECK MSS SIGNATURE</div>
+      <div style={{ textAlign: "center", color: GOLD, fontSize: 7.5, fontWeight: 1100, letterSpacing: .8 }}>DECK {mssCardDeckLabel(currentCardDeck)}</div>
+      <MSSCardDeckPicker onChange={setCurrentCardDeck} />
       <DartsPokerDeckPreview />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: 4 }}>
         <button type="button" onClick={() => setShowDeckGallery(true)} style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${GOLD}55`, background: `${GOLD}0d`, color: GOLD, fontSize: 8, fontWeight: 1050 }}>52 CARTES + JOKER</button>

@@ -2,7 +2,7 @@ import React from "react";
 import type { PokerCard } from "../../lib/gameEngines/dartsPokerEngine";
 import { pokerRankLabel, pokerSuitSymbol } from "../../lib/gameEngines/dartsPokerEngine";
 import { contentPackAssetUrl } from "../../lib/contentPacks";
-import { mssLegendCardUrl, mssJokerCardUrl } from "../../lib/mssLegendsDeck";
+import { mssVisualCardUrl, mssVisualJokerUrl, mssVisualJokerLabel, mssCardDeckLabel } from "../../lib/mssCardDeck";
 
 type CardSize = "mini" | "small" | "medium" | "large" | "hero";
 
@@ -131,7 +131,7 @@ export default function DartsPokerCard({ card, size = "medium", hidden = false, 
   // Every non-joker rank (2..A) uses its completed MSS LEGENDS illustration.
   // The card's artwork already contains both corner indices and its nickname;
   // never superimpose the old poker face, rank, or suit on it.
-  const mssArtwork = card.joker ? mssJokerCardUrl(card.id) : mssLegendCardUrl(card.suit, card.rank);
+  const mssArtwork = card.joker ? mssVisualJokerUrl(card.id) : mssVisualCardUrl(card.suit, card.rank);
   if (mssArtwork) {
     const cardView = <div style={{
       width: spec.w, height: spec.h, position: "relative", flexShrink: 0,
@@ -141,7 +141,7 @@ export default function DartsPokerCard({ card, size = "medium", hidden = false, 
       background: "transparent", userSelect: "none",
     }}>
       <img src={mssArtwork} loading="lazy" decoding="async" draggable={false}
-        alt={card.joker ? (card.id === "JOKER_BLING" ? "Joker KING OF BLING" : "Joker HAWAII 501") : `${pokerRankLabel(card.rank)} ${pokerSuitSymbol(card.suit)}`}
+        alt={card.joker ? (mssVisualJokerLabel(card.id)) : `${pokerRankLabel(card.rank)} ${pokerSuitSymbol(card.suit)}`}
         style={{display:"block",width:"100%",height:"100%",objectFit:"fill"}} />
       {badge ? <div style={{position:"absolute",right:0,bottom:0,zIndex:2,borderRadius:"8px 0 0 0",padding:size === "mini" ? "1px 2px" : "2px 4px",background:"#090a0e",borderTop:`1px solid ${GOLD}`,borderLeft:`1px solid ${GOLD}`,color:GOLD,fontSize:size === "mini" ? 5 : 6.5,fontWeight:1100}}>{badge}</div> : null}
     </div>;
@@ -228,7 +228,7 @@ export function DartsPokerDeckGallery({ compact = false, showLegend = true }: { 
   const cardSize: CardSize = compact ? "mini" : "small";
   return <div style={{ display: "grid", gap: compact ? 7 : 10 }}>
     {showLegend ? <div style={{ padding: compact ? "7px 8px" : "9px 10px", borderRadius: 12, background: "linear-gradient(135deg,rgba(246,194,86,.08),rgba(232,58,67,.07))", border: "1px solid rgba(246,194,86,.24)", color: "#d8dce6", fontSize: compact ? 7.5 : 9, lineHeight: 1.45 }}>
-      <b style={{ color: GOLD }}>DECK MSS SIGNATURE</b> · 52 cartes illustrées MSS LEGENDS. Chaque valeur, du 2 à l’As, utilise la légende de sa famille. Les deux Jokers officiels HAWAII 501 et KING OF BLING sont accessibles via DBULL (un seul Joker en main).
+      <b style={{ color: GOLD }}>DECK {mssCardDeckLabel()}</b> · 52 cartes illustrées. Les deux Jokers {mssVisualJokerLabel("JOKER_HAWAII")} et {mssVisualJokerLabel("JOKER_BLING")} sont accessibles via DBULL (un seul Joker en main).
     </div> : null}
     {suits.map((suit) => {
       const cards = deck.filter((card) => card.suit === suit.key);
@@ -247,7 +247,7 @@ export function DartsPokerDeckGallery({ compact = false, showLegend = true }: { 
       <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 9, alignItems: "center" }}>
         <div style={{ display: "flex", gap: 5 }}>{jokers.map((joker) => <DartsPokerCard key={joker.id} card={joker} size={compact ? "small" : "medium"} />)}</div>
         <div>
-          <div style={{ color: GOLD, fontSize: compact ? 8 : 10, fontWeight: 1100 }}>JOKERS · HAWAII 501 / KING OF BLING</div>
+          <div style={{ color: GOLD, fontSize: compact ? 8 : 10, fontWeight: 1100 }}>JOKERS · {mssVisualJokerLabel("JOKER_HAWAII")} / {mssVisualJokerLabel("JOKER_BLING")}</div>
           <div style={{ color: "#9aa1b2", fontSize: compact ? 7 : 8.5, lineHeight: 1.4, marginTop: 3 }}>Le Double Bull déclenche le Joker spécial Darts Poker. Une seule carte Joker peut entrer dans une main.</div>
         </div>
       </div>
