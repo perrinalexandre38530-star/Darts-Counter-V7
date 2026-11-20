@@ -1808,8 +1808,8 @@ export default function SamsungTvApp() {
           if (!sharedAppBootRef.current && screenRef.current === "hub") {
             const boot: SamsungTvNativeAppBoot = {
               version: 1,
-              tab: "gameSelect",
-              params: { source: "samsung-tv-companion", tvNative: true },
+              tab: phoneNavigationRef.current?.tab || "gameSelect",
+              params: { ...(phoneNavigationRef.current?.params || {}), source: "samsung-tv-companion", tvNative: true },
               sportId: next.activeSport || "darts",
               sessionId,
               activeProfileId: next.activeProfileId,
@@ -1839,7 +1839,7 @@ export default function SamsungTvApp() {
         // Companion V8 : lorsque la vraie application partagée est ouverte,
         // toute navigation du téléphone remonte vers la même route/composant TV.
         // On ne maintient plus un menu TV parallèle qui diverge visuellement.
-        if (sharedAppBootRef.current?.storeMode === "mirror" && nav.tab) {
+        if (nav.tab) {
           const currentTvState = tvStateRef.current;
           const mirroredConfig = nav.gameplay
             ? sharedGameConfigForSnapshot(snapshotRef.current, nav, currentTvState)
