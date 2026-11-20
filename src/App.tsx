@@ -69,6 +69,8 @@
 import * as React from "react";
 import { useViewerInteractiveBridge } from "./lib/viewer/useViewerInteractiveBridge";
 import { isSamsungTvNativeAppMode, readSamsungTvNativeAppBoot } from "./tv/samsung/tvNativeAppBridge";
+import { installViewerPhoneAudioRelay } from "./lib/viewer/viewerAudioBridge";
+import "./styles/mss-universal-landscape-v242.css";
 const { useEffect, useMemo, useState, useRef, useCallback } = React;
 import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
@@ -2387,6 +2389,13 @@ function SWUpdateBanner() {
 function App() {
   const samsungTvNativeBoot = React.useMemo(() => readSamsungTvNativeAppBoot(), []);
   const isSamsungTvNativeApp = !!samsungTvNativeBoot;
+  // Viewer v242: when a live Samsung sink is paired, HTML audio is emitted by
+  // the television rather than also playing on the remote-control phone.
+  // The relay is inert without a verified, regularly refreshed TV heartbeat.
+  React.useEffect(() => {
+    if (isSamsungTvNativeApp) return;
+    return installViewerPhoneAudioRelay();
+  }, [isSamsungTvNativeApp]);
   const isSamsungTvLocalStore = samsungTvNativeBoot?.storeMode === "local";
   const themePreviewConfig = React.useMemo(() => readThemePreviewConfig(), []);
   const isThemePreviewFrame = themePreviewConfig.enabled;
@@ -3418,6 +3427,60 @@ useEffect(() => {
 
   /* X01 v3 config */
   const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(() => (samsungTvNativeBoot?.gameConfig as X01ConfigV3Type | null) || null);
+
+  // Samsung TV companion: route distante appliquée à AppRoot DÉJÀ monté.
+  // Ne pas appeler go()/commitGo() ici : cela republierait le même événement
+  // vers le téléphone et pourrait créer une boucle de navigation infinie.
+  React.useEffect(() => {
+    if (!isSamsungTvNativeApp || isSamsungTvLocalStore) return;
+    const applyPhoneRoute = (detail: any) => {
+      if (!detail || loading) return;
+      const next = String(detail.tab || "");
+      if (!next) return;
+      const nextParams = detail.params && typeof detail.params === "object" ? detail.params : null;
+      const sameParams = (() => {
+        try { return JSON.stringify(routeParams ?? null) === JSON.stringify(nextParams); }
+        catch { return false; }
+      })();
+      if (next === String(tab) && sameParams) return;
+      if ((next === "x01_play_v3" || next === "x01") &&
+          (detail.gameConfig || nextParams?.x01ConfigV3 || nextParams?.config)) {
+        setX01ConfigV3((detail.gameConfig || nextParams?.x01ConfigV3 || nextParams?.config) as X01ConfigV3Type);
+      }
+      setRouteParams(nextParams);
+      setTab(next as Tab);
+      try {
+        document.documentElement.dataset.mscGameplay =
+          next === "x01" || next === "x01_play_v3" || next.endsWith("_play") ? "1" : "0";
+      } catch {}
+    };
+    const onPhoneRoute = (event: Event) => {
+      const pending = (event as CustomEvent)?.detail;
+      if (loading) return;
+      delete (window as any).__MSS_SAMSUNG_TV_PENDING_ROUTE__;
+      applyPhoneRoute(pending);
+    };
+    const onPhoneState = (event: Event) => {
+      const next = String((event as CustomEvent)?.detail?.sportId || "");
+      if (next && next !== String(activeSport)) {
+        setActiveSport(next as StartGameId);
+        try { setSportCtx?.(next as StartGameId); } catch {}
+      }
+    };
+    window.addEventListener("mss:samsung-tv:apply-phone-route", onPhoneRoute as EventListener);
+    window.addEventListener("mss:samsung-tv:apply-phone-state", onPhoneState as EventListener);
+    if (!loading) {
+      const pending = (window as any).__MSS_SAMSUNG_TV_PENDING_ROUTE__;
+      if (pending) {
+        delete (window as any).__MSS_SAMSUNG_TV_PENDING_ROUTE__;
+        applyPhoneRoute(pending);
+      }
+    }
+    return () => {
+      window.removeEventListener("mss:samsung-tv:apply-phone-route", onPhoneRoute as EventListener);
+      window.removeEventListener("mss:samsung-tv:apply-phone-state", onPhoneState as EventListener);
+    };
+  }, [isSamsungTvNativeApp, isSamsungTvLocalStore, loading, tab, routeParams, activeSport, setSportCtx]);
 
   // Universal pre-game bull-off: opt-in per configuration visit, never affects legacy defaults.
   const [choiceStartOrderMode, setChoiceStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
@@ -8113,6 +8176,7 @@ case "babyfoot_team_edit":
   const isGamePlayRoute =
     gameRouteName === "x01" ||
     gameRouteName === "x01_play_v3" ||
+    (gameRouteName === "cricket" && ["arcade", "quick_play"].includes(String(routeParams?.launchMode || ""))) ||
     gameRouteName.endsWith("_play") ||
     gameRouteName === "darts_mode_play";
   // Toutes les configs Darts passent désormais par le contrat paysage "config-guided".
@@ -8162,7 +8226,9 @@ case "babyfoot_team_edit":
   // P’TIT 1 fait exception : son écran de jeu exploite toute la largeur disponible en paysage,
   // comme en portrait, afin de préserver le couple panneau joueur + keypad sans débordement.
   const forceFullscreenPlay = tab === "ptit_hun_play" || (tab === "bss_king_play" && isLandscapeViewport);
-  const showBottomNav = tab !== "live" && appChromeAllowed && !forceFullscreenPlay && !(isSamsungTvNativeApp && isGamePlayRoute) && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
+  const showBottomNav = tab !== "live" && appChromeAllowed && !forceFullscreenPlay &&
+    !(isSamsungTvNativeApp && isGamePlayRoute) &&
+    (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
 
 
   return (

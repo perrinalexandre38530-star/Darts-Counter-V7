@@ -20,7 +20,8 @@ import FinishDoWeeklyPanel from "../modes/finish/FinishDoWeeklyPanel";
 import FinishDoTraining from "../modes/finish/FinishDoTraining";
 import {
   academyCoachCompletedCount, academyCoachNextStep, completeAcademyCoachStep,
-  loadOrCreateAcademyCoachPlan, type AcademyCoachPlan,
+  getAcademyCoachReport, loadAcademyCoachHistory, loadOrCreateAcademyCoachPlan,
+  type AcademyCoachHistory, type AcademyCoachPlan,
 } from "./academyCoach";
 
 type AcademyScreen = "learn" | "practice" | "quiz" | "review" | "progress";
@@ -80,6 +81,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const [finishOnly, setFinishOnly] = React.useState(false);
   const [finishProgress, setFinishProgress] = React.useState(() => loadFinishDoProgress(participantId));
   const [coachPlan, setCoachPlan] = React.useState<AcademyCoachPlan>(() => coachForProfile(participantId));
+  const [coachHistory, setCoachHistory] = React.useState<AcademyCoachHistory>(() => loadAcademyCoachHistory(participantId));
   const [coachSelectedIndex, setCoachSelectedIndex] = React.useState(() => academyCoachNextStep(coachForProfile(participantId)));
   const [coachActiveStep, setCoachActiveStep] = React.useState<number | null>(null);
   const [round, setRound] = React.useState<AcademyQuizItem[]>([]);
@@ -103,6 +105,7 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
     setRoundFinished(false);
     const freshCoach = coachForProfile(participantId);
     setCoachPlan(freshCoach);
+    setCoachHistory(loadAcademyCoachHistory(participantId));
     setCoachSelectedIndex(academyCoachNextStep(freshCoach));
     setCoachActiveStep(null);
   }, [participantId]);
@@ -152,12 +155,18 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
   const visibleProgress = CATALOGUE.slice(progressPage * PROGRESS_PER_PAGE, (progressPage + 1) * PROGRESS_PER_PAGE);
   const questionTotal = React.useMemo(() => CATALOGUE.reduce((total, item) => total + getAcademyQuestions(item).length, 0), []);
   const coachDone = academyCoachCompletedCount(coachPlan);
+  const coachReport = React.useMemo(() => getAcademyCoachReport(coachPlan, coachHistory), [coachPlan, coachHistory]);
+  const coachSummary = `${coachReport.completedSessions} séances réalisées sur les huit dernières semaines. ` +
+    `${coachReport.completedWeeks} semaine${coachReport.completedWeeks > 1 ? "s" : ""} complète${coachReport.completedWeeks > 1 ? "s" : ""}. ` +
+    (coachReport.streak ? `${coachReport.streak} semaine${coachReport.streak > 1 ? "s" : ""} complète${coachReport.streak > 1 ? "s" : ""} consécutive${coachReport.streak > 1 ? "s" : ""}.` :
+      "Le plus important est de garder un rythme régulier, même avec une seule séance.");
   const coachSelected = coachPlan.steps[coachSelectedIndex] || coachPlan.steps[0];
   React.useEffect(() => {
     // Refresh a new local Monday plan when the player returns to the academy.
     const fresh = coachForProfile(participantId);
     if (fresh.week !== coachPlan.week) {
       setCoachPlan(fresh);
+      setCoachHistory(loadAcademyCoachHistory(participantId));
       setCoachSelectedIndex(academyCoachNextStep(fresh));
       setCoachActiveStep(null);
     }
@@ -558,6 +567,31 @@ export default function TrainingAwenaAcademy({ participantId }: { participantId?
         <span><small>MON PROGRAMME AWENA</small><strong>{coachDone} / 3 séances réalisées cette semaine</strong></span>
         <span aria-hidden="true">›</span>
       </button>
+      <section className="mssAcademyCoachReport" aria-label="Bilan du Coach Awena sur huit semaines">
+        <div className="mssAcademyCoachReportHead">
+          <span className="mssAcademyCoachLogo" aria-hidden="true"><BottomNavIcon name="stats" size={20} /></span>
+          <div><small>AWENA · SUIVI DE RÉGULARITÉ</small><strong>MON BILAN · 8 SEMAINES</strong></div>
+          <button type="button" aria-label="Écouter le bilan d'Awena" title="Awena lit mon bilan" onClick={() => speak(coachSummary)}>
+            <BottomNavIcon name="live" size={18} /> <span>AWENA</span>
+          </button>
+        </div>
+        <div className="mssAcademyCoachReportNumbers">
+          <div><strong>{coachReport.completedSessions}</strong><small>SÉANCES</small></div>
+          <div><strong>{coachReport.completedWeeks}</strong><small>SEMAINES COMPLÈTES</small></div>
+          <div><strong>{coachReport.streak}</strong><small>SÉRIE EN COURS</small></div>
+        </div>
+        <div className="mssAcademyCoachReportWeeks" aria-label="Séances validées chaque semaine">
+          {coachReport.weeks.map((entry, index) => <div key={entry.week} className="mssAcademyCoachReportWeek"
+            title={`Semaine du ${new Date(`${entry.week}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} : ${entry.completed} séance(s) sur 3`}>
+            <div className="mssAcademyCoachReportBar" aria-label={`${entry.completed} séance(s) validée(s) sur 3`}>
+              <span style={{ height: `${entry.completed / 3 * 100}%` }} />
+            </div>
+            <small>{index === coachReport.weeks.length - 1 ? "ACT." : new Date(`${entry.week}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</small>
+          </div>)}
+        </div>
+        <p>{coachSummary}</p>
+        <small className="mssAcademyCoachReportNote">Les semaines précédentes sont conservées à partir de cette mise à jour, sur cet appareil et pour ce profil. Seules les séances terminées sont comptées.</small>
+      </section>
       <FinishDoWeeklyPanel progress={finishProgress} academyProgress={progress} participantId={participantId} onPractice={(target) => setFinishPracticeTarget(target)} onReview={(aim) => {
         const selected = CATALOGUE.find(item => item.id === finishDoLessonForAim(aim));
         if (selected) beginLesson(selected);

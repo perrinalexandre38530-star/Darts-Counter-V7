@@ -79,9 +79,11 @@ export function isViewerRemoteTabAllowed(tab: string) {
   if (REMOTE_ALLOWED_TABS.has(value)) return true;
   // Une TV connectée peut ouvrir les véritables écrans PLAY de l'application.
   if (isViewerGameplayRoute(value)) return true;
-  // Every game exposes its own play/config routes. Permit remote-control
-  // navigation to these published game routes (not arbitrary account routes).
-  if (/^[a-z][a-z0-9_.-]{0,95}_(?:config|play)(?:_v[0-9]+)?$/.test(value)) return true;
+  // Les entrées et configurations des modes partagent exactement le même
+  // routeur que sur le téléphone ; ne pas les bloquer par une ancienne liste.
+  if (/^[a-z][a-z0-9._-]{0,72}$/.test(value) &&
+      /(?:_config|_setup|_menu|_home|_stats|_entry_choice|_quick|_arcade)$/.test(value) &&
+      !/(?:^admin_|^auth_|^account_|^billing_|^payment_)/.test(value)) return true;
 
   // Les écrans TV peuvent ouvrir les configurations de jeu déjà existantes
   // sans transformer la télécommande en routeur arbitraire. On limite aux
@@ -135,11 +137,29 @@ export function sanitizeViewerRouteParams(params: any) {
   if (!params || typeof params !== "object") return null;
   const allowedKeys = [
     "screenTab",
-    // GAMES is a three-level menu: hub / favorites / full catalogue.
-    // Losing gamesView was forcing the TV back onto the empty-looking hub.
+    "tab",
+    "view",
     "gamesView",
     "gamesCategory",
+    "gamesSubcategory",
     "gamesSubCategory",
+    "gamesFilter",
+    "launchMode",
+    "modeId",
+    "entryTitle",
+    "destination",
+    "from",
+    "id",
+    "matchId",
+    "resumeId",
+    "historyMatchId",
+    "profileId",
+    "playerId",
+    "initialPlayerId",
+    "quickParty",
+    "online",
+    "resume",
+    "initialStatsSubTab",
     "mode",
     "sport",
     "organizationId",
@@ -159,6 +179,8 @@ export function sanitizeViewerRouteParams(params: any) {
     "lobbyCode",
     "lobbyId",
     "fresh",
+    "variant",
+    "game",
   ];
   const out: Record<string, string | number | boolean | null> = {};
   for (const key of allowedKeys) {
@@ -168,13 +190,33 @@ export function sanitizeViewerRouteParams(params: any) {
   }
   // Les jeux récents transportent également leurs paramètres de configuration
   // sous forme d'objet. Ne pas les perdre pendant la navigation téléphone → TV.
-  for (const key of ["config", "gameConfig", "x01ConfigV3"]) {
+  // Les paramètres de lancement des modes ne sont pas limités à X01.
+  // On conserve les données sérialisables utiles (joueurs, variantes, reprise),
+  // mais jamais les images volumineuses, les fonctions ou les données secrètes.
+  let remaining = 180_000;
+  for (const key of [
+    "config", "gameConfig", "x01ConfigV3", "cfg", "destinationParams",
+    "quickPlayers", "players", "teams", "initialState", "snapshot", "rec",
+    "resumeDraft", "payload", "settings",
+  ]) {
     const value = params[key];
-    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if (!value || typeof value !== "object") continue;
     try {
-      const json = JSON.stringify(value, (_k, v) =>
-        typeof v === "function" || (typeof v === "string" && v.startsWith("data:image/")) ? undefined : v);
-      if (json && json.length <= 24_000) (out as Record<string, any>)[key] = JSON.parse(json);
+      const seen = new WeakSet<object>();
+      const json = JSON.stringify(value, (_k, v) => {
+        if (/(?:password|secret|auth(?:orization)?|access[_-]?token|refresh[_-]?token|private[_-]?key)/i.test(_k)) return undefined;
+        if (typeof v === "function" || typeof v === "bigint") return undefined;
+        if (typeof v === "string" && (v.startsWith("data:image/") || v.length > 24_000)) return undefined;
+        if (v && typeof v === "object") {
+          if (seen.has(v)) return undefined;
+          seen.add(v);
+        }
+        return v;
+      });
+      if (json && json.length <= 75_000 && json.length <= remaining) {
+        (out as Record<string, any>)[key] = JSON.parse(json);
+        remaining -= json.length;
+      }
     } catch {}
   }
   return Object.keys(out).length ? out : null;

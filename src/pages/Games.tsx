@@ -116,7 +116,7 @@ type GamesView = "hub" | "favorites" | "all";
 
 type Props = {
   setTab: (tab: any, params?: any) => void;
-  params?: { gamesView?: string; gamesCategory?: string } | null;
+  params?: { gamesView?: string; gamesCategory?: string; gamesSubcategory?: string } | null;
 };
 
 type InfoGame = {
@@ -542,12 +542,14 @@ export default function Games({ setTab, params }: Props) {
   const [activeCat, setActiveCat] = React.useState<GameCategory>(() =>
     GAME_CATEGORIES.some((cat) => cat.id === params?.gamesCategory) ? params!.gamesCategory as GameCategory : "classic"
   );
+  // Les filtres font partie de la route : un changement sur le téléphone doit
+  // déplacer la TV dans le même sous-menu, même sans changement d'onglet.
   React.useEffect(() => {
     if (GAME_CATEGORIES.some((cat) => cat.id === params?.gamesCategory)) {
       setActiveCat(params!.gamesCategory as GameCategory);
-      setActiveSubCat("all");
     }
-  }, [params?.gamesCategory]);
+    setActiveSubCat(String(params?.gamesSubcategory || "all"));
+  }, [params?.gamesCategory, params?.gamesSubcategory]);
   // Sous-onglet métier de la catégorie active. "all" affiche tous les groupes.
   const [activeSubCat, setActiveSubCat] = React.useState<string>("all");
   const [difficultyFilter, setDifficultyFilter] = React.useState<number>(0);
@@ -906,8 +908,8 @@ export default function Games({ setTab, params }: Props) {
 
   React.useEffect(() => {
     if (activeCat === "training") setActiveCat("classic");
-    setActiveSubCat("all");
-  }, [activeCat]);
+    else if (!params?.gamesSubcategory) setActiveSubCat("all");
+  }, [activeCat, params?.gamesSubcategory]);
 
   // Recherche et niveau sont des filtres GLOBAUX sur tout le catalogue.
   // Sans filtre, les onglets et sous-onglets retrouvent leur comportement habituel.
@@ -1685,7 +1687,12 @@ export default function Games({ setTab, params }: Props) {
             className="msc-games-category-kpi"
             data-cat={String(c.id)}
             data-active={on ? "1" : "0"}
-            onClick={() => setActiveCat(c.id)}
+            onClick={() => {
+              setActiveCat(c.id);
+              setActiveSubCat("all");
+              // Navigation interne GAMES publiée aussi au Viewer Samsung.
+              setTab("games", { gamesView: "all", gamesCategory: c.id, gamesSubcategory: "all" });
+            }}
             style={{
               minHeight: 52,
               borderRadius: 14,
@@ -1738,7 +1745,10 @@ export default function Games({ setTab, params }: Props) {
             <button
               key={`${variant}-${activeCat}-${id}`}
               type="button"
-              onClick={() => setActiveSubCat(id)}
+              onClick={() => {
+                setActiveSubCat(id);
+                setTab("games", { gamesView: "all", gamesCategory: activeCat, gamesSubcategory: id });
+              }}
               aria-pressed={on}
               style={{
                 flex: "0 0 auto",

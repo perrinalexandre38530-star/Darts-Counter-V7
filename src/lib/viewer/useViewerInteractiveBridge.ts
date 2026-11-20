@@ -1,3 +1,4 @@
+import { setViewerTvAudioSink } from "./viewerAudioBridge";
 import * as React from "react";
 import { useSport } from "../../contexts/SportContext";
 import { getAvatarCacheFast } from "../avatarCache";
@@ -30,6 +31,7 @@ type Props = {
 
 const TV_SPORT_IDS = new Set([
   "darts",
+  "tossit",
   "petanque",
   "pingpong",
   "babyfoot",
@@ -253,6 +255,7 @@ export function useViewerInteractiveBridge({
 
   React.useEffect(() => {
     if (!sessionId) {
+      setViewerTvAudioSink("", false);
       closeViewerRealtimeHost();
       return;
     }
@@ -262,6 +265,15 @@ export function useViewerInteractiveBridge({
       onCommand: (data) => {
         if (!data || typeof data !== "object") return;
         const current = latestRef.current;
+
+        if (data.type === "viewer_audio_sink_ready") {
+          setViewerTvAudioSink(String(data.sessionId || ""), true);
+          return;
+        }
+        if (data.type === "viewer_audio_sink_left") {
+          setViewerTvAudioSink(String(data.sessionId || ""), false);
+          return;
+        }
 
         if (data.type === "request_tv_state") {
           publishTvState("tv_request");
@@ -362,7 +374,7 @@ export function useViewerInteractiveBridge({
       onStatus: (status) => {
         // Re-publish the complete state after EVERY reconnect. Route changes
         // sent while offline are otherwise lost when the TV joins later.
-        if (status !== "connected") return;
+        if (status !== "connected") { setViewerTvAudioSink("", false); return; }
         window.setTimeout(() => {
           if (getActiveViewerSession()?.sessionId !== sessionId) return;
           publishTvState("host_reconnected");

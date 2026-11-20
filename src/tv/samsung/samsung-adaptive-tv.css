@@ -1,0 +1,231 @@
+/* MULTISPORTS SCORING — Samsung TV 16:9 shared UI V242.
+   All selectors are scoped to the Samsung shared-app flag. We do not alter
+   the colours/rules of game modes or the handset portrait experience. */
+html[data-mss-samsung-tv-shared-app="1"] {
+  --mss-tv-page-pad: clamp(9px, 1.15vw, 24px);
+  --mss-tv-gap: clamp(8px, .9vw, 20px);
+}
+
+/* Gameplay is a dedicated TV surface. The menu rail must not reserve any
+   horizontal space, even when global landscape CSS assumes a phone/tablet. */
+html[data-mss-samsung-tv-shared-app="1"] body .dc-themed-route[data-msc-game-screen="play"] {
+  box-sizing: border-box !important;
+  display: block !important;
+  position: relative !important;
+  inset: auto !important;
+  left: 0 !important;
+  top: 0 !important;
+  margin: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100vw !important;
+  min-width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  max-height: 100vh !important;
+  padding: 0 !important;
+  overflow-x: hidden !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] > :not(style):not(script) {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] :is(
+  .msc-gameplay-layout, .msc-gameplay-shell, .darts-mode-play-screen,
+  .mss-br-play, .five-lives-play-screen, .ca-page,
+  [data-mss-native-play-layout="1"]
+) {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* FIVE LIVES / CHASE: a full-size split, not a 600px phone card at top-left. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] .five-lives-play-screen {
+  position: fixed !important;
+  inset: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 51%) minmax(0, 49%) !important;
+  grid-template-rows: clamp(90px, 13vh, 150px) minmax(0, 1fr) !important;
+  align-items: stretch !important;
+  gap: var(--mss-tv-gap) !important;
+  padding: var(--mss-tv-page-pad) !important;
+  overflow: hidden !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .five-lives-play-screen > .msc-mode-play-header {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .five-lives-play-screen > .msc-mode-play-header img {
+  object-fit: contain !important;
+  object-position: center !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .five-lives-play-screen > .msc-five-lives-body {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .five-lives-play-screen > .msc-five-lives-input {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+}
+
+/* BATTLE ROYALE: existing gameplay is a long single column with maxWidth:860.
+   It may scroll, but cannot use only a third of the 1920px TV screen. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] .mss-br-play {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: var(--mss-tv-page-pad) !important;
+  gap: var(--mss-tv-gap) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .mss-br-play > .mss-br-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .mss-br-play > .mss-br-content > div {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  gap: var(--mss-tv-gap) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .mss-br-header {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+}
+
+/* CHALLENGE family: the 1250px desktop cap is inappropriate for 1920px TV. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] .ca-page {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: var(--mss-tv-page-pad) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .ca-page > .ca-header {
+  flex: 0 0 clamp(90px, 12vh, 145px) !important;
+  width: 100% !important;
+  height: auto !important;
+  max-width: none !important;
+  margin: 0 0 var(--mss-tv-gap) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .ca-page > .ca-layout {
+  box-sizing: border-box !important;
+  flex: 1 1 auto !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 48%) minmax(0, 52%) !important;
+  width: 100% !important;
+  height: auto !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: var(--mss-tv-gap) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .ca-page .ca-panel {
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+
+/* Other modes: unlock legacy portrait max-width while keeping their native
+   inner scoreboards and semantic two-column layout untouched. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-ready="native"] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="input"] {
+  min-height: 0 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] :is(button,[role="button"]) {
+  touch-action: manipulation;
+  scroll-margin: 24px;
+}
+
+/* TV menus remain the phone's real menus, with no duplicated panels. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-route="games"] .msc-games-layout {
+  width: 100% !important;
+  max-width: none !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-route="games"] .msc-games-secondary {
+  min-width: 0 !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-route="games"] .msc-games-primary {
+  min-width: 0 !important;
+  overflow-y: auto !important;
+}
+
+/* The React route removes BottomNav during play (App V241). There is no
+   :has() dependency: Tizen 6.5 Chromium does not guarantee its support. */
+
+/* JDC CHALLENGE and the classic CHALLENGE route render three semantic columns.
+   The 1500px cap is removed; each panel uses the TV's available width. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] .cp {
+  display: grid !important;
+  grid-template-rows: clamp(75px, 10vh, 120px) minmax(0, 1fr) !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  padding: var(--mss-tv-page-pad) !important;
+  gap: var(--mss-tv-gap) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .cp > .cp-head {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  margin: 0 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .cp > .cp-layout {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  grid-template-columns: minmax(0, .27fr) minmax(0, .35fr) minmax(0, .38fr) !important;
+  gap: var(--mss-tv-gap) !important;
+  overflow: hidden !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .cp > .cp-layout > :is(.cp-left, .cp-right, .cp-board) {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+}
+
+/* Without a semantic two-pane layout, avoid clipping unknown game modes.
+   Their panels remain scrollable and are never silently removed. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="no-input"],
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="unresolved"] {
+  overflow-y: auto !important;
+}

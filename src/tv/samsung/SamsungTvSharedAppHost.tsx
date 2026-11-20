@@ -6,6 +6,7 @@ import { installResponsiveLayout } from "../../lib/responsiveLayout";
 import "../../index.css";
 import "../../styles/responsive-landscape.css";
 import "./samsung-shared-app.css";
+import "./samsung-adaptive-tv.css";
 
 const AppRoot = React.lazy(() => import("../../App"));
 
@@ -64,105 +65,118 @@ function RemoteFocusBridge({ onExit }: { onExit: () => void }) {
   const lastFocusedRef = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => {
+    let frame = 0;
+    let routeName = '';
+    const root = document.querySelector<HTMLElement>('.mss-tv-shared-app-host');
+    const selectedFocusables = () => {
+      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [aria-modal="true"], dialog[open]'))
+        .filter(visible);
+      const scope = dialogs.length ? dialogs[dialogs.length - 1] : document.querySelector<HTMLElement>('.dc-themed-route') || root || document.body;
+      return Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((el) =>
+        visible(el) && !el.closest('[aria-hidden="true"], [inert], [disabled]'));
+    };
     const ensureFocus = () => {
+      frame = 0;
+      // Some legacy cards are role=button divs without tabindex. Samsung focus
+      // needs to reach them even though the DOM is also operated by touch.
+      document.querySelectorAll<HTMLElement>('[role="button"]:not([tabindex])').forEach((node) => node.tabIndex = 0);
+      const route = document.querySelector<HTMLElement>('.dc-themed-route');
+      const currentRoute = route?.getAttribute('data-msc-route') || '';
+      const items = selectedFocusables();
       const active = document.activeElement as HTMLElement | null;
-      if (active && active !== document.body && visible(active)) {
+      if (currentRoute !== routeName) {
+        routeName = currentRoute;
+        // On transition, focus starts at the new page, never behind a modal.
+        const first = items.find((el) => el.closest('[role="dialog"], [aria-modal="true"]')) || items[0];
+        focusElement(first || null);
+        lastFocusedRef.current = first || null;
+      } else if (active && items.includes(active)) {
         lastFocusedRef.current = active;
-        return;
+      } else {
+        const item = lastFocusedRef.current && items.includes(lastFocusedRef.current) ? lastFocusedRef.current : items[0];
+        focusElement(item || null);
+        lastFocusedRef.current = item || null;
       }
-      const first = focusables()[0] || null;
-      focusElement(first);
-      lastFocusedRef.current = first;
     };
-
-    const timer = window.setTimeout(ensureFocus, 250);
+    const scheduleFocus = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(ensureFocus);
+    };
     const onFocus = (event: FocusEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && target !== document.body) lastFocusedRef.current = target;
+      const el = event.target as HTMLElement | null;
+      if (el && el !== document.body) lastFocusedRef.current = el;
     };
-
     const onKey = (event: KeyboardEvent) => {
-      const key = String(event.key || "");
-      const keyCode = Number((event as any).keyCode || (event as any).which || 0);
-      const back = keyCode === 10009 || key === "BrowserBack" || key === "GoBack";
-      if (back) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        // Réutiliser le vrai bouton Retour de l'application quand il existe.
-        // Ainsi la télécommande suit exactement la navigation mobile/tablette
-        // au lieu de sortir brutalement vers un second menu TV.
-        const backCandidates = Array.from(document.querySelectorAll<HTMLElement>(
-          '[data-mss-protected-control][aria-label], [role="button"][aria-label], [title]'
-        )).filter(visible);
-        const backControl = backCandidates.find((el) => {
-          const label = `${el.getAttribute("aria-label") || ""} ${el.getAttribute("title") || ""}`.toLowerCase();
-          return label.includes("retour") || label.includes("back");
-        }) || null;
-        if (backControl) {
-          try { backControl.click(); } catch {}
-          return;
-        }
-
-        onExit();
+      const code = Number((event as any).keyCode || (event as any).which || 0);
+      const key = String(event.key || '') || ({37:'ArrowLeft',38:'ArrowUp',39:'ArrowRight',40:'ArrowDown',13:'Enter',10009:'BrowserBack'} as any)[code] || '';
+      if (code === 10009 || key === 'BrowserBack' || key === 'GoBack' || key === 'Back') {
+        event.preventDefault(); event.stopPropagation();
+        const backControls = selectedFocusables().filter((el) => {
+          const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''}`.toLowerCase();
+          return /retour|back|fermer|close/.test(label);
+        });
+        const back = backControls[0];
+        if (back) { back.click(); scheduleFocus(); } else onExit();
         return;
       }
-
-      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"].includes(key)) return;
-      // Ne jamais détourner les flèches des champs de saisie du score et
-      // des sélecteurs : c'est le jeu qui gère le curseur/la valeur.
-      const focused = document.activeElement as HTMLElement | null;
-      if (focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement ||
-          focused instanceof HTMLSelectElement || focused?.isContentEditable) return;
-      const items = focusables();
+      if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter'].includes(key)) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ||
+          active instanceof HTMLSelectElement || active.isContentEditable)) return;
+      const items = selectedFocusables();
       if (!items.length) return;
-      let active = document.activeElement as HTMLElement | null;
-      if (!active || !items.includes(active)) active = lastFocusedRef.current && items.includes(lastFocusedRef.current) ? lastFocusedRef.current : items[0];
-
-      // Le sélecteur de sports de l'application possède déjà sa propre navigation
-      // gauche/droite. On la laisse vivre telle quelle lorsqu'un contrôle du
-      // sélecteur a le focus, au lieu de superposer une seconde logique TV.
-      if ((key === "ArrowLeft" || key === "ArrowRight") && active?.closest?.(".msc-game-select-page")) {
+      const current = active && items.includes(active) ? active
+        : lastFocusedRef.current && items.includes(lastFocusedRef.current) ? lastFocusedRef.current : items[0];
+      if (key === 'Enter') {
+        event.preventDefault(); event.stopPropagation();
+        try { current.click(); } catch {}
+        scheduleFocus();
         return;
       }
-
-      if (key === "Enter") {
-        if (!active) return;
-        // Les champs texte / nombre / select conservent leur comportement natif.
-        if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) return;
-        event.preventDefault();
-        event.stopPropagation();
-        try { active.click(); } catch {}
-        return;
+      // GameSelect already implements its native carousel left/right navigation.
+      if ((key === 'ArrowLeft' || key === 'ArrowRight') && current.closest('.msc-game-select-page')) return;
+      const direction = key.replace('Arrow', '').toLowerCase() as 'left'|'right'|'up'|'down';
+      let chosen: HTMLElement | null = null;
+      let best = Number.POSITIVE_INFINITY;
+      for (const item of items) {
+        if (item === current) continue;
+        const candidateScore = scoreDirectionalCandidate(current, item, direction);
+        if (candidateScore < best) { best = candidateScore; chosen = item; }
       }
-
-      const dir = key.replace("Arrow", "").toLowerCase() as "left" | "right" | "up" | "down";
-      let best: HTMLElement | null = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-      for (const candidate of items) {
-        if (candidate === active) continue;
-        const score = scoreDirectionalCandidate(active, candidate, dir);
-        if (score < bestScore) {
-          bestScore = score;
-          best = candidate;
+      // At edge of a long card list, move the viewport instead of trapping focus.
+      if (!chosen) {
+        const scrollable = (() => {
+          let el: HTMLElement | null = current.parentElement;
+          while (el && el !== document.body) {
+            const style = window.getComputedStyle(el);
+            if (/auto|scroll/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 4) return el;
+            el = el.parentElement;
+          }
+          return null;
+        })();
+        if (scrollable && (direction === 'up' || direction === 'down')) {
+          event.preventDefault(); event.stopPropagation();
+          scrollable.scrollTop += (direction === 'down' ? 1 : -1) * Math.max(100, scrollable.clientHeight * .55);
         }
+        return;
       }
-      if (!best) return;
-      event.preventDefault();
-      event.stopPropagation();
-      focusElement(best);
-      lastFocusedRef.current = best;
+      event.preventDefault(); event.stopPropagation();
+      focusElement(chosen);
+      lastFocusedRef.current = chosen;
     };
 
-    window.addEventListener("focusin", onFocus, true);
-    window.addEventListener("keydown", onKey, true);
+    const observer = new MutationObserver(scheduleFocus);
+    if (root) observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-msc-route', 'aria-hidden'] });
+    const timer = window.setTimeout(scheduleFocus, 130);
+    window.addEventListener('focusin', onFocus, true);
+    window.addEventListener('keydown', onKey, true);
     return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("focusin", onFocus, true);
-      window.removeEventListener("keydown", onKey, true);
+      observer.disconnect(); window.clearTimeout(timer);
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('focusin', onFocus, true);
+      window.removeEventListener('keydown', onKey, true);
     };
   }, [onExit]);
-
   return null;
 }
 
@@ -223,6 +237,15 @@ function X01TurnMirrorBridge({ snapshot, enabled }: { snapshot?: ViewerLiveSnaps
 }
 
 export default function SamsungTvSharedAppHost({ boot, snapshot, onExit, onNavigate }: Props) {
+  const [activeTab, setActiveTab] = React.useState(String(boot.tab));
+  React.useEffect(() => {
+    const onPhoneRoute = (event: Event) => {
+      const tab = String((event as CustomEvent)?.detail?.tab || "");
+      if (tab) setActiveTab(tab);
+    };
+    window.addEventListener("mss:samsung-tv:apply-phone-route", onPhoneRoute as EventListener);
+    return () => window.removeEventListener("mss:samsung-tv:apply-phone-route", onPhoneRoute as EventListener);
+  }, []);
   // Le boot doit être publié AVANT le premier render de AppRoot. Un useEffect/useLayoutEffect
   // serait trop tard : le vrai App lirait alors un boot null et retomberait sur GameSelect/Auth.
   setSamsungTvNativeAppBoot(boot);
@@ -251,6 +274,7 @@ export default function SamsungTvSharedAppHost({ boot, snapshot, onExit, onNavig
       const detail = (event as CustomEvent)?.detail || {};
       const tab = String(detail?.tab || "");
       if (!tab) return;
+      setActiveTab(tab);
       onNavigate(tab, detail?.params);
     };
     window.addEventListener("mss:samsung-tv:navigation", handleNavigation as EventListener);
@@ -260,7 +284,7 @@ export default function SamsungTvSharedAppHost({ boot, snapshot, onExit, onNavig
   return (
     <div className="mss-tv-shared-app-host">
       <RemoteFocusBridge onExit={onExit} />
-      <X01TurnMirrorBridge snapshot={snapshot} enabled={boot.tab === "x01_play_v3" || boot.tab === "x01"} />
+      <X01TurnMirrorBridge snapshot={snapshot} enabled={activeTab === "x01_play_v3" || activeTab === "x01"} />
       <React.Suspense fallback={<div className="mss-tv-shared-app-loading">Chargement de l’interface MULTISPORTS SCORING…</div>}>
         <AppRoot />
       </React.Suspense>

@@ -838,3 +838,36 @@
   .mssAcademyCoachActions{width:100%;justify-content:flex-end}
 }
 @media(prefers-reduced-motion:reduce){.mssAcademyCoachTrack>span{transition:none}}
+
+/* Coach Awena : bilan des huit dernières semaines, affichage compact et sans défilement latéral. */
+.mssAcademyCoachReport{
+  margin:0 0 12px;
+  padding:clamp(11px,1.5vw,16px);
+  border:1px solid rgba(79,215,238,.22);
+  border-radius:16px;
+  background:rgba(11,27,40,.82);
+  color:#effaff;
+}
+.mssAcademyCoachReportHead{display:flex;align-items:center;gap:10px;min-width:0}
+.mssAcademyCoachReportHead>div{flex:1;min-width:0}
+.mssAcademyCoachReportHead small,.mssAcademyCoachReportNumbers small{display:block;color:#92c9d6;font-size:9px;font-weight:850;letter-spacing:.35px}
+.mssAcademyCoachReportHead strong{display:block;margin-top:3px;font-size:14px}
+.mssAcademyCoachReportHead button{display:flex;align-items:center;gap:6px;min-height:34px;padding:7px 9px;border-radius:10px;border:1px solid rgba(79,215,238,.23);background:rgba(39,220,255,.05);color:#b5f5ff;font-size:10px;font-weight:900}
+.mssAcademyCoachReportNumbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:13px 0}
+.mssAcademyCoachReportNumbers>div{display:flex;align-items:center;flex-direction:column;justify-content:center;min-width:0;gap:5px;padding:10px 5px;border-radius:11px;background:rgba(255,255,255,.035)}
+.mssAcademyCoachReportNumbers strong{font-size:22px;line-height:1;color:#9af6d5}
+.mssAcademyCoachReportNumbers small{text-align:center;font-size:8px}
+.mssAcademyCoachReportWeeks{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;align-items:end}
+.mssAcademyCoachReportWeek{display:flex;align-items:center;flex-direction:column;gap:5px;min-width:0}
+.mssAcademyCoachReportBar{display:flex;align-items:flex-end;justify-content:center;width:100%;max-width:44px;height:43px;overflow:hidden;border-radius:7px;background:rgba(255,255,255,.06)}
+.mssAcademyCoachReportBar>span{display:block;width:100%;min-height:0;border-radius:7px;background:linear-gradient(0deg,#2cc6e4,#7df3c1)}
+.mssAcademyCoachReportWeek small{max-width:100%;color:#accad4;text-align:center;white-space:nowrap;font-size:8px}
+.mssAcademyCoachReport>p{margin:12px 0 5px;font-size:11px;line-height:1.45;color:#d1e7ed}
+.mssAcademyCoachReportNote{display:block;font-size:9px;color:#88a7b4;line-height:1.4}
+@media(max-width:450px){
+  .mssAcademyCoachReportHead{gap:7px}
+  .mssAcademyCoachReportHead strong{font-size:12px}
+  .mssAcademyCoachReportHead button span{display:none}
+  .mssAcademyCoachReportWeeks{gap:3px}
+  .mssAcademyCoachReportWeek small{font-size:7px}
+}

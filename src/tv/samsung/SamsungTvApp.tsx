@@ -1,4 +1,5 @@
 import * as React from "react";
+import { receiveViewerTvAudioCue, stopAllViewerTvAudio } from "../../lib/viewer/viewerAudioBridge";
 import { fetchViewerSnapshot, normalizeViewerCode } from "../../lib/viewer/viewerClient";
 import { getTicker } from "../../lib/tickers";
 import type { ViewerLiveSnapshot } from "../../lib/viewer/types";
@@ -26,7 +27,7 @@ const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_V233_SHARED_GAMES_LANDSCAPE_20261107";
+const TV_BUILD_MARKER = "MSS_TV_V241_SHARED_ROUTE_FULLSCREEN_EXIT_LOCK_20261120";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -424,6 +425,11 @@ function sharedRouteForSnapshot(snapshot: ViewerLiveSnapshot | null) {
   return map[game] || (game ? `${game}_play` : "");
 }
 
+// Même session Viewer = même base de score/config, même après plusieurs polls.
+// Recalculer depuis le score restant ou Date.now() faisait croire au routeur
+// qu'une nouvelle partie était lancée à chaque nouveau snapshot.
+const x01InferredConfigCache = new Map<string, { startScore: number; createdAt: number }>();
+
 function sharedGameConfigForSnapshot(snapshot: ViewerLiveSnapshot | null, nav: PhoneNavigation | null, state: TvState) {
   const direct = nav?.gameConfig || (snapshot as any)?.gameConfig || (snapshot as any)?.meta?.tvConfig || (snapshot as any)?.meta?.gameConfig;
   if (direct && typeof direct === "object") return direct;
@@ -431,7 +437,17 @@ function sharedGameConfigForSnapshot(snapshot: ViewerLiveSnapshot | null, nav: P
 
   const players = Array.isArray(snapshot?.players) ? snapshot!.players : [];
   const scores = players.map((player: any) => Number(player?.score)).filter((value) => Number.isFinite(value) && value > 0);
-  const inferredStart = Number((snapshot as any)?.meta?.startScore || (snapshot as any)?.meta?.x01StartScore || Math.max(0, ...scores) || state.settings.defaultX01 || 501);
+  const cacheKey = String((snapshot as any)?.meta?.matchId || (snapshot as any)?.matchId || snapshot?.sessionId || "x01");
+  let fallback = x01InferredConfigCache.get(cacheKey);
+  if (!fallback) {
+    fallback = {
+      startScore: Number((snapshot as any)?.meta?.startScore || (snapshot as any)?.meta?.x01StartScore || Math.max(0, ...scores) || state.settings.defaultX01 || 501),
+      createdAt: Date.now(),
+    };
+    if (x01InferredConfigCache.size >= 24) x01InferredConfigCache.clear();
+    x01InferredConfigCache.set(cacheKey, fallback);
+  }
+  const inferredStart = fallback.startScore;
   const outMode = ["single", "double", "master"].includes(String((snapshot as any)?.meta?.outMode || ""))
     ? String((snapshot as any)?.meta?.outMode)
     : (state.settings.doubleOut ? "double" : "single");
@@ -455,7 +471,7 @@ function sharedGameConfigForSnapshot(snapshot: ViewerLiveSnapshot | null, nav: P
     setsToWin: Math.max(1, Number((snapshot as any)?.meta?.setsToWin || 1)),
     serveMode: "alternate",
     scoringSource: "manual",
-    createdAt: Date.now(),
+    createdAt: fallback.createdAt,
   };
 }
 
@@ -1623,10 +1639,6 @@ export default function SamsungTvApp() {
   const sharedAppBootRef = React.useRef<SamsungTvNativeAppBoot | null>(null);
   // Une mise à jour du score ne doit jamais réinitialiser AppRoot et sa partie.
   const lastMirroredRouteRef = React.useRef("");
-  // The phone is authoritative for leaving gameplay. A stale snapshot can survive
-  // several HTTP polls after exit and must never reopen the previous match.
-  const phoneLeftGameRef = React.useRef(false);
-
   const applyMirroredBoot = React.useCallback((boot: SamsungTvNativeAppBoot) => {
     const route = JSON.stringify({
       sessionId: boot.sessionId, tab: boot.tab, sportId: boot.sportId,
@@ -1635,6 +1647,16 @@ export default function SamsungTvApp() {
     });
     if (sharedAppBootRef.current?.storeMode === "mirror" && lastMirroredRouteRef.current === route) return;
     lastMirroredRouteRef.current = route;
+    // Une route distante n'est PAS un nouveau démarrage de l'application.
+    // Conserver AppRoot monté empêche les oscillations et pertes d'état lors des
+    // scores, des retours et des changements de sous-menu GAMES.
+    if (sharedAppBootRef.current?.storeMode === "mirror") {
+      const detail = { tab: boot.tab, params: boot.params || null, gameConfig: boot.gameConfig || null,
+        sportId: boot.sportId, at: boot.launchedAt };
+      (window as any).__MSS_SAMSUNG_TV_PENDING_ROUTE__ = detail;
+      window.dispatchEvent(new CustomEvent("mss:samsung-tv:apply-phone-route", { detail }));
+      return;
+    }
     sharedAppBootRef.current = boot;
     setSharedAppBoot(boot);
   }, []);
@@ -1685,9 +1707,6 @@ export default function SamsungTvApp() {
     saveLastCode(clean);
     setSessionId(clean);
     setSnapshot(null);
-    snapshotRef.current = null;
-    phoneLeftGameRef.current = false;
-    lastMirroredRouteRef.current = "";
     setPhoneNavigation(null);
     phoneNavigationRef.current = null;
     setScreen("hub");
@@ -1702,6 +1721,8 @@ export default function SamsungTvApp() {
     setProfileEditor(null);
     setProfileDeleteArmed(false);
     sharedAppBootRef.current = null;
+    lastMirroredRouteRef.current = "";
+    delete (window as any).__MSS_SAMSUNG_TV_PENDING_ROUTE__;
     setSharedAppBoot(null);
     setHash(clean);
   }, []);
@@ -1723,6 +1744,13 @@ export default function SamsungTvApp() {
     realtimeRef.current = null;
     if (!sessionId) return;
 
+    // Keep-alive drives audio handoff on the phone. No active Samsung receiver
+    // means the phone retains audio instead of being muted by mistake.
+    const announceAudioSink = () => realtimeRef.current?.sendCommand({
+      type: "viewer_audio_sink_ready", source: "samsung-tv", sessionId, at: Date.now(),
+    });
+    const audioSinkHeartbeat = window.setInterval(announceAudioSink, 9000);
+
     let alive = true;
     let pollTimer: number | null = null;
 
@@ -1731,7 +1759,10 @@ export default function SamsungTvApp() {
       snapshotRef.current = next;
       setSnapshot(next);
       const hasGame = Array.isArray(next.players) && next.players.length > 0 && next.phase !== "lobby";
-      if (hasGame && autoFollowGameRef.current && !phoneLeftGameRef.current) {
+      // Une navigation explicite hors partie est prioritaire sur un ancien
+      // snapshot encore en cache (polling HTTP et WebSocket en parallèle).
+      if (hasGame && autoFollowGameRef.current &&
+          (!phoneNavigationRef.current || phoneNavigationRef.current.gameplay)) {
         const currentState = tvStateRef.current;
         const currentNav = phoneNavigationRef.current;
         const route = currentNav?.gameplay ? currentNav.tab : sharedRouteForSnapshot(next);
@@ -1782,6 +1813,7 @@ export default function SamsungTvApp() {
         if (!alive) return;
         setConnectionStatus(next);
         if (next === "connected") {
+          announceAudioSink();
           window.setTimeout(() => realtimeRef.current?.sendCommand({
             type: "request_tv_state",
             source: "samsung-tv",
@@ -1792,6 +1824,11 @@ export default function SamsungTvApp() {
       onSnapshot: (next) => applySnapshot(next),
       onCommand: (data) => {
         if (!alive || !data || typeof data !== "object") return;
+
+        if (data.type === "viewer_audio_event") {
+          receiveViewerTvAudioCue(data);
+          return;
+        }
 
         if (data.type === "tv_state") {
           const next: TvState = {
@@ -1808,6 +1845,11 @@ export default function SamsungTvApp() {
           selectedSportRef.current = next.activeSport;
           setTvState(next);
           setSelectedSport(next.activeSport);
+          if (sharedAppBootRef.current?.storeMode === "mirror") {
+            window.dispatchEvent(new CustomEvent("mss:samsung-tv:apply-phone-state", {
+              detail: { sportId: next.activeSport, at: next.at },
+            }));
+          }
 
           // Dès que le téléphone a fourni son état, on ouvre la VRAIE application
           // partagée sur le sélecteur de sports. Le vieux hub TV n'est plus
@@ -1840,19 +1882,25 @@ export default function SamsungTvApp() {
           gameConfig: data.gameConfig || undefined,
           at: Number(data.at || Date.now()),
         };
+        if (!nav.tab) return;
+        const previousNav = phoneNavigationRef.current;
+        // Une réponse tardive ne peut pas écraser l'état le plus récent.
+        if (previousNav && nav.at < previousNav.at) return;
+        // Les commandes du téléphone sont l'autorité de navigation.
+        // STOP/RETOUR désactive immédiatement le suivi d'un ancien scoreboard.
+        if (!nav.gameplay) {
+          autoFollowGameRef.current = false;
+          setAutoFollowGame(false);
+        } else {
+          autoFollowGameRef.current = true;
+          setAutoFollowGame(true);
+        }
         phoneNavigationRef.current = nav;
         setPhoneNavigation(nav);
-        // A non-game route is an explicit EXIT from the phone. Invalidate the
-        // previous match snapshot so that polling cannot bounce back into play.
-        phoneLeftGameRef.current = !nav.gameplay;
-        if (!nav.gameplay) {
-          snapshotRef.current = null;
-          setSnapshot(null);
-        }
 
-        // Companion V8 : lorsque la vraie application partagée est ouverte,
-        // toute navigation du téléphone remonte vers la même route/composant TV.
-        // On ne maintient plus un menu TV parallèle qui diverge visuellement.
+        // Companion : seule l'application partagée reçoit les routes du
+        // téléphone. Les vieux écrans TV spécifiques servent de secours avant
+        // la première connexion, jamais de remplaçant au menu GAMES natif.
         if (nav.tab) {
           const currentTvState = tvStateRef.current;
           const mirroredConfig = nav.gameplay
@@ -1878,61 +1926,17 @@ export default function SamsungTvApp() {
             launchedAt: Date.now(),
           };
           applyMirroredBoot(boot);
-          if (nav.gameplay) {
-            autoFollowGameRef.current = true;
-            setAutoFollowGame(true);
-          }
           return;
         }
 
-        const nextScreen = screenForPhoneTab(nav.tab);
-        if (nav.gameplay) {
-          autoFollowGameRef.current = true;
-          setAutoFollowGame(true);
-          const currentTvState = tvStateRef.current;
-          const mirroredConfig = sharedGameConfigForSnapshot(snapshotRef.current, nav, currentTvState);
-          applyMirroredBoot({
-            version: 1,
-            tab: nav.tab,
-            params: { ...(nav.params || {}), ...(mirroredConfig ? { config: mirroredConfig, x01ConfigV3: mirroredConfig } : {}), source: "samsung-tv-phone-follow", tvNative: true },
-            gameConfig: mirroredConfig,
-            sportId: currentTvState.activeSport || selectedSportRef.current || "darts",
-            sessionId,
-            activeProfileId: currentTvState.activeProfileId,
-            profiles: currentTvState.profiles,
-            settings: currentTvState.settings,
-            theme: currentTvState.theme,
-            storeMode: "mirror",
-            launchedAt: Date.now(),
-          });
-          return;
-        }
-
-        if (!nextScreen) return;
-        screenRef.current = nextScreen;
-        setScreen(nextScreen);
-
-        if (nextScreen === "hub") {
-          setFocusIndex(viewerMenuIndexForRoute(nav.tab));
-        } else if (nextScreen === "sports") {
-          setFocusIndex(Math.max(0, TV_SPORTS.findIndex((sport) => sport.id === tvStateRef.current.activeSport)));
-        } else if (nextScreen === "sport") {
-          const sportId = tvStateRef.current.activeSport || selectedSportRef.current;
-          setSelectedSport(sportId);
-          const actions = tvLaunchActionsForSport(sportId);
-          const routeIndex = actions.findIndex((action) => action.tab === nav.tab);
-          setFocusIndex(Math.max(0, routeIndex));
-        } else if (nextScreen === "profiles" || nextScreen === "stats") {
-          const profileIndex = tvStateRef.current.profiles.findIndex((profile) => profile.id === tvStateRef.current.activeProfileId);
-          setFocusIndex(Math.max(0, profileIndex + (nextScreen === "profiles" ? 1 : 0)));
-        } else {
-          setFocusIndex(0);
-        }
       },
     });
 
     return () => {
       alive = false;
+      window.clearInterval(audioSinkHeartbeat);
+      realtimeRef.current?.sendCommand({ type: "viewer_audio_sink_left", sessionId, at: Date.now() });
+      stopAllViewerTvAudio();
       if (pollTimer != null) window.clearTimeout(pollTimer);
       realtimeRef.current?.close();
       realtimeRef.current = null;
@@ -2487,25 +2491,29 @@ export default function SamsungTvApp() {
     return (
       <React.Suspense fallback={<div className="mss-tv-shared-app-loading">Chargement de l’interface MULTISPORTS SCORING…</div>}>
         <SamsungTvSharedAppHost
-          key={`${sharedAppBoot.storeMode || "mirror"}:${sharedAppBoot.sessionId || "local"}:${sharedAppBoot.tab}:${lastMirroredRouteRef.current || sharedAppBoot.launchedAt}`}
+          key={`${sharedAppBoot.storeMode || "mirror"}:${sharedAppBoot.sessionId || "local"}`}
           boot={sharedAppBoot}
           snapshot={snapshot}
           onNavigate={(tab, params) => {
-            // Avoid bouncing an echoed phone navigation back through WebSocket.
-            // A local remote-control action is forwarded only if it changes route
-            // or meaningful route params relative to the phone's latest state.
-            if (!sessionId) return;
-            const nav = phoneNavigationRef.current;
-            const clean = (value: any) => {
-              if (!value || typeof value !== "object") return {};
-              const { source, tvNative, ...rest } = value;
-              return rest;
-            };
-            if (nav?.tab === tab && JSON.stringify(clean(nav.params)) === JSON.stringify(clean(params))) return;
-            sendNavigate(tab, params);
+            if (sessionId) sendNavigate(tab, params);
           }}
           onExit={() => {
             const localStandalone = sharedAppBoot.storeMode === "local";
+            if (!localStandalone && sessionId) {
+              // Aucun retour vers l'ancien Hub Samsung : le Retour de la
+              // télécommande rouvre le vrai menu GAMES sur les deux appareils.
+              autoFollowGameRef.current = false;
+              setAutoFollowGame(false);
+              applyMirroredBoot({
+                ...sharedAppBoot,
+                tab: "games",
+                params: { gamesView: "hub", source: "samsung-tv" },
+                gameConfig: null,
+                launchedAt: Date.now(),
+              });
+              sendNavigate("games", { gamesView: "hub", source: "samsung-tv" });
+              return;
+            }
             sharedAppBootRef.current = null;
             setSharedAppBoot(null);
             setSelectedAction(null);
