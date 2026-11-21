@@ -41,6 +41,77 @@
         globalThis.__MSS_TIZEN_STRUCTURED_CLONE_COMPAT__ = "V240";
       })();
     </script>
+    <!-- Samsung TV uses file:// and Vite publicDir:false; React's /sounds, /challenge,
+         /awena, ... paths must be mapped before the first game renders. -->
+    <script>
+      (function () {
+        var localDirs = /^(assets|sounds|challenge|awena|cast|fit)\//i;
+        var online = "https://multisports-scoring.pages.dev";
+        function fix(value) {
+          if (typeof value !== "string" || value.charAt(0) !== "/" || value.charAt(1) === "/") return value;
+          var bare = value.replace(/^\/+/, "");
+          return localDirs.test(bare) ? "./" + bare : online + "/" + bare;
+        }
+        window.__MSS_TV_RESOLVE_MEDIA__ = fix;
+        var origSetAttribute = Element.prototype.setAttribute;
+        Element.prototype.setAttribute = function (name, value) {
+          var tag = String(this.tagName || "").toLowerCase();
+          if (/^(img|audio|video|source)$/i.test(tag) && /^(src|poster)$/i.test(String(name))) {
+            value = fix(String(value));
+          }
+          return origSetAttribute.call(this, name, value);
+        };
+        [window.HTMLImageElement, window.HTMLMediaElement].forEach(function (ctor) {
+          if (!ctor) return;
+          var desc = Object.getOwnPropertyDescriptor(ctor.prototype, "src");
+          if (desc && desc.configurable && desc.get && desc.set) {
+            Object.defineProperty(ctor.prototype, "src", {
+              configurable: true, enumerable: desc.enumerable,
+              get: desc.get,
+              set: function (url) { desc.set.call(this, fix(String(url))); }
+            });
+          }
+        });
+        if (window.HTMLMediaElement) {
+          var origPlay = HTMLMediaElement.prototype.play;
+          HTMLMediaElement.prototype.play = function () {
+            var raw = this.getAttribute("src") || "";
+            if (raw.charAt(0) === "/") this.setAttribute("src", fix(raw));
+            return origPlay.apply(this, arguments);
+          };
+        }
+        // React may create inline CSS background URLs rather than <img> nodes.
+        function repair(root) {
+          if (!root || !root.querySelectorAll) return;
+          var nodes = root.querySelectorAll('[style*="url(/"], [style*="url(&quot;/"]');
+          for (var i = 0; i < nodes.length; i++) {
+            var node = nodes[i];
+            var style = node.getAttribute("style") || "";
+            var fixed = style.replace(/url\(\s*(["']?)(\/(?!\/)[^)'"\s]+)\1\s*\)/g,
+              function (_all, quote, url) { return "url(" + quote + fix(url) + quote + ")"; });
+            if (fixed !== style) node.setAttribute("style", fixed);
+          }
+        }
+        document.addEventListener("DOMContentLoaded", function () {
+          repair(document);
+          if (!window.MutationObserver) return;
+          var observer = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+              var m = mutations[i];
+              if (m.type === "attributes" && m.target instanceof Element) {
+                repair(m.target.parentElement || document);
+              } else if (m.addedNodes) {
+                for (var j = 0; j < m.addedNodes.length; j++) {
+                  var child = m.addedNodes[j];
+                  if (child.nodeType === 1) repair(child);
+                }
+              }
+            }
+          });
+          observer.observe(document.body, { subtree:true, childList:true, attributes:true, attributeFilter:["style"] });
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

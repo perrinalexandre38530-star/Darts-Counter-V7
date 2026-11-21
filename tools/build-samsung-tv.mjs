@@ -62,6 +62,19 @@ const result = spawnSync(process.execPath, [viteBin, "build", "--config", path.j
 
 if (result.status !== 0) process.exit(result.status || 1);
 
+// The TV build disables Vite publicDir to keep the package small. However real
+// game pages still reference /sounds/, /challenge/, /awena/, /fit/ and /cast/.
+// Copy those essential files to the WGT and use the early TV path shim to
+// translate absolute web URLs to relative file:// URLs. No private data copied.
+const requiredPublicFolders = ["sounds", "challenge", "awena", "cast", "fit"];
+for (const folder of requiredPublicFolders) {
+  const source = path.join(root, "public", folder);
+  if (!fs.existsSync(source)) continue;
+  const destination = path.join(out, folder);
+  fs.cpSync(source, destination, { recursive: true, force: true });
+}
+console.log("✅ Médias publics TV intégrés :", requiredPublicFolders.join(", "));
+
 // Optimize generated TV resources only. The original assets in src/ and public/
 // remain untouched. Crucially, paths and extensions remain unchanged.
 const optimize = spawnSync(process.execPath, [path.join(root, "tools", "optimize-samsung-tv-assets.mjs")], {

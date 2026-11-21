@@ -39,7 +39,8 @@ fs.rmSync(dest, { force: true, recursive: true });
 fs.mkdirSync(dest, { recursive: true });
 for (const f of required) copySafe(path.join(source, f), path.join(dest, f));
 copySafe(generated, path.join(dest, 'assets'));
-for (const f of ['css', 'main.js']) {
+// TV V242: essential public media included by the build step.
+for (const f of ['css', 'main.js', 'sounds', 'challenge', 'awena', 'cast', 'fit']) {
   const src = path.join(source, f);
   if (fs.existsSync(src) && (fs.statSync(src).isDirectory() || fs.statSync(src).size > 0)) copySafe(src, path.join(dest, f));
 }

@@ -5752,3 +5752,27 @@ html[data-msc-orientation="landscape"]
     transform-origin: right center !important;
   }
 }
+
+
+/* MSS V242 — landscape phone shared PLAY contract (no portrait changes).
+   Screens with explicit three-zone boards keep their own internal layout. */
+@media (orientation: landscape) and (max-height: 600px) {
+  html[data-msc-device="phone"] .dc-themed-route[data-msc-game-screen="play"] {
+    max-width: 100vw !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    overflow-x: hidden !important;
+  }
+  html[data-msc-device="phone"] .dc-themed-route[data-msc-game-screen="play"] > :is(
+    .five-lives-play-screen, .mss-br-play, .mss-war-play, .cp,
+    .msc-mode-play, .party-mode
+  ) {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  html[data-msc-device="phone"] .dc-themed-route[data-msc-game-screen="play"] :where(img, video) {
+    max-width: 100%;
+  }
+}

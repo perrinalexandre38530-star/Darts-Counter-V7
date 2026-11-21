@@ -1,6 +1,6 @@
 import * as React from "react";
-import { receiveViewerTvAudioCue, stopAllViewerTvAudio } from "../../lib/viewer/viewerAudioBridge";
 import { fetchViewerSnapshot, normalizeViewerCode } from "../../lib/viewer/viewerClient";
+import { playViewerTvAudio } from "../../lib/viewer/viewerAudioBridge";
 import { getTicker } from "../../lib/tickers";
 import type { ViewerLiveSnapshot } from "../../lib/viewer/types";
 import { createViewerRealtimeConnection, type ViewerRealtimeConnection } from "../../lib/viewer/viewerRealtime";
@@ -27,7 +27,7 @@ const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_V241_SHARED_ROUTE_FULLSCREEN_EXIT_LOCK_20261120";
+const TV_BUILD_MARKER = "MSS_TV_V242_ADAPTIVE_MEDIA_AUDIO_REMOTE_20261120";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -1630,6 +1630,7 @@ export default function SamsungTvApp() {
   const [scoreBuffer, setScoreBuffer] = React.useState("");
   const [sharedAppBoot, setSharedAppBoot] = React.useState<SamsungTvNativeAppBoot | null>(null);
   const realtimeRef = React.useRef<ViewerRealtimeConnection | null>(null);
+  const tvAudioGestureRef = React.useRef(false);
   const autoFollowGameRef = React.useRef(true);
   const screenRef = React.useRef<TvScreen>("hub");
   const tvStateRef = React.useRef<TvState>(EMPTY_TV_STATE);
@@ -1686,6 +1687,16 @@ export default function SamsungTvApp() {
   }, [sharedAppBoot]);
 
   useKeepFocusedVisible(focusIndex, screen);
+
+  React.useEffect(() => {
+    const activate = () => { tvAudioGestureRef.current = true; };
+    window.addEventListener("keydown", activate, true);
+    window.addEventListener("pointerdown", activate, true);
+    return () => {
+      window.removeEventListener("keydown", activate, true);
+      window.removeEventListener("pointerdown", activate, true);
+    };
+  }, []);
 
   const openStandaloneApp = React.useCallback(() => {
     const boot: SamsungTvNativeAppBoot = {
@@ -1744,13 +1755,6 @@ export default function SamsungTvApp() {
     realtimeRef.current = null;
     if (!sessionId) return;
 
-    // Keep-alive drives audio handoff on the phone. No active Samsung receiver
-    // means the phone retains audio instead of being muted by mistake.
-    const announceAudioSink = () => realtimeRef.current?.sendCommand({
-      type: "viewer_audio_sink_ready", source: "samsung-tv", sessionId, at: Date.now(),
-    });
-    const audioSinkHeartbeat = window.setInterval(announceAudioSink, 9000);
-
     let alive = true;
     let pollTimer: number | null = null;
 
@@ -1795,6 +1799,15 @@ export default function SamsungTvApp() {
       }
     };
 
+    // Audio ownership: the phone remains audible until the TV is visible and
+    // has received a genuine remote/button gesture; periodic acknowledgements
+    // expire automatically when the TV disconnects.
+    const audioReadyTimer = window.setInterval(() => {
+      if (!alive || !tvAudioGestureRef.current || document.hidden) return;
+      if (!realtimeRef.current?.isOpen()) return;
+      realtimeRef.current.sendCommand({ type: "tv_audio_ready", at: Date.now() });
+    }, 6500);
+
     const poll = async () => {
       try {
         applySnapshot(await fetchViewerSnapshot(sessionId));
@@ -1813,7 +1826,9 @@ export default function SamsungTvApp() {
         if (!alive) return;
         setConnectionStatus(next);
         if (next === "connected") {
-          announceAudioSink();
+          if (tvAudioGestureRef.current && !document.hidden) {
+            realtimeRef.current?.sendCommand({ type: "tv_audio_ready", at: Date.now() });
+          }
           window.setTimeout(() => realtimeRef.current?.sendCommand({
             type: "request_tv_state",
             source: "samsung-tv",
@@ -1825,11 +1840,13 @@ export default function SamsungTvApp() {
       onCommand: (data) => {
         if (!alive || !data || typeof data !== "object") return;
 
-        if (data.type === "viewer_audio_event") {
-          receiveViewerTvAudioCue(data);
+        if (data.type === "tv_audio_play") {
+          if (!tvAudioGestureRef.current || document.hidden) return;
+          void playViewerTvAudio(data.path, data.volume).then((ok) => {
+            if (!ok) realtimeRef.current?.sendCommand({ type: "tv_audio_failed", at: Date.now() });
+          });
           return;
         }
-
         if (data.type === "tv_state") {
           const next: TvState = {
             ...EMPTY_TV_STATE,
@@ -1934,9 +1951,7 @@ export default function SamsungTvApp() {
 
     return () => {
       alive = false;
-      window.clearInterval(audioSinkHeartbeat);
-      realtimeRef.current?.sendCommand({ type: "viewer_audio_sink_left", sessionId, at: Date.now() });
-      stopAllViewerTvAudio();
+      window.clearInterval(audioReadyTimer);
       if (pollTimer != null) window.clearTimeout(pollTimer);
       realtimeRef.current?.close();
       realtimeRef.current = null;

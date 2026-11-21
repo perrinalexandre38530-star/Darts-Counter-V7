@@ -1,1 +1,0 @@
-import{r}from"./index-C6GCE95y.js";function d(e){const[t,n]=r.useState(0);return r.useEffect(()=>{if(typeof window=="undefined")return;const i=()=>n(o=>o+1);return window.addEventListener("dc-history-updated",i),e&&window.addEventListener(e,i),()=>{window.removeEventListener("dc-history-updated",i),e&&window.removeEventListener(e,i)}},[e]),t}export{d as u};
