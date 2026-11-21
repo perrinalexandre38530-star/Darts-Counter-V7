@@ -1,0 +1,163 @@
+/* MULTISPORTS SCORING V248 — phone landscape + TV viewport contract.
+ * Scope: existing shared React pages. No colours/keypad rules, no mode engines.
+ * Purpose: remove portrait width caps, keep scroll access and avoid clipped UI.
+ */
+@media (orientation: landscape) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-mss-landscape-fit] {
+    --mss-fit-gap: clamp(6px, .85vw, 18px);
+    --mss-fit-pad: clamp(6px, 1vw, 20px);
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+
+  /* Only top-level single-child wrappers detected at runtime, never tiles. */
+  html[data-msc-orientation="landscape"] .dc-themed-route [data-mss-landscape-unclamp="1"] {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    margin-inline: 0 !important;
+  }
+
+  /* Make every existing semantic panel able to shrink without overflowing its
+     grid track; the right-hand panel remains the scrollable workspace. */
+  html[data-msc-orientation="landscape"] .dc-themed-route :is(
+    .msc-landscape-primary, .msc-landscape-secondary,
+    .msc-gameplay-primary, .msc-gameplay-secondary,
+    [data-mss-auto-play-zone="left"], [data-mss-auto-play-zone="input"]
+  ) {
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overscroll-behavior: contain;
+  }
+
+  /* Keep fallback pages reachable: the existing global rule forced overflow:
+     hidden even when PlayLandscapeAutoLayout found no score-input layout. */
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="play"]:is(
+    [data-mss-auto-play-ready="no-input"], [data-mss-auto-play-ready="unresolved"]
+  ) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html[data-msc-orientation="landscape"] .dc-themed-route :is(
+    img, video
+  ) {
+    max-width: 100%;
+    object-position: center;
+  }
+
+  html[data-msc-orientation="landscape"] .dc-themed-route :is(
+    [role="dialog"], [aria-modal="true"], dialog
+  ) {
+    max-height: calc(var(--msc-app-height, 100dvh) - 20px) !important;
+    max-width: min(98vw, 1200px) !important;
+    overflow-y: auto;
+  }
+}
+
+/* Compact phone landscape: keep the left navigation rail and let the right
+ * workspace scroll. The viewport is short, so headers cannot steal half of it. */
+@media (orientation: landscape) and (max-height: 600px) {
+  html[data-msc-device="phone"] .dc-themed-route[data-mss-landscape-fit] {
+    --mss-fit-gap: 6px;
+    --mss-fit-pad: 6px;
+  }
+  html[data-msc-device="phone"] .dc-themed-route[data-mss-landscape-fit="menu"],
+  html[data-msc-device="phone"] .dc-themed-route[data-mss-landscape-fit="config"] {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  html[data-msc-device="phone"] .dc-themed-route[data-mss-landscape-fit] :is(
+    .msc-landscape-header, .msc-mode-play-header, [data-mss-page-header="1"]
+  ) {
+    min-height: 0 !important;
+    max-height: min(27vh, 104px) !important;
+  }
+  html[data-msc-device="phone"] .dc-themed-route[data-mss-landscape-fit] :is(
+    .msc-landscape-primary, .msc-landscape-secondary
+  ) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Samsung shared application: menus consume ALL space to the right of the
+ * existing rail. Gameplay uses the entire TV, with no rail or bottom nav. */
+html[data-mss-samsung-tv-shared-app="1"] {
+  --mss-fit-gap: clamp(10px, 1.0vw, 22px);
+  --mss-fit-pad: clamp(9px, 1.0vw, 22px);
+}
+html[data-mss-samsung-tv-shared-app="1"] body .dc-themed-route:not([data-msc-game-screen="play"]) {
+  box-sizing: border-box !important;
+  width: calc(100vw - var(--msc-landscape-rail-width, 128px)) !important;
+  max-width: calc(100vw - var(--msc-landscape-rail-width, 128px)) !important;
+  min-width: 0 !important;
+  margin-left: var(--msc-landscape-rail-width, 128px) !important;
+  margin-right: 0 !important;
+  height: var(--msc-app-height, 100vh) !important;
+  min-height: 0 !important;
+  max-height: var(--msc-app-height, 100vh) !important;
+  padding: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] body .dc-themed-route:not([data-msc-game-screen="play"]) > .msc-landscape-page-shell {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: var(--mss-fit-gap) !important;
+  padding: var(--mss-fit-pad) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] body .dc-themed-route .msc-landscape-page-shell :is(
+  .msc-landscape-primary, .msc-landscape-secondary
+) {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] body .dc-themed-route[data-msc-game-screen="play"] {
+  width: 100vw !important;
+  min-width: 0 !important;
+  max-width: 100vw !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: var(--msc-app-height, 100vh) !important;
+  max-height: var(--msc-app-height, 100vh) !important;
+  overflow-x: hidden !important;
+}
+/* Fallback for legacy single-column play screens. Native X01/BR/Challenge/
+ * Five Lives layouts keep their own independently scrolling two/three panes. */
+html[data-mss-samsung-tv-shared-app="1"] body .dc-themed-route[data-msc-game-screen="play"]:is(
+  [data-mss-auto-play-ready="no-input"], [data-mss-auto-play-ready="unresolved"]
+) {
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] > :not(script):not(style) {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+/* Existing game tickers must fit, without cropping and without forcing their
+ * portrait source width to fill the whole display. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route :is(
+  .msc-landscape-header, .msc-mode-play-header, [data-mss-page-header="1"]
+) img {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+}
+/* Television focus remains visible on all selectable cards and controls. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route :is(
+  button, a[href], [role="button"], [tabindex="0"]
+):focus-visible {
+  outline: 3px solid var(--dc-theme-primary, #62dfff) !important;
+  outline-offset: 2px !important;
+  scroll-margin: 18px;
+}

@@ -71,6 +71,7 @@ import { useViewerInteractiveBridge } from "./lib/viewer/useViewerInteractiveBri
 import { isSamsungTvNativeAppMode, readSamsungTvNativeAppBoot } from "./tv/samsung/tvNativeAppBridge";
 import { installViewerPhoneAudioRelay } from "./lib/viewer/viewerAudioBridge";
 import "./styles/mss-universal-landscape-v242.css";
+import "./styles/mss-landscape-fit-v248.css";
 const { useEffect, useMemo, useState, useRef, useCallback } = React;
 import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
@@ -90,6 +91,7 @@ const GlobalCollectibleUnlockNotifier = React.lazy(() => import("./components/Gl
 import SportQuickSwitch from "./components/SportQuickSwitch";
 import DartsConfigGuideBoundary from "./components/DartsConfigGuideBoundary";
 import PlayLandscapeAutoLayout from "./components/gameplay/PlayLandscapeAutoLayout";
+import LandscapePageFitBridge from "./components/gameplay/LandscapePageFitBridge";
 import ChoiceStartOrderModal from "./components/ChoiceStartOrderModal";
 import { readStartParticipants, applyChosenStartOrder } from "./lib/choiceStartOrder";
 import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type OrganizationWorkspace } from "./organizations/organizationWorkspace";
@@ -8293,6 +8295,7 @@ case "babyfoot_team_edit":
             backgroundSize: "cover",
           }}
         >
+          <LandscapePageFitBridge routeKey={String(tab)} />
           <PlayLandscapeAutoLayout active={isGamePlayRoute} />
 
 
