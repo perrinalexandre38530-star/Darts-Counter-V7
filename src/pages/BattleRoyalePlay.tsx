@@ -967,7 +967,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     background: theme.primary + "1a",
                   }}
                 >
-                  ↗
+                  Round {roundIndex + 1}/{TARGETS.length} ↗
                 </span>
               )}
               </div>

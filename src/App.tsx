@@ -6880,7 +6880,7 @@ case "babyfoot_team_edit":
         if (killerLaunchMode === "quick") {
           page = <QuickPartyModeConfig modeId="killer" title={killerTitle} params={routeParams} onBack={() => go("killer_config", { ...routeParams, launchMode: undefined })} onStart={(result) => go(result.route, result.params)} />;
         } else if (killerLaunchMode === "arcade") {
-          page = <KillerConfig key={`killer-config-${String(routeParams?.variantId || routeParams?.gameId || "classic")}`} store={store} go={go} params={routeParams} onBack={() => go("killer_config", { ...routeParams, launchMode: undefined })} />;
+          page = <KillerConfig key={`killer-config-${String(routeParams?.variantId || routeParams?.gameId || "classic")}`} store={store} update={update} go={go} params={routeParams} onBack={() => go("killer_config", { ...routeParams, launchMode: undefined })} />;
         } else {
           page = <GameModeEntryChoice title={killerTitle} gameId={killerTitle.includes("PROGRESSIF") ? "killer_progressive" : "killer"} onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("killer_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("killer_config", { ...routeParams, launchMode: "arcade" })} />;
         }

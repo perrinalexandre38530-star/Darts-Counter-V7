@@ -47,6 +47,8 @@ export type DartsLiveSource = {
   calendarUrl?: string;
   watchUrl?: string;
   badges?: string[];
+  /** Directory links are not automatically imported score feeds. */
+  accessMode?: "directory" | "api_key" | "agreement";
 };
 
 export type DartsLiveLocaleProfile = {

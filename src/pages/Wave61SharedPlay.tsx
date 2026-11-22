@@ -3,7 +3,7 @@ import "./wave61/MexicainFiesta.css";
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
 import { buildMexicainRoundStandings } from "../lib/gameEngines/mexicainStandings";
-import { mexicainLiveRoundStatus } from "../lib/gameEngines/mexicainPresentation";
+import { mexicainLiveRoundStatus, mexicainVariantName } from "../lib/gameEngines/mexicainPresentation";
 import { getMexicainContract } from "../lib/gameEngines/wave61Engine";
 import { mexicainScoreDarts, mariachiAccepts, type MariachiContract } from "../lib/gameEngines/mexicainMariachi";
 import { shouldShowWave61VisitRecap, isWave61VisitRecapBlocking, releaseMexicainPendingBotRecap } from "../lib/gameEngines/mexicainTurnFlow";
@@ -1241,6 +1241,7 @@ function MexicainTargetInput({ state, currentThrow, setCurrentThrow, onValidate,
   const targetNumber = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
   const bull = targetNumber === 21;
   const contract:MariachiContract|null = getMexicainContract(state);
+  const mariachiFiesta = !!contract && mexicainVariantName(state?.config?.modeOptions) === "FIESTA";
   const [selectedMultiplier,setSelectedMultiplier]=React.useState<1|2|3>(1);
   // A FIESTA contract may switch from DOUBLES to TRIPLES between rounds.
   // Start each new round on a legal multiplier, but still let the player select
@@ -1266,7 +1267,7 @@ function MexicainTargetInput({ state, currentThrow, setCurrentThrow, onValidate,
     {combo.bonusName ? <div className="mex-combo-notice" role="status" aria-live="polite"><strong>{combo.bonusName}</strong><span>+{combo.bonus} POINTS BONUS</span></div> : null}
     {contract ? <>
       <div className="mex-mariachi-keytop">
-        <span aria-label="Contrat MARIACHI en cours">🎺 {contract.label}</span>
+        <span aria-label={mariachiFiesta ? "Contrat FIESTA en cours" : "Contrat MARIACHI en cours"}>🎺 {mariachiFiesta ? "FIESTA · " : ""}{contract.label}</span>
         <div className="mex-mariachi-multipliers" role="group" aria-label="Multiplicateur de l'impact">
           {([1,2,3] as const).map(m=><button key={m} type="button" className={`mex-hit-${m===1?'single':m===2?'double':'triple'}`} aria-pressed={selectedMultiplier===m} onClick={()=>setSelectedMultiplier(m)}>{m===1?'S':m===2?'D':'T'}</button>)}
         </div>
@@ -1379,7 +1380,8 @@ function MexicainScoreDetail({ state, currentThrow, tab, onTabChange }: any) {
 function MexicainPanel({ state, accent, detailed = false, avatarFor }: any) {
   const n = Number(state?.special?.mexicainTargets?.[state?.roundIndex] || 20);
   const contract=getMexicainContract(state);
-  const target = contract ? "MARIACHI" : n === 21 ? "BULL" : String(n);
+  const mariachiFiesta=!!contract && mexicainVariantName(state?.config?.modeOptions)==="FIESTA";
+  const target = contract ? (mariachiFiesta ? "FIESTA" : "MARIACHI") : n === 21 ? "BULL" : String(n);
   const current = state?.special?.mexicainRoundScores || {};
   const last = (state?.special?.mexicainHistory || []).slice(-1)[0];
   const active = state?.players?.[state?.activePlayerIndex]?.id;
@@ -1387,7 +1389,7 @@ function MexicainPanel({ state, accent, detailed = false, avatarFor }: any) {
 
   return <section className={`mex-fiesta-scoreboard ${detailed ? "mex-detailed" : "mex-compact"}`} data-mexicain-panel="1" aria-label="Tableau de manche du Mexicain">
     {detailed ? <div className="mex-score-head"><span><b>RONDA {Number(state?.roundIndex || 0)+1}</b></span><span>{living.length} SURVIVANTS</span><span className="mex-score-darts">{[0,1,2].map(i=><img key={i} src={cricketDartSvg} alt=""/>)}</span></div> : null}
-    <div className={`mex-target-stage mex-target-art ${contract?'mex-target-is-mariachi':''}`} role="group" aria-label={contract?`Contrat commun : ${contract.label}`:`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">{contract ? "🎺 CONTRAT MARIACHI" : state?.config?.modeOptions?.targetMode === "mexico" ? "MEXICO · OBJECTIF" : "OBJECTIF"}</span><strong className="mex-target-number">{target}</strong>{contract ? <small className="mex-target-contract-label">{contract.label}</small> : null}</div>
+    <div className={`mex-target-stage mex-target-art ${contract?'mex-target-is-mariachi':''}`} role="group" aria-label={contract?`Contrat commun : ${contract.label}`:`Cible commune du round : ${target}`}><img className="mex-target-artwork" src={mexicainRoundArt} alt="" aria-hidden="true"/><span className="mex-target-objective-label">{contract ? (mariachiFiesta ? "🎺 FIESTA · CONTRAT" : "🎺 CONTRAT MARIACHI") : state?.config?.modeOptions?.targetMode === "mexico" ? "MEXICO · OBJECTIF" : "OBJECTIF"}</span><strong className="mex-target-number">{target}</strong>{contract ? <small className="mex-target-contract-label">{contract.label}</small> : null}</div>
     {detailed ? <div className="mex-player-grid">{(state?.players||[]).map((p:any)=>{
       const out=!!state?.eliminated?.[p.id]; const hearts=Math.max(0,Number(state?.lives?.[p.id]||0));
       const value=current[p.id];

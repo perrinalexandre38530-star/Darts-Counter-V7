@@ -2,6 +2,7 @@ import { enrichChallengeReport } from './challengeFullReport';
 import { applyHistoricalSportResult } from './historySportReport';
 import { enrichHistoricalDartsModeReport } from './historyDartsModeReport';
 import { enrichShoveHistoryReport } from './shoveAPennyHistoryReport';
+import { mexicainVariantName } from './gameEngines/mexicainPresentation';
 import tickerBabyFoot from '../assets/tickers/ticker_babyfoot_match.png';
 import { zipSync } from 'fflate';
 import tickerX01 from '../assets/tickers/ticker_x01.png';
@@ -2116,8 +2117,18 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
    finalLives: payload.stateSnapshot.lives,
   };
   if(saved && Array.isArray(saved.rounds)) {
-   const mariachi = saved.rounds.some((round:any)=>Boolean(round.contractLabel));
-   report.title = mariachi ? 'LE MEXICAIN · MARIACHI' : 'LE MEXICAIN';
+   // Prefer the exact variant persisted in History V4. The round log alone
+   // cannot distinguish MARIACHI from FIESTA, or CLASSIQUE from MEXICO.
+   const options = summary?.config?.modeOptions
+    || payload?.summary?.config?.modeOptions
+    || payload?.stateSnapshot?.config?.modeOptions
+    || payload?.config?.modeOptions
+    || entry?.config?.modeOptions;
+   const historicalMariachi = saved.rounds.some((round:any)=>Boolean(round.contractLabel));
+   const variant = mexicainVariantName(options);
+   // Legacy exports may have round contracts but no saved configuration.
+   const resolved = variant === 'LE MEXICAIN' && !options && historicalMariachi ? 'MARIACHI' : variant;
+   report.title = resolved === 'LE MEXICAIN' ? resolved : `LE MEXICAIN · ${resolved}`;
    report.rounds = saved.rounds.length;
    report.unit = 'manches';
    // Une cible numérique est sans signification en MARIACHI : l'objectif

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import MssSelectorIconButton from "./MssSelectorIconButton";
 import { resolveTeamLogo } from "../lib/petanqueTeamsStore";
 
 function teamLogo(team: any): string | null {
@@ -82,10 +83,12 @@ export default function TeamPagedSelector({
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" onClick={() => setOpen(true)} style={triggerStyle || pill(accent, true)}>
-          {triggerContent ?? <>{chooseLabel} {selected.length ? `(${selected.length})` : ""}</>}
-        </button>
-        {!triggerOnly ? <button type="button" onClick={() => setListOpen((v) => !v)} style={pill(accent, listOpen)}>{listLabel}</button> : null}
+        {triggerOnly && triggerContent ? (
+          <button type="button" onClick={() => setOpen(true)} style={triggerStyle || pill(accent, true)}>{triggerContent}</button>
+        ) : (
+          <MssSelectorIconButton icon="teams" label={`${chooseLabel} (${selected.length})`} onClick={() => setOpen(true)} accent={accent} active={open} />
+        )}
+        {!triggerOnly ? <MssSelectorIconButton icon="profiles" label={listLabel} onClick={() => setListOpen((v) => !v)} accent={accent} active={listOpen} /> : null}
       </div>
 
       {!triggerOnly && listOpen ? (

@@ -1,6 +1,11 @@
 import React from "react";
 import "./finishDoTraining.css";
 import { useLang } from "../../../contexts/LangContext";
+import { BottomNavIcon } from "../../../components/BottomNav";
+import { MssSectionTabs, type MssSectionTab } from "../../../components/mss/MssSectionTabs";
+import TrainingHeader from "../../ui/TrainingHeader";
+import cricketDartSvg from "../../../ui_assets/cricket-dart.svg";
+import { MSS_HIT } from "../../../lib/mssVisualCharter";
 import { recordTrainingSession } from "../../stats/trainingStatsHub";
 import { loadFinishDoProgress, saveFinishDoAttempt, getFinishDoPriority } from "./finishDoProgress";
 
@@ -193,6 +198,8 @@ const labelMap = {
   random: { fr: "Mixte", en: "Mixed" },
 } as const;
 
+type FinishViewTab = "exercise" | "input" | "coach" | "session";
+
 export default function FinishDoTraining({ onExit, challenge = false, participantId, initialTarget }: { onExit: () => void; challenge?: boolean; participantId?: string | null; initialTarget?: string }) {
   const initialScore = initialTarget === "BULL50" ? 50 : /^D(?:[1-9]|1[0-9]|20)$/.test(initialTarget || "") ? Number(initialTarget!.slice(1)) * 2 : 40;
   const { lang } = useLang();
@@ -220,6 +227,7 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
   const [revisionChoice, setRevisionChoice] = React.useState<string | null>(null);
   const [showRevision, setShowRevision] = React.useState(false);
   const [career, setCareer] = React.useState(() => loadFinishDoProgress(participantId));
+  const [activeTab, setActiveTab] = React.useState<FinishViewTab>(initialTarget ? "input" : "exercise");
   React.useEffect(() => { setCareer(loadFinishDoProgress(participantId)); }, [participantId]);
 
   const pendingResult = React.useRef<{ score: number; won: boolean; darts: number; shots: Shot[] } | null>(null);
@@ -284,6 +292,7 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
 
   const selectFinish = (value: number, recoveryId: string | null = null) => {
     setActiveDrill(recoveryId);
+    setActiveTab("input");
     reset(value);
   };
   const moveFinish = (direction: -1 | 1) => {
@@ -399,120 +408,40 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
     : en
       ? "Placement"
       : "Placement";
+  const finishTabs: MssSectionTab<FinishViewTab>[] = [
+    { id: "exercise", label: en ? "Settings" : "Config", icon: "settings" },
+    { id: "input", label: en ? "Play" : "Jouer", icon: "games" },
+    { id: "coach", label: "Awena", icon: "messages" },
+    { id: "session", label: en ? "Stats" : "Bilan", icon: "stats" },
+  ];
 
   return (
-    <div className={`mss-finish-do ${started && !showConfig ? "is-playing" : "is-configuring"} ${showCoachDetails ? "is-coach-open" : ""}`}>
-      <header className="mss-finish-header" style={card}>
-        <div className="mss-finish-header-main">
-          <div>
-            <div className="mss-finish-kicker">{challenge ? (en ? "1 visit challenge" : "défi 1 volée") : en ? "double out training" : "entraînement double out"}</div>
-            <h2>{challenge ? (en ? "FINISH DO CHALLENGE" : "CHALLENGE FINISH DO") : en ? "FINISH DOUBLE OUT" : "FINISHS DOUBLE OUT"}</h2>
-            <p>{en ? "Learn finishes, react to misses and keep a clean route to your double." : "Apprends les checkouts, réagis aux ratés et garde une route claire vers ton double."}</p>
+    <div className={`mss-finish-do mss-ui-screen ${started && !showConfig ? "is-playing" : "is-configuring"} ${showCoachDetails ? "is-coach-open" : ""}`}>
+      <TrainingHeader
+        title={challenge ? "CHALLENGE FINISH DO" : "FINISHS DOUBLE OUT"}
+        tickerId="training_center"
+        onBack={() => { savePending(); onExit(); }}
+        rules={<div><p>{en ? "Finish with a double or Bull50. Bust restores the visit start score." : "Termine sur un double ou BULL50. Un BUST restaure le score de début de volée."}</p><p>{en ? "Enter the actual hits, and follow the recalculated finish route." : "Saisis les touches réelles et suis la route recalculée après chaque fléchette."}</p></div>}
+      />
+      <div className="mss-finish-content">
+        <MssSectionTabs tabs={finishTabs} active={activeTab} onChange={setActiveTab} ariaLabel={en ? "Finish DO navigation" : "Navigation FINISH DO"}/>
+      <section className="mss-finish-panel mss-finish-panel--hero" style={card}>
+        <div className="mss-finish-exercise-nav" aria-label={en ? "Checkout navigation" : "Navigation des finishes"}>
+          <button type="button" style={btn} onClick={() => moveFinish(-1)} aria-label={en ? "Previous checkout" : "Finish précédent"}>‹</button>
+          <div className="mss-finish-exercise-nav-status">
+            <span>{en ? "CURRENT EXERCISE" : "EXERCICE EN COURS"}</span>
+            <strong>{shots[0]?.before ?? score} <small>DO</small></strong>
           </div>
-          <button style={btn} onClick={() => { savePending(); onExit(); }}>
-            ← {en ? "Back" : "Retour"}
-          </button>
+          <button type="button" style={btn} onClick={() => moveFinish(1)} aria-label={en ? "Next checkout" : "Finish suivant"}>›</button>
         </div>
-        <div className="mss-finish-topchips">
-          <span className="mss-finish-chip">{challenge ? (en ? "3 darts max" : "3 fléchettes max") : en ? "Unlimited visits" : "Volées illimitées"}</span>
-          <span className="mss-finish-chip">{en ? "Bull50 finishes" : "BULL50 valide"}</span>
-          <span className="mss-finish-chip">{en ? "Bust resets visit" : "BUST restaure la volée"}</span>
-        </div>
-      </header>
 
-      <div className="mss-finish-grid">
-        <section className="mss-finish-panel mss-finish-panel--selection" style={card}>
-          <div className="mss-finish-panel-title-row mss-finish-selection-heading">
-            <h3>{en ? "Selection" : "Sélection"}</h3>
-            <button style={btn} onClick={() => selectFinish(nextScore())}>{en ? "Random" : "Aléatoire"}</button>
-          </div>
-          <div className="mss-finish-playing-actions">
-            <button type="button" style={btn} onClick={() => setShowConfig((v) => !v)} aria-expanded={showConfig}>
-              {en ? "Change checkout" : "Changer de finish"}
-            </button>
-            <button type="button" style={btn} onClick={() => setShowCoachDetails((v) => !v)} aria-expanded={showCoachDetails}>
-              {showCoachDetails ? (en ? "Hide coach" : "Masquer Awena") : (en ? "Coach details" : "Conseils Awena")}
-            </button>
-          </div>
-          <div className="mss-finish-config-controls">
-
-          <div className="mss-finish-block">
-            <div className="mss-finish-label">{en ? "Range" : "Niveau"}</div>
-            <div className="mss-finish-inline-buttons">
-              {(["basic", "advanced", "random"] as const).map((l) => (
-                <button key={l} style={{ ...btn, background: level === l ? "#0d6076" : "#1b2534" }} onClick={() => setLevel(l)}>
-                  {en ? labelMap[l].en : labelMap[l].fr}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mss-finish-block">
-            <div className="mss-finish-label">{en ? "Quick starts" : "Démarrages rapides"}</div>
-            <div className="mss-finish-score-preset-grid">
-              {presetScores.map((n) => (
-                <button key={n} style={{ ...btn, background: score === n ? "#0d6076" : "#1b2534" }} onClick={() => selectFinish(n)}>
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mss-finish-custom-row">
-            <label className="mss-finish-input-wrap">
-              <span>{en ? "Custom score" : "Score libre"}</span>
-              <input
-                aria-label="Score départ"
-                type="number"
-                min="2"
-                max="170"
-                value={currentInputScore}
-                onChange={(e) => {
-                  if (!started || !shots.length) {
-                    const n = Number(e.target.value);
-                    setScore(n);
-                    setVisitStart(n);
-                    setStarted(false);
-                  }
-                }}
-              />
-            </label>
-            <button style={btn} onClick={() => selectFinish(score)}>{started ? (en ? "Restart" : "Recommencer") : (en ? "Start" : "Démarrer")}</button>
-          </div>
-
-          <details className="mss-finish-details">
-            <summary>{en ? "Recovery drills" : "Défis plans B"}</summary>
-            <div className="mss-finish-drills-grid">
-              {RECOVERY_DRILLS.map((d) => (
-                <button
-                  key={d.id}
-                  style={{ ...btn, background: activeDrill === d.id ? "#0d6076" : "#1b2534", textAlign: "left" }}
-                  onClick={() => {
-                    selectFinish(d.start, d.id);
-                  }}
-                >
-                  <strong>{d.start}</strong>
-                  <span>{d.aim} → {d.actual}</span>
-                </button>
-              ))}
-            </div>
-          </details>
-
-          </div>
-          <div className="mss-finish-exercise-nav" aria-label={en ? "Checkout navigation" : "Navigation des finishes"}>
-            <button type="button" style={btn} onClick={() => moveFinish(-1)} aria-label={en ? "Previous checkout" : "Finish précédent"}>‹</button>
-            <div className="mss-finish-exercise-nav-status">
-              <span>{en ? "CURRENT EXERCISE" : "EXERCICE EN COURS"}</span>
-              <strong>{shots[0]?.before ?? score} <small>DO</small></strong>
-            </div>
-            <button type="button" style={btn} onClick={() => moveFinish(1)} aria-label={en ? "Next checkout" : "Finish suivant"}>›</button>
-          </div>
+        <div className="mss-finish-hero-grid">
           <div className="mss-finish-scoreboard" aria-live="polite">
             <div className="mss-finish-score-label">{en ? "REMAINING" : "RESTE"}</div>
             <strong className="mss-finish-score-number" style={{ color: won ? "#74f0ad" : "#35d9fb" }}>{score}</strong>
-            <div className="mss-finish-darts">
+            <div className="mss-finish-darts" aria-label={`${remainingDarts} ${en ? "darts available" : "fléchettes disponibles"}`}>
               {Array.from({ length: 3 }, (_, i) => (
-                <span key={i} className={i < remainingDarts && !finished ? "available" : "spent"}>🎯</span>
+                <img key={i} src={cricketDartSvg} alt="" className={i < remainingDarts && !finished ? "available" : "spent"}/>
               ))}
             </div>
             <div className="mss-finish-score-status">
@@ -522,10 +451,7 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
                   ? en ? "BUST • visit restored" : "BUST • volée restaurée"
                   : `${remainingDarts} ${en ? "dart(s) left" : "fléchette(s) restante(s)"}`}
             </div>
-            <div className="mss-finish-mini-stats">
-              <span>{en ? "Session" : "Session"} <b>{successes}/{attempts}</b></span>
-              <span>{en ? "Rate" : "Taux"} <b>{rate}%</b></span>
-            </div>
+            <div className="mss-finish-mini-stats"><span>{en ? "Session" : "Session"} <b>{successes}/{attempts}</b></span></div>
             {finished && (
               <div className="mss-finish-result-banner">
                 <span>{won ? (en ? "FINISH VALIDATED" : "FINISH VALIDÉ") : (en ? "Challenge missed" : "Défi non réussi")}</span>
@@ -533,296 +459,375 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
               </div>
             )}
           </div>
-          <div className="mss-finish-live-route" aria-live="polite">
-            <div className="mss-finish-live-route-label">{activeRoutes.length ? (en ? "RECOMMENDED" : "FINISH CONSEILLÉ") : (en ? "NEXT VISIT" : "PROCHAINE VOLÉE")}</div>
-            {showRoutes ? (
-              activeRoutes.length ? (
-                <div className="mss-finish-live-route-hits">{activeRoutes[0].map((d, i) => <React.Fragment key={`${d.label}-${i}`}>{i > 0 && <span className="mss-finish-arrow">→</span>}<strong className={d.finish ? "finish" : ""}>{d.label}</strong></React.Fragment>)}</div>
-              ) : setup ? (
-                <div className="mss-finish-live-route-hits">{setup.route.map((d, i) => <React.Fragment key={`${d.label}-${i}`}>{i > 0 && <span className="mss-finish-arrow">→</span>}<strong>{d.label}</strong></React.Fragment>)}<span className="mss-finish-arrow">→</span><strong className="finish">{setup.leave}</strong></div>
-              ) : <span>{en ? "Play for a safe double" : "Prépare un double"}</span>
-            ) : <span>{en ? "Blind training" : "Entraînement à l’aveugle"}</span>}
-          </div>
-          {tacticalFeedback && <div className="mss-finish-tactical-feedback" role="status" aria-live="polite">
-            <strong>{en ? "AWENA • REACTION" : "AWENA • RÉACTION"}</strong>
-            <span>{tacticalFeedback}</span>
-          </div>}
-        </section>
 
-        <section className="mss-finish-panel mss-finish-panel--input" style={card}>
-          <div className="mss-finish-panel-title-row">
-            <h3>{en ? "Actual hit" : "Touche réelle"}</h3>
-            <button style={btn} disabled={!shots.length} onClick={undo}>↶ {en ? "Undo" : "Annuler"}</button>
-          </div>
-
-          <div className="mss-finish-aim-panel">
-            <label className="mss-finish-aim-toggle">
-              <input type="checkbox" checked={trackAim} onChange={(e) => setTrackAim(e.target.checked)} />
-              <span>{en ? "Track intended double" : "Suivre le double visé"}</span>
-            </label>
-            {trackAim && <div className="mss-finish-aim-selection">
-              <label htmlFor="mss-finish-aim-target">{en ? "Target before dart" : "Cible avant le lancer"}</label>
-              <select id="mss-finish-aim-target" value={aimedDouble} onChange={(e) => setAimedDouble(e.target.value)}>
-                {AIMABLE_DOUBLES.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <span>{en ? "Enter the actual hit below" : "Saisis la touche réelle ci-dessous"}</span>
-            </div>}
-            {aimLastShot && <div className={`mss-finish-aim-feedback ${aimHit ? "hit" : "miss"}`} aria-live="polite">
-              <strong>{en ? "Aimed" : "Visé"} {aimLastShot.aimedDouble} → {en ? "hit" : "touché"} {aimLastShot.dart.label}</strong>
-              <span>{aimHit
-                ? en ? "Target hit. Well done!" : "Cible atteinte !"
-                : en ? "Target missed: Awena recalculates from the actual hit." : "Cible manquée : Awena recalcule depuis la touche réelle."}</span>
+          <div className="mss-finish-hero-side">
+            <div className="mss-finish-live-route" aria-live="polite">
+              <div className="mss-finish-live-route-label">{activeRoutes.length ? (en ? "RECOMMENDED" : "FINISH CONSEILLÉ") : (en ? "NEXT VISIT" : "PROCHAINE VOLÉE")}</div>
+              {showRoutes ? (
+                activeRoutes.length ? (
+                  <div className="mss-finish-live-route-hits">{activeRoutes[0].map((d, i) => <React.Fragment key={`${d.label}-${i}`}>{i > 0 && <span className="mss-finish-arrow">→</span>}<strong className={d.finish ? "finish" : ""}>{d.label}</strong></React.Fragment>)}</div>
+                ) : setup ? (
+                  <div className="mss-finish-live-route-hits">{setup.route.map((d, i) => <React.Fragment key={`${d.label}-${i}`}>{i > 0 && <span className="mss-finish-arrow">→</span>}<strong>{d.label}</strong></React.Fragment>)}<span className="mss-finish-arrow">→</span><strong className="finish">{setup.leave}</strong></div>
+                ) : <span>{en ? "Play for a safe double" : "Prépare un double"}</span>
+              ) : <span>{en ? "Blind training" : "Entraînement à l’aveugle"}</span>}
+            </div>
+            {tacticalFeedback && <div className="mss-finish-tactical-feedback" role="status" aria-live="polite">
+              <strong>{en ? "AWENA • REACTION" : "AWENA • RÉACTION"}</strong>
+              <span>{tacticalFeedback}</span>
             </div>}
           </div>
+        </div>
+      </section>
 
-          <div className="mss-finish-multipliers">
-            {(["S", "D", "T"] as const).map((k) => (
-              <button key={k} style={{ ...btn, flex: 1, background: type === k ? ({ S: "#586271", D: "#0b81b0", T: "#a23aba" }[k]) : "#1b2534" }} onClick={() => setType(k)}>
-                {k}
-              </button>
-            ))}
-          </div>
-
-          <div className="mss-finish-numbers">
-            {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                disabled={!started || finished}
-                style={{
-                  ...btn,
-                  padding: "10px 2px",
-                  opacity: finished ? 0.55 : 1,
-                  background: type === "S" ? "#5a6471" : type === "D" ? "#0b81b0" : "#a23aba",
-                }}
-                onClick={() => record(DARTS.find((d) => d.label === `${type}${n}`)!)}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-
-          <div className="mss-finish-specials">
-            {["BULL25", "BULL50", "MISS"].map((name) => (
-              <button
-                key={name}
-                disabled={!started || finished}
-                style={{
-                  ...btn,
-                  flex: 1,
-                  background: name === "BULL25" ? "#178a43" : name === "BULL50" ? "#bf3138" : "#c58a39",
-                  color: name === "MISS" ? "#362009" : "white",
-                }}
-                onClick={() => record(DARTS.find((d) => d.label === name)!)}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-
-          <div className="mss-finish-visit-log">
-            {shots.length ? shots.slice(-6).map((s, i) => (
-              <span key={`${shots.length - 6 + i}-${s.dart.label}`} className={`mss-finish-log-pill ${s.bust ? "bust" : s.finish ? "finish" : ""}`}>
-                {s.dart.label}{s.bust ? " • BUST" : ""}
-              </span>
-            )) : <span className="mss-finish-placeholder">{en ? "No dart recorded yet." : "Aucune fléchette saisie pour le moment."}</span>}
-          </div>
-        </section>
-
-        <section className="mss-finish-panel mss-finish-panel--coach" style={card}>
-          <div className="mss-finish-awena-head">
-            <img src="/awena/awena-bot-medallion.webp" alt="Awena" loading="lazy" />
-            <div>
-              <h3>AWENA • {en ? "Finish coach" : "Coach finish DO"}</h3>
-              <small>{en ? "Your real hit always decides the next route." : "Ta touche réelle décide toujours du prochain chemin."}</small>
+      <div className="mss-finish-stage">
+        {activeTab === "exercise" && (
+          <section className="mss-finish-panel mss-finish-panel--workspace" style={card}>
+            <div className="mss-finish-section-head">
+              <span className="mss-finish-section-icon" aria-hidden="true"><BottomNavIcon name="games" size={19} /></span>
+              <div>
+                <small>{en ? "EXERCISE SETUP" : "PARAMÈTRES DE L’EXERCICE"}</small>
+                <strong>{en ? "Choose a finish and launch the drill" : "Choisis un finish et lance l’exercice"}</strong>
+              </div>
+              <button style={btn} onClick={() => selectFinish(nextScore())}>{en ? "Random" : "Aléatoire"}</button>
             </div>
-          </div>
 
-          <div className="mss-finish-coach-topbar">
-            <strong>{routeTitle}</strong>
-            <label className="mss-finish-toggle">
-              <input type="checkbox" checked={showRoutes} onChange={(e) => setShowRoutes(e.target.checked)} />
-              <span>{en ? "Show help" : "Afficher l'aide"}</span>
-            </label>
-          </div>
-
-          {drill && (
-            <div className="mss-finish-drill-card">
-              <div className="mss-finish-drill-line"><b>{en ? "Scenario" : "Situation"}</b><span>{drill.start} • {drill.aim} → {drill.actual}</span></div>
-              <div className="mss-finish-drill-line"><b>{en ? "Recovery" : "Plan B"}</b><span>{drill.remaining} → {drill.route}</span></div>
-              <p>{en ? drill.noteEn : drill.noteFr}</p>
-            </div>
-          )}
-
-          {showRoutes ? (
-            <>
-              {activeRoutes.length ? (
-                <div className="mss-finish-routes-stack">
-                  {activeRoutes.map((r, i) => (
-                    <div key={i} className="mss-finish-route">
-                      <b className="mss-finish-route-label">{i === 0 ? "PLAN A" : `PLAN ${i + 1}`}</b>
-                      <div className="mss-finish-route-darts">
-                        {r.map((d, j) => (
-                          <React.Fragment key={`${j}-${d.label}`}>
-                            <span className={`mss-finish-dart-pill ${d.finish ? "final" : ""}`}>{d.label}</span>
-                            {j < r.length - 1 && <span className="mss-finish-arrow">→</span>}
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    </div>
+            <div className="mss-finish-config-shell">
+              <div className="mss-finish-block">
+                <div className="mss-finish-label">{en ? "Range" : "Niveau"}</div>
+                <div className="mss-finish-inline-buttons">
+                  {(["basic", "advanced", "random"] as const).map((l) => (
+                    <button key={l} style={{ ...btn, background: level === l ? "#0d6076" : "#1b2534" }} onClick={() => setLevel(l)}>
+                      {en ? labelMap[l].en : labelMap[l].fr}
+                    </button>
                   ))}
                 </div>
-              ) : (
-                <div className="mss-finish-empty-state">
-                  {score > 170
-                    ? en ? "No checkout over 170 in three darts." : "Pas de checkout au-dessus de 170 en trois fléchettes."
-                    : score === 1
-                      ? en ? "1 remaining is impossible in double out." : "1 restant est impossible en double out."
-                      : en ? "No checkout now. Set up your next visit." : "Pas de finish immédiat. Prépare la prochaine volée."}
-                </div>
-              )}
+              </div>
 
-              {!activeRoutes.length && setup && !finished && (
-                <div className="mss-finish-setup">
-                  <strong>{en ? "NEXT VISIT SETUP" : "PLACEMENT • PROCHAINE VOLÉE"}</strong>
-                  <div className="mss-finish-route-darts">
-                    {setup.route.map((d, i) => (
-                      <React.Fragment key={`${i}-${d.label}`}>
-                        <span className="mss-finish-dart-pill">{d.label}</span>
-                        <span className="mss-finish-arrow">→</span>
-                      </React.Fragment>
-                    ))}
-                    <span className="mss-finish-dart-pill final">{setup.leave}</span>
-                  </div>
-                  <small>{en ? "Aim to leave a comfortable double. Recalculate after every real hit." : "Laisse-toi un double confortable. Recalcule après chaque touche réelle."}</small>
-                </div>
-              )}
-
-              {tip && <p className="mss-finish-pro-tip">💡 {en ? tip.en : tip.fr}</p>}
-              {lastShot && !finished && (
-                <p className="mss-finish-live-note">
-                  {en ? "Last dart" : "Dernière fléchette"} : <b>{lastShot.dart.label}</b> • {en ? "remaining" : "reste"} <b>{score}</b>
-                </p>
-              )}
-            </>
-          ) : (
-            <div className="mss-finish-empty-state">{en ? "Blind mode: work out the route yourself first." : "Mode aveugle : trouve d'abord la route toi-même."}</div>
-          )}
-
-          <div className="mss-finish-session-tools">
-            <button type="button" style={btn} onClick={() => setShowSessionDetails((v) => !v)} aria-expanded={showSessionDetails}>
-              {en ? "Session details" : "Bilan de séance"} <span aria-hidden="true">{showSessionDetails ? "▴" : "▾"}</span>
-            </button>
-            {showSessionDetails && (
-              <div className="mss-finish-session-details">
-                <div className="mss-finish-session-kpis">
-                  <span><small>{en ? "Success rate" : "Réussite"}</small><strong>{rate}%</strong></span>
-                  <span><small>{en ? "Best checkout" : "Meilleur finish"}</small><strong>{bestFinish || "—"}</strong></span>
-                  <span><small>{en ? "Fewest darts" : "Minimum fléchettes"}</small><strong>{Number.isFinite(fastestFinish) ? fastestFinish : "—"}</strong></span>
-                </div>
-                <div className="mss-finish-career" aria-label={en ? "Double-out precision over sessions" : "Précision DO entre les séances"}>
-                  <div className="mss-finish-career-title"><strong>{en ? "OVER MULTIPLE SESSIONS" : "PROGRESSION ENTRE LES SÉANCES"}</strong><small>{career.sessions} {en ? "saved attempts" : "tentatives enregistrées"} · {career.darts} {en ? "darts" : "fléchettes"}</small></div>
-                  {Object.values(career.aims).length ? Object.values(career.aims).sort((a,b) => a.hits/a.attempts - b.hits/b.attempts).slice(0,5).map(item => <div className="mss-finish-career-item" key={item.label}>
-                    <b>{item.label}</b><span>{item.hits}/{item.attempts} · {Math.round(item.hits * 100 / item.attempts)}%</span>
-                  </div>) : <small>{en ? "Validate an attempt with announced doubles to start tracking." : "Valide une tentative avec des doubles annoncés pour commencer le suivi."}</small>}
-                  {careerPriority && <button type="button" style={btn} onClick={() => { setAimedDouble(careerPriority.label); setTrackAim(true); selectFinish(doubleValue(careerPriority.label)); setShowSessionDetails(false); }}>{en ? "Practice priority" : "Travailler en priorité"} {careerPriority.label}</button>}
-                </div>
-                <div className="mss-finish-aim-progress">
-                  <strong>{en ? "Intended double accuracy" : "Précision par double visé"}</strong>
-                  <small>{en ? "Only targets explicitly selected before the dart are measured." : "Seules les cibles annoncées avant le lancer sont mesurées."}</small>
-                  {aimStats.length ? aimStats.map((item) => (
-                    <div className="mss-finish-aim-stat" key={item.label}>
-                      <div><b>{item.label}</b><span>{item.hits}/{item.attempts} · {item.rate}%</span></div>
-                      <div className="mss-finish-aim-track"><span style={{ width: `${item.rate}%` }} /></div>
-                      <div className="mss-finish-aim-stat-footer">
-                        <small>{item.singleHits ? (en ? `${item.singleHits} single/bull outer hits` : `${item.singleHits} simple(s)/bull extérieur`) : (en ? `${item.misses} other misses` : `${item.misses} autre(s) échec(s)`)}</small>
-                        <button type="button" style={btn} onClick={() => {
-                          setAimedDouble(item.label);
-                          setTrackAim(true);
-                          selectFinish(doubleValue(item.label));
-                          setShowSessionDetails(false);
-                        }}>{en ? "Practice" : "Travailler"} {item.label}</button>
-                      </div>
-                    </div>
-                  )) : <em>{en ? "Enable target tracking, pick a double and record a dart." : "Active le suivi de visée, choisis un double et saisis une fléchette."}</em>}
-                </div>
-                {revision && (
-                  <section className="mss-finish-revision" aria-label={en ? "Personal checkout revision" : "Révision checkout personnalisée"}>
-                    <div className="mss-finish-revision-head">
-                      <div><strong>AWENA • {en ? "Targeted revision" : "Révision ciblée"}</strong>
-                        <small>{en ? "Based on explicitly recorded misses" : "D'après tes cibles annoncées et manquées"}</small></div>
-                      <button type="button" style={btn} onClick={() => { setShowRevision(v => !v); setRevisionChoice(null); }}>
-                        {showRevision ? (en ? "Hide" : "Masquer") : (en ? "Review" : "Réviser")}
-                      </button>
-                    </div>
-                    <div className="mss-finish-revision-focus">
-                      <b>{revision.label}</b> <span>{revisionAim!.hits}/{revisionAim!.attempts} · {revisionAim!.rate}%</span>
-                      <button type="button" style={btn} onClick={() => {
-                        setAimedDouble(revision.label);
-                        setTrackAim(true);
-                        selectFinish(doubleValue(revision.label));
-                        setShowSessionDetails(false);
-                      }}>{en ? "Practice this double" : "Travailler ce double"}</button>
-                    </div>
-                    {showRevision && (
-                      <div className="mss-finish-revision-quiz">
-                        <p>{en
-                          ? `You aim at ${revision.label} but hit ${revision.hit}. ${revision.remain} remain: what is a valid DO recovery?`
-                          : `Tu vises ${revision.label}, mais touches ${revision.hit}. Il reste ${revision.remain} : quel plan B est valide en DO ?`}</p>
-                        <div className="mss-finish-revision-options">
-                          {revision.options.map(option => (
-                            <button type="button" key={option} style={btn} aria-pressed={revisionChoice === option} onClick={() => setRevisionChoice(option)}>{option}</button>
-                          ))}
-                        </div>
-                        {revisionChoice && <p aria-live="polite" className={revisionChoice === revision.answer ? "correct" : "incorrect"}>
-                          {revisionChoice === revision.answer
-                            ? (en ? "Correct! Recalculate after the actual hit." : "Bien joué ! Recalcule toujours après la touche réelle.")
-                            : (en ? `Not quite: ${revision.answer} is a valid route.` : `Pas tout à fait : ${revision.answer} est une route valide.`)}
-                        </p>}
-                      </div>
-                    )}
-                  </section>
-                )}
-                <div className="mss-finish-double-progress">
-                  <strong>{en ? "Doubles recorded" : "Doubles saisis"}</strong>
-                  <small>{en ? "Only actual D / Bull50 inputs are counted, not aimed-but-missed doubles." : "Seuls les D / BULL50 réellement saisis sont comptés, pas les doubles visés et manqués."}</small>
-                  <div className="mss-finish-double-list">
-                    {doubleStats.length ? doubleStats.slice(0, 6).map((item) => (
-                      <span key={item.label}><b>{item.label}</b><small>{item.checkouts}/{item.attempts} {en ? "finishes / entries" : "sorties / saisies"}</small></span>
-                    )) : <em>{en ? "No double recorded yet" : "Aucun double saisi pour le moment"}</em>}
-                  </div>
-                </div>
-                <div className="mss-finish-session-recent">
-                  <small>{en ? "Latest attempts" : "Dernières tentatives"}</small>
-                  <div>{previousFinishes.length ? previousFinishes.map((h, i) => (
-                    <span key={i} className={h.won ? "success" : "failure"}>{h.score} {h.won ? `✓ ${h.darts}` : "✗"}</span>
-                  )) : <em>{en ? "No completed attempt yet" : "Aucune tentative terminée"}</em>}</div>
+              <div className="mss-finish-block">
+                <div className="mss-finish-label">{en ? "Quick starts" : "Démarrages rapides"}</div>
+                <div className="mss-finish-score-preset-grid">
+                  {presetScores.map((n) => (
+                    <button key={n} style={{ ...btn, background: score === n ? "#0d6076" : "#1b2534" }} onClick={() => selectFinish(n)}>
+                      {n}
+                    </button>
+                  ))}
                 </div>
               </div>
+
+              <div className="mss-finish-custom-row">
+                <label className="mss-finish-input-wrap">
+                  <span>{en ? "Custom score" : "Score libre"}</span>
+                  <input
+                    aria-label="Score départ"
+                    type="number"
+                    min="2"
+                    max="170"
+                    value={currentInputScore}
+                    onChange={(e) => {
+                      if (!started || !shots.length) {
+                        const n = Number(e.target.value);
+                        setScore(n);
+                        setVisitStart(n);
+                        setStarted(false);
+                      }
+                    }}
+                  />
+                </label>
+                <button style={btn} onClick={() => selectFinish(score)}>{started ? (en ? "Restart" : "Recommencer") : (en ? "Start" : "Démarrer")}</button>
+              </div>
+
+              <details className="mss-finish-details">
+                <summary>{en ? "Recovery drills" : "Défis plans B"}</summary>
+                <div className="mss-finish-drills-grid">
+                  {RECOVERY_DRILLS.map((d) => (
+                    <button
+                      key={d.id}
+                      style={{ ...btn, background: activeDrill === d.id ? "#0d6076" : "#1b2534", textAlign: "left" }}
+                      onClick={() => selectFinish(d.start, d.id)}
+                    >
+                      <strong>{d.start}</strong>
+                      <span>{d.aim} → {d.actual}</span>
+                    </button>
+                  ))}
+                </div>
+              </details>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "input" && (
+          <section className="mss-finish-panel mss-finish-panel--workspace mss-finish-game-panel" style={card}>
+            {!started && <div className="mss-finish-start-prompt"><strong>{en ? "Ready to train?" : "Prêt à t'entraîner ?"}</strong><button type="button" style={btn} onClick={() => selectFinish(score)}>{en ? "Start checkout" : "Démarrer le finish"}</button></div>}
+            <div className="mss-finish-section-head">
+              <span className="mss-finish-section-icon" aria-hidden="true"><BottomNavIcon name="messages" size={19} /></span>
+              <div>
+                <small>{en ? "ACTUAL INPUT" : "SAISIE RÉELLE"}</small>
+                <strong>{en ? "Enter the actual hit of every dart" : "Saisis la touche réelle de chaque fléchette"}</strong>
+              </div>
+              <button style={btn} disabled={!shots.length} onClick={undo}>↶ {en ? "Undo" : "Annuler"}</button>
+            </div>
+
+            <div className="mss-finish-aim-panel">
+              <label className="mss-finish-aim-toggle">
+                <input type="checkbox" checked={trackAim} onChange={(e) => setTrackAim(e.target.checked)} />
+                <span>{en ? "Track intended double" : "Suivre le double visé"}</span>
+              </label>
+              {trackAim && <div className="mss-finish-aim-selection">
+                <label htmlFor="mss-finish-aim-target">{en ? "Target before dart" : "Cible avant le lancer"}</label>
+                <select id="mss-finish-aim-target" value={aimedDouble} onChange={(e) => setAimedDouble(e.target.value)}>
+                  {AIMABLE_DOUBLES.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <span>{en ? "Enter the actual hit below" : "Saisis la touche réelle ci-dessous"}</span>
+              </div>}
+              {aimLastShot && <div className={`mss-finish-aim-feedback ${aimHit ? "hit" : "miss"}`} aria-live="polite">
+                <strong>{en ? "Aimed" : "Visé"} {aimLastShot.aimedDouble} → {en ? "hit" : "touché"} {aimLastShot.dart.label}</strong>
+                <span>{aimHit
+                  ? en ? "Target hit. Well done!" : "Cible atteinte !"
+                  : en ? "Target missed: Awena recalculates from the actual hit." : "Cible manquée : Awena recalcule depuis la touche réelle."}</span>
+              </div>}
+            </div>
+
+            <div className="mss-finish-multipliers">
+              {(["S", "D", "T"] as const).map((k) => (
+                <button key={k} style={{ ...btn, flex: 1, background: type === k ? ({ S: MSS_HIT.simple, D: MSS_HIT.double, T: MSS_HIT.triple }[k]) : "#1b2534", color: type === k ? "#101925" : "white" }} onClick={() => setType(k)}>
+                  {k === "S" ? "SIMPLE" : k === "D" ? "DOUBLE" : "TRIPLE"}
+                </button>
+              ))}
+            </div>
+
+            <div className="mss-finish-numbers">
+              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  disabled={!started || finished}
+                  style={{
+                    ...btn,
+                    padding: "10px 2px",
+                    opacity: finished ? 0.55 : 1,
+                    background: type === "S" ? MSS_HIT.simple : type === "D" ? MSS_HIT.double : MSS_HIT.triple,
+                    color: "#101925",
+                  }}
+                  onClick={() => record(DARTS.find((d) => d.label === `${type}${n}`)!)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+
+            <div className="mss-finish-specials">
+              {["BULL25", "BULL50", "MISS"].map((name) => (
+                <button
+                  key={name}
+                  disabled={!started || finished}
+                  style={{
+                    ...btn,
+                    flex: 1,
+                    background: name === "BULL25" ? MSS_HIT.bull : name === "BULL50" ? MSS_HIT.dbull : MSS_HIT.miss,
+                    color: name === "MISS" ? "#362009" : name === "BULL25" ? "#083024" : "white",
+                  }}
+                  onClick={() => record(DARTS.find((d) => d.label === name)!)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+
+            <div className="mss-finish-visit-log">
+              {shots.length ? shots.slice(-6).map((s, i) => (
+                <span key={`${shots.length - 6 + i}-${s.dart.label}`} className={`mss-finish-log-pill ${s.bust ? "bust" : s.finish ? "finish" : ""}`}>
+                  {s.dart.label}{s.bust ? " • BUST" : ""}
+                </span>
+              )) : <span className="mss-finish-placeholder">{en ? "No dart recorded yet." : "Aucune fléchette saisie pour le moment."}</span>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "coach" && (
+          <section className="mss-finish-panel mss-finish-panel--workspace" style={card}>
+            <div className="mss-finish-section-head">
+              <span className="mss-finish-section-icon" aria-hidden="true"><BottomNavIcon name="live" size={19} /></span>
+              <div>
+                <small>AWENA</small>
+                <strong>{en ? "Combinations, fallback plans and smart reminders" : "Combinaisons, plans B et rappels intelligents"}</strong>
+              </div>
+              <label className="mss-finish-toggle">
+                <input type="checkbox" checked={showRoutes} onChange={(e) => setShowRoutes(e.target.checked)} />
+                <span>{en ? "Show help" : "Afficher l'aide"}</span>
+              </label>
+            </div>
+
+            <div className="mss-finish-awena-head">
+              <img src="/awena/awena-bot-medallion.webp" alt="Awena" loading="lazy" />
+              <div>
+                <h3>AWENA • {en ? "Finish coach" : "Coach finish DO"}</h3>
+                <small>{en ? "Your real hit always decides the next route." : "Ta touche réelle décide toujours du prochain chemin."}</small>
+              </div>
+            </div>
+
+            {drill && (
+              <div className="mss-finish-drill-card">
+                <div className="mss-finish-drill-line"><b>{en ? "Scenario" : "Situation"}</b><span>{drill.start} • {drill.aim} → {drill.actual}</span></div>
+                <div className="mss-finish-drill-line"><b>{en ? "Recovery" : "Plan B"}</b><span>{drill.remaining} → {drill.route}</span></div>
+                <p>{en ? drill.noteEn : drill.noteFr}</p>
+              </div>
             )}
-          </div>
 
-          <details className="mss-finish-details mss-finish-details--coach">
-            <summary>{en ? "Quick rules & pro reminders" : "Rappels rapides & astuces pro"}</summary>
-            <ul className="mss-finish-rule-list">
-              <li>{en ? "Bull50 counts as a valid finishing double." : "BULL50 compte comme un double final valide."}</li>
-              <li>{en ? "Never leave 1 in double out." : "Ne laisse jamais 1 en double out."}</li>
-              <li>{en ? "32 → 16 → 8 → 4 → 2 is the classic recovery ladder." : "32 → 16 → 8 → 4 → 2 est l'échelle de secours classique."}</li>
-              <li>{en ? "If a checkout is impossible, leave 40, 32 or 24 when possible." : "Si le finish est impossible, vise plutôt 40, 32 ou 24 quand c'est possible."}</li>
-            </ul>
-          </details>
-        </section>
+            {showRoutes ? (
+              <>
+                {activeRoutes.length ? (
+                  <div className="mss-finish-routes-stack">
+                    {activeRoutes.map((r, i) => (
+                      <div key={i} className="mss-finish-route">
+                        <b className="mss-finish-route-label">{i === 0 ? "PLAN A" : `PLAN ${i + 1}`}</b>
+                        <div className="mss-finish-route-darts">
+                          {r.map((d, j) => (
+                            <React.Fragment key={`${j}-${d.label}`}>
+                              <span className={`mss-finish-dart-pill ${d.finish ? "final" : ""}`}>{d.label}</span>
+                              {j < r.length - 1 && <span className="mss-finish-arrow">→</span>}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mss-finish-empty-state">
+                    {score > 170
+                      ? en ? "No checkout over 170 in three darts." : "Pas de checkout au-dessus de 170 en trois fléchettes."
+                      : score === 1
+                        ? en ? "1 remaining is impossible in double out." : "1 restant est impossible en double out."
+                        : en ? "No checkout now. Set up your next visit." : "Pas de finish immédiat. Prépare la prochaine volée."}
+                  </div>
+                )}
+
+                {!activeRoutes.length && setup && !finished && (
+                  <div className="mss-finish-setup">
+                    <strong>{en ? "NEXT VISIT SETUP" : "PLACEMENT • PROCHAINE VOLÉE"}</strong>
+                    <div className="mss-finish-route-darts">
+                      {setup.route.map((d, i) => (
+                        <React.Fragment key={`${i}-${d.label}`}>
+                          <span className="mss-finish-dart-pill">{d.label}</span>
+                          <span className="mss-finish-arrow">→</span>
+                        </React.Fragment>
+                      ))}
+                      <span className="mss-finish-dart-pill final">{setup.leave}</span>
+                    </div>
+                    <small>{en ? "Aim to leave a comfortable double. Recalculate after every real hit." : "Laisse-toi un double confortable. Recalcule après chaque touche réelle."}</small>
+                  </div>
+                )}
+
+                {tip && <p className="mss-finish-pro-tip">💡 {en ? tip.en : tip.fr}</p>}
+                {lastShot && !finished && (
+                  <p className="mss-finish-live-note">
+                    {en ? "Last dart" : "Dernière fléchette"} : <b>{lastShot.dart.label}</b> • {en ? "remaining" : "reste"} <b>{score}</b>
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="mss-finish-empty-state">{en ? "Blind mode: work out the route yourself first." : "Mode aveugle : trouve d'abord la route toi-même."}</div>
+            )}
+
+            <details className="mss-finish-details mss-finish-details--coach">
+              <summary>{en ? "Quick rules & pro reminders" : "Rappels rapides & astuces pro"}</summary>
+              <ul className="mss-finish-rule-list">
+                <li>{en ? "Bull50 counts as a valid finishing double." : "BULL50 compte comme un double final valide."}</li>
+                <li>{en ? "Never leave 1 in double out." : "Ne laisse jamais 1 en double out."}</li>
+                <li>{en ? "32 → 16 → 8 → 4 → 2 is the classic recovery ladder." : "32 → 16 → 8 → 4 → 2 est l'échelle de secours classique."}</li>
+                <li>{en ? "If a checkout is impossible, leave 40, 32 or 24 when possible." : "Si le finish est impossible, vise plutôt 40, 32 ou 24 quand c'est possible."}</li>
+              </ul>
+            </details>
+          </section>
+        )}
+
+        {activeTab === "session" && (
+          <section className="mss-finish-panel mss-finish-panel--workspace" style={card}>
+            <div className="mss-finish-section-head">
+              <span className="mss-finish-section-icon" aria-hidden="true"><BottomNavIcon name="stats" size={19} /></span>
+              <div>
+                <small>{en ? "SESSION & PROGRESSION" : "BILAN & PROGRESSION"}</small>
+                <strong>{en ? "Track your session, doubles and long-term progress" : "Suis ta séance, tes doubles et ta progression"}</strong>
+              </div>
+            </div>
+            <div className="mss-finish-session-details mss-finish-session-details--standalone">
+              <div className="mss-finish-session-kpis">
+                <span><small>{en ? "Success rate" : "Réussite"}</small><strong>{rate}%</strong></span>
+                <span><small>{en ? "Best checkout" : "Meilleur finish"}</small><strong>{bestFinish || "—"}</strong></span>
+                <span><small>{en ? "Fewest darts" : "Minimum fléchettes"}</small><strong>{Number.isFinite(fastestFinish) ? fastestFinish : "—"}</strong></span>
+              </div>
+              <div className="mss-finish-career" aria-label={en ? "Double-out precision over sessions" : "Précision DO entre les séances"}>
+                <div className="mss-finish-career-title"><strong>{en ? "OVER MULTIPLE SESSIONS" : "PROGRESSION ENTRE LES SÉANCES"}</strong><small>{career.sessions} {en ? "saved attempts" : "tentatives enregistrées"} · {career.darts} {en ? "darts" : "fléchettes"}</small></div>
+                {Object.values(career.aims).length ? Object.values(career.aims).sort((a,b) => a.hits/a.attempts - b.hits/b.attempts).slice(0,5).map(item => <div className="mss-finish-career-item" key={item.label}>
+                  <b>{item.label}</b><span>{item.hits}/{item.attempts} · {Math.round(item.hits * 100 / item.attempts)}%</span>
+                </div>) : <small>{en ? "Validate an attempt with announced doubles to start tracking." : "Valide une tentative avec des doubles annoncés pour commencer le suivi."}</small>}
+                {careerPriority && <button type="button" style={btn} onClick={() => { setAimedDouble(careerPriority.label); setTrackAim(true); selectFinish(doubleValue(careerPriority.label)); setActiveTab("input"); }}>{en ? "Practice priority" : "Travailler en priorité"} {careerPriority.label}</button>}
+              </div>
+              <div className="mss-finish-aim-progress">
+                <strong>{en ? "Intended double accuracy" : "Précision par double visé"}</strong>
+                <small>{en ? "Only targets explicitly selected before the dart are measured." : "Seules les cibles annoncées avant le lancer sont mesurées."}</small>
+                {aimStats.length ? aimStats.map((item) => (
+                  <div className="mss-finish-aim-stat" key={item.label}>
+                    <div><b>{item.label}</b><span>{item.hits}/{item.attempts} · {item.rate}%</span></div>
+                    <div className="mss-finish-aim-track"><span style={{ width: `${item.rate}%` }} /></div>
+                    <div className="mss-finish-aim-stat-footer">
+                      <small>{item.singleHits ? (en ? `${item.singleHits} single/bull outer hits` : `${item.singleHits} simple(s)/bull extérieur`) : (en ? `${item.misses} other misses` : `${item.misses} autre(s) échec(s)`)}</small>
+                      <button type="button" style={btn} onClick={() => { setAimedDouble(item.label); setTrackAim(true); selectFinish(doubleValue(item.label)); setActiveTab("input"); }}>{en ? "Practice" : "Travailler"} {item.label}</button>
+                    </div>
+                  </div>
+                )) : <em>{en ? "Enable target tracking, pick a double and record a dart." : "Active le suivi de visée, choisis un double et saisis une fléchette."}</em>}
+              </div>
+              {revision && (
+                <section className="mss-finish-revision" aria-label={en ? "Personal checkout revision" : "Révision checkout personnalisée"}>
+                  <div className="mss-finish-revision-head">
+                    <div><strong>AWENA • {en ? "Targeted revision" : "Révision ciblée"}</strong>
+                      <small>{en ? "Based on explicitly recorded misses" : "D'après tes cibles annoncées et manquées"}</small></div>
+                    <button type="button" style={btn} onClick={() => { setShowRevision(v => !v); setRevisionChoice(null); }}>
+                      {showRevision ? (en ? "Hide" : "Masquer") : (en ? "Review" : "Réviser")}
+                    </button>
+                  </div>
+                  <div className="mss-finish-revision-focus">
+                    <b>{revision.label}</b> <span>{revisionAim!.hits}/{revisionAim!.attempts} · {revisionAim!.rate}%</span>
+                    <button type="button" style={btn} onClick={() => { setAimedDouble(revision.label); setTrackAim(true); selectFinish(doubleValue(revision.label)); setActiveTab("input"); }}>{en ? "Practice this double" : "Travailler ce double"}</button>
+                  </div>
+                  {showRevision && (
+                    <div className="mss-finish-revision-quiz">
+                      <p>{en
+                        ? `You aim at ${revision.label} but hit ${revision.hit}. ${revision.remain} remain: what is a valid DO recovery?`
+                        : `Tu vises ${revision.label}, mais touches ${revision.hit}. Il reste ${revision.remain} : quel plan B est valide en DO ?`}</p>
+                      <div className="mss-finish-revision-options">
+                        {revision.options.map(option => (
+                          <button type="button" key={option} style={btn} aria-pressed={revisionChoice === option} onClick={() => setRevisionChoice(option)}>{option}</button>
+                        ))}
+                      </div>
+                      {revisionChoice && <p aria-live="polite" className={revisionChoice === revision.answer ? "correct" : "incorrect"}>
+                        {revisionChoice === revision.answer
+                          ? (en ? "Correct! Recalculate after the actual hit." : "Bien joué ! Recalcule toujours après la touche réelle.")
+                          : (en ? `Not quite: ${revision.answer} is a valid route.` : `Pas tout à fait : ${revision.answer} est une route valide.`)}
+                      </p>}
+                    </div>
+                  )}
+                </section>
+              )}
+              <div className="mss-finish-double-progress">
+                <strong>{en ? "Doubles recorded" : "Doubles saisis"}</strong>
+                <small>{en ? "Only actual D / Bull50 inputs are counted, not aimed-but-missed doubles." : "Seuls les D / BULL50 réellement saisis sont comptés, pas les doubles visés et manqués."}</small>
+                <div className="mss-finish-double-list">
+                  {doubleStats.length ? doubleStats.slice(0, 6).map((item) => (
+                    <span key={item.label}><b>{item.label}</b><small>{item.checkouts}/{item.attempts} {en ? "finishes / entries" : "sorties / saisies"}</small></span>
+                  )) : <em>{en ? "No double recorded yet" : "Aucun double saisi pour le moment"}</em>}
+                </div>
+              </div>
+              <div className="mss-finish-session-recent">
+                <small>{en ? "Latest attempts" : "Dernières tentatives"}</small>
+                <div>{previousFinishes.length ? previousFinishes.map((h, i) => (
+                  <span key={i} className={h.won ? "success" : "failure"}>{h.score} {h.won ? `✓ ${h.darts}` : "✗"}</span>
+                )) : <em>{en ? "No completed attempt yet" : "Aucune tentative terminée"}</em>}</div>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
-
-      <footer className="mss-finish-footer-strip" style={card}>
-        <div><strong>{en ? "Session" : "Bilan"}</strong> • {successes}/{attempts} {en ? "completed" : "réussis"}{attempts > 0 ? ` (${rate}%)` : ""}</div>
-        <div className="mss-finish-footer-history">
-          {history.length > 0
-            ? history.slice(0, 6).map((h, i) => (
-              <span key={i}>{h.score} {h.won ? `✓ ${h.darts}` : "✗"}</span>
-            ))
-            : <span>{challenge ? (en ? "Three darts maximum per finish." : "Trois fléchettes maximum par finish.") : (en ? "Unlimited visits, recalculated after each dart." : "Volées illimitées, recalcul après chaque fléchette.")}</span>}
-        </div>
-      </footer>
+      </div>
     </div>
   );
+
 }

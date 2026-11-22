@@ -29,6 +29,7 @@ function clearMarks(route: HTMLElement) {
   route.querySelectorAll<HTMLElement>(
     '[data-mss-auto-play-root], [data-mss-auto-play-header], [data-mss-auto-play-body], [data-mss-auto-play-path], [data-mss-auto-play-zone-host], [data-mss-auto-play-zone]'
   ).forEach((el) => {
+    el.style.removeProperty('--mss-tv-left-count');
     el.removeAttribute('data-mss-auto-play-root');
     el.removeAttribute('data-mss-auto-play-header');
     el.removeAttribute('data-mss-auto-play-body');
@@ -124,6 +125,10 @@ function annotate(route: HTMLElement) {
   host.setAttribute('data-mss-auto-play-zone-host', '1');
 
   const hostChildren = meaningfulChildren(host).filter((child) => child !== header);
+  // Only the TV CSS consumes this count; it gives each information block its
+  // own row while the score input spans the entire right-hand lane.
+  const leftZoneCount = hostChildren.filter((child) => !containsInput(child)).length;
+  host.style.setProperty('--mss-tv-left-count', String(Math.max(1, leftZoneCount)));
   hostChildren.forEach((child) => {
     child.setAttribute('data-mss-auto-play-zone', containsInput(child) ? 'input' : 'left');
   });

@@ -2288,8 +2288,8 @@ async function loadX01MultiSessionsInternal(
           dBull: Number(smp.bull50 || 0),
           bust: Number(smp.bust || 0),
           isWin: Number(smp.matchesWon || 0) > 0,
-          legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
-          legsWon: Number(smp.legsWon || smp.matchesWon || 0),
+          legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0)),
+          legsWon: Number(smp.legsWon || 0),
           setsPlayed: Number(smp.setsWon || 0) > 0 ? Number(smp.setsWon || 0) : 0,
           setsWon: Number(smp.setsWon || 0),
           finishes: Number(smp.coSuccess || 0),
@@ -2336,8 +2336,8 @@ async function loadX01MultiSessionsInternal(
           dBull: Number(smp.bull50 || 0),
           bust: Number(smp.bust || 0),
           isWin: Number(smp.matchesWon || 0) > 0,
-          legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
-          legsWon: Number(smp.legsWon || smp.matchesWon || 0),
+          legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0)),
+          legsWon: Number(smp.legsWon || 0),
           setsPlayed: Number(smp.setsWon || 0) > 0 ? Number(smp.setsWon || 0) : 0,
           setsWon: Number(smp.setsWon || 0),
           finishes: Number(smp.coSuccess || 0),
@@ -2829,8 +2829,8 @@ function x01SessionsFromSamples(samples: any[], profileId?: string | null, profi
     dBull: Number(smp.bull50 || 0),
     bust: Number(smp.bust || 0),
     isWin: Number(smp.matchesWon || 0) > 0,
-    legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
-    legsWon: Number(smp.legsWon || smp.matchesWon || 0),
+    legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0)),
+    legsWon: Number(smp.legsWon || 0),
     setsPlayed: Number(smp.setsWon || 0) > 0 ? Number(smp.setsWon || 0) : 0,
     setsWon: Number(smp.setsWon || 0),
     finishes: Number(smp.coSuccess || 0),
@@ -2989,7 +2989,16 @@ export default function X01MultiStatsTabFull({
         const uniqueMatching = requestedId && matching.length > 1
           ? matching.slice().sort((a, b) => scoreEvidence(b) - scoreEvidence(a)).slice(0, 1)
           : matching;
-        for (const part of uniqueMatching) {
+        // P3 : conserver le contexte de TOUS les participants du match.
+        // La vue des KPI reste filtrée sur le profil actif plus bas, mais
+        // DUO/MULTI/TEAM et les totaux de legs requièrent les adversaires.
+        // Un éventuel doublon historique du profil actif reste dédupliqué.
+        if (requestedId && !uniqueMatching.length) continue;
+        const others = match.participants.filter((part) =>
+          !matching.includes(part)
+        );
+        const contextualParticipants = [...uniqueMatching, ...others];
+        for (const part of contextualParticipants) {
           const darts = part.darts ?? 0;
           const points = part.points;
           const exactAvg = darts > 0 && points !== null ? points * 3 / darts : null;
@@ -2998,6 +3007,9 @@ export default function X01MultiStatsTabFull({
             id: `${match.matchId}:${pid}`, matchId: match.matchId, date: match.date,
             selectedPlayerId: pid, profileId: part.canonicalProfileId || pid,
             playerName: part.name,
+            isTeam: match.variant === "team",
+            teamId: part.teamId ?? null,
+            x01InMode: match.inMode,
             darts, avg3D: exactAvg ?? 0, avg1D: exactAvg !== null ? exactAvg / 3 : 0,
             bestVisit: part.bestVisit ?? 0, bestCheckout: part.bestCheckout,
             hitsS: part.hitsS ?? 0, hitsD: part.hitsD ?? 0, hitsT: part.hitsT ?? 0,
@@ -3091,10 +3103,11 @@ export default function X01MultiStatsTabFull({
   const selectedSessions = memoSelectedX01Sessions(filtered, effectiveProfileId, range, playerName);
   const analysisSessions = selectedSessions;
 
-  // Les KPI principaux suivent désormais la CONFIGURATION sélectionnée, sur toute la durée.
-  // Référence par défaut : le grand classique 501 Double Out. La période ne limite que
-  // les courbes/historique afin de garder des KPI de configuration stables.
-  const statsSessions = filterByX01Context(lifetimeProfileSessions, scoreFilter, variantFilter, outFilter);
+  // Les KPI principaux sont LIFETIME sur tous les X01 du profil, sans restriction
+  // de score, sortie, variante ni date. Les filtres de configuration ne concernent
+  // que l'analyse, les courbes et l'historique. La référence 501 DO reste un
+  // indicateur de niveau séparé, et ne doit jamais remplacer l'AVG3D globale.
+  const statsSessions = lifetimeProfileSessions;
   const x01DartsAll: UIDart[] = buildX01DartsForStats(statsSessions);
   const x01DartsAnalysis: UIDart[] = buildX01DartsForStats(analysisSessions);
 
@@ -3129,10 +3142,26 @@ export default function X01MultiStatsTabFull({
     const groupLegsTotal = group.reduce((sum, x) => sum + Number(x.legsWon || 0), 0);
     const groupSetsTotal = group.reduce((sum, x) => sum + Number(x.setsWon || 0), 0);
 
-    // En TEAMS, chaque ligne joueur porte déjà le score collectif de SON équipe
-    // et le total de legs/sets du match. Ne surtout pas sommer toutes les lignes,
-    // sinon un 2-0 en 2v2 devient artificiellement 4 legs joués.
-    if (isTeam) return { legsPlayed, legsWon, setsPlayed, setsWon };
+    // TEAM : ne jamais additionner les scores de chaque joueur de la même équipe.
+    // Quand les identifiants d'équipe sont présents, reconstruire les totaux
+    // avec une seule observation par équipe ; sinon garder les valeurs sûres.
+    if (isTeam) {
+      const teamScores = new Map<string, { legs: number; sets: number }>();
+      for (const player of group) {
+        const teamId = String(player.teamId || "").trim();
+        if (!teamId) continue;
+        const previous = teamScores.get(teamId) || { legs: 0, sets: 0 };
+        teamScores.set(teamId, {
+          legs: Math.max(previous.legs, Number(player.legsWon || 0)),
+          sets: Math.max(previous.sets, Number(player.setsWon || 0)),
+        });
+      }
+      if (teamScores.size >= 2) {
+        if (!legsPlayed) legsPlayed = [...teamScores.values()].reduce((sum, x) => sum + x.legs, 0);
+        if (!setsPlayed) setsPlayed = [...teamScores.values()].reduce((sum, x) => sum + x.sets, 0);
+      }
+      return { legsPlayed, legsWon, setsPlayed, setsWon };
+    }
 
     // Source prioritaire : score final réellement stocké par joueur.
     // Évite les anciens fallbacks 1-0 quand le match était en réalité 2-0 / 2-1.
@@ -3199,10 +3228,14 @@ export default function X01MultiStatsTabFull({
 
     if (!playerLine) continue;
 
-    const isTeam = playerLine.isTeam === true;
+    const isTeam = playerLine.isTeam === true || playerLine.x01Variant === "team";
     const numPlayers = arr.length;
-    const isDuo = !isTeam && numPlayers === 2;
-    const isMulti = !isTeam && numPlayers >= 3;
+    // Les historiques compacts peuvent contenir uniquement la ligne du profil.
+    // Utiliser la variante enregistrée plutôt que requalifier en SOLO.
+    const isDuo = !isTeam && (playerLine.x01Variant === "duo" ||
+      (playerLine.x01Variant !== "multi" && numPlayers === 2));
+    const isMulti = !isTeam && (playerLine.x01Variant === "multi" ||
+      (playerLine.x01Variant !== "duo" && numPlayers >= 3));
 
     const { legsPlayed, legsWon, setsPlayed, setsWon } =
       computeLegsSetsForLine(playerLine, arr);
@@ -3239,7 +3272,7 @@ export default function X01MultiStatsTabFull({
 
       // 🔥 FINISH = ne pas arriver dernier (rang < nb joueurs)
       const myRank = playerLine.rank ?? null;
-      if (myRank && myRank < numPlayers) {
+      if (myRank != null && myRank > 0 && numPlayers >= 3 && myRank < numPlayers) {
         multiFinishCount++;
       }
     }
@@ -3258,19 +3291,18 @@ export default function X01MultiStatsTabFull({
       // 🔥 Détection du format (2v2, 3v3, 2v2v2, 2v2v2v2, etc.)
       const teamCount: Record<string, number> = {};
       for (const line of arr) {
-        const tid = line.teamId || "team";
-        teamCount[tid] = (teamCount[tid] || 0) + 1;
+        const tid = String(line.teamId || "").trim();
+        if (tid) teamCount[tid] = (teamCount[tid] || 0) + 1;
       }
-      const sizes = Object.values(teamCount).sort((a, b) => b - a);
-      const formatLabel =
-        sizes.length > 0 ? sizes.join("v") : "team";
-
-      const bucket =
-        teamFormatStats[formatLabel] ||
-        (teamFormatStats[formatLabel] = { total: 0, win: 0 });
-
-      bucket.total++;
-      if (playerLine.isWin) bucket.win++;
+      // Pas de faux format « 4 » ou « team » si l'archive ignore les équipes.
+      if (Object.keys(teamCount).length >= 2 &&
+          Object.values(teamCount).reduce((a, b) => a + b, 0) === arr.length) {
+        const formatLabel = Object.values(teamCount).sort((a, b) => b - a).join("v");
+        const bucket = teamFormatStats[formatLabel] ||
+          (teamFormatStats[formatLabel] = { total: 0, win: 0 });
+        bucket.total++;
+        if (playerLine.isWin) bucket.win++;
+      }
     }
   }
 
@@ -3323,15 +3355,19 @@ const pct = (num: number, den: number) =>
       ? Math.max(...statsSessions.map((x: any) => (x.bestCheckout ?? 0) || 0))
       : 0;
 
-  const sessionGlobalAvg3D =
-    totalSessions > 0
-      ? statsSessions.reduce((s: any, x: any) => s + x.avg3D, 0) / totalSessions
-      : 0;
-
-  // Même valeur canonique que Home / Profils / médaillons de niveau : la globale
-  // porte sur TOUT l'historique X01, indépendamment des filtres d'analyse.
-  const globalAvg3D = lifetimeLevelAvg3D > 0 ? lifetimeLevelAvg3D : sessionGlobalAvg3D;
-  const globalAvg1D = globalAvg3D > 0 ? globalAvg3D / 3 : 0;
+  // Source canonique : somme des points / somme des fléchettes sur TOUS les
+  // matchs X01. Ne jamais utiliser la moyenne arithmétique des AVG par match,
+  // ni substituer l'AVG de référence 501 DO à l'AVG globale X01.
+  // null = données insuffisantes ; un zéro fabriqué serait trompeur.
+  const allX01Metric = officialProfile?.lifetimeAllX01 ?? null;
+  const fallbackWeightedDarts = statsSessions.reduce((sum, row) =>
+    sum + (Number.isFinite(row.darts) && row.darts > 0 && Number.isFinite(row.avg3D) && row.avg3D >= 0 ? row.darts : 0), 0);
+  const fallbackWeightedPoints = statsSessions.reduce((sum, row) =>
+    sum + (Number.isFinite(row.darts) && row.darts > 0 && Number.isFinite(row.avg3D) && row.avg3D >= 0 ? row.avg3D * row.darts / 3 : 0), 0);
+  const globalAvg3D: number | null = allX01Metric
+    ? allX01Metric.value
+    : fallbackWeightedDarts > 0 ? fallbackWeightedPoints * 3 / fallbackWeightedDarts : null;
+  const globalAvg1D = globalAvg3D === null ? null : globalAvg3D / 3;
 
   // Agrégats hits / miss / bull etc.
   // (on réutilise totalSessions = statsSessions.length; défini juste au-dessus)
@@ -3384,6 +3420,14 @@ const pct = (num: number, den: number) =>
     const hasCounters =
       sS + sD + sT + sMiss + sBull + sDBull + sBust > 0;
 
+    // A valid checkout can be present in an older summary even when detailed
+    // hit counters are unavailable. Do not discard that match's CO record.
+    if (sCO > 0) {
+      sessionsWithCO++;
+      if (minCO === null || sCO < minCO) minCO = sCO;
+      if (maxCO === null || sCO > maxCO) maxCO = sCO;
+    }
+
     if (!hasCounters) continue;
 
     gHitsS += sS;
@@ -3422,22 +3466,15 @@ const pct = (num: number, den: number) =>
       if (minDBull === null || sDBull < minDBull) minDBull = sDBull;
       if (maxDBull === null || sDBull > maxDBull) maxDBull = sDBull;
 
-      // --- CO (bestCheckout par session) ---
-      if (sCO > 0) {
-        sessionsWithCO++;
-        if (minCO === null || sCO < minCO) minCO = sCO;
-        if (maxCO === null || sCO > maxCO) maxCO = sCO;
-      }
     }
   }
 
-  const totalHits = gHitsS + gHitsD + gHitsT;
+  // S/D/T counters exclude Bull25/DBull. Both are successful dart hits,
+  // never extra throws. Bust is an event, not a separate thrown dart.
+  const totalHits = gHitsS + gHitsD + gHitsT + gBull + gDBull;
   const totalThrows = totalHits + gMiss;
 
   const hitsPercent = totalThrows > 0 ? (totalHits / totalThrows) * 100 : 0;
-  const simplePercent = totalHits > 0 ? (gHitsS / totalHits) * 100 : 0;
-  const doublePercent = totalHits > 0 ? (gHitsD / totalHits) * 100 : 0;
-  const triplePercent = totalHits > 0 ? (gHitsT / totalHits) * 100 : 0;
 
   const avgHitsSPerSession =
     totalSessions > 0 ? gHitsS / totalSessions : 0;
@@ -3469,10 +3506,11 @@ const pct = (num: number, den: number) =>
   const pctTripleGlobal =
     totalHits > 0 ? (gHitsT / totalHits) * 100 : null;
 
+  // Hit-type distribution: S + D + T + Bull + DBull = 100% when known.
   const pctBullGlobal =
-    totalDarts > 0 ? (gBull / totalDarts) * 100 : null;
+    totalHits > 0 ? (gBull / totalHits) * 100 : null;
   const pctDBullGlobal =
-    totalDarts > 0 ? (gDBull / totalDarts) * 100 : null;
+    totalHits > 0 ? (gDBull / totalHits) * 100 : null;
   const pctBustGlobal =
     totalThrows > 0 ? (gBust / totalThrows) * 100 : null;
      // 🔥 % de sessions avec au moins un checkout (CO)
@@ -3697,13 +3735,13 @@ const pctSetsWinX01 =
     {
       kind: "num",
       label: "AVG3D (globale)",
-      raw: totalSessions > 0 ? globalAvg3D : null,
+      raw: globalAvg3D,
       format: (v) => v.toFixed(1),
     },
     {
       kind: "num",
       label: "Moy.1D (globale)",
-      raw: totalSessions > 0 ? globalAvg1D : null,
+      raw: globalAvg1D,
       format: (v) => v.toFixed(2),
     },
     {
@@ -3797,42 +3835,49 @@ const pctSetsWinX01 =
       kind: "num",
       label: "%Hits global",
       raw: pctHitsGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
     {
       kind: "num",
       label: "%Miss",
       raw: pctMissGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
     {
       kind: "num",
       label: "%S",
       raw: pctSimpleGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
     {
       kind: "num",
       label: "%D",
       raw: pctDoubleGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
     {
       kind: "num",
       label: "%T",
       raw: pctTripleGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
     {
       kind: "num",
-      label: "%Bull",
+      label: "%Bull (hits)",
       raw: pctBullGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
     {
       kind: "num",
-      label: "%DBull",
+      label: "%DBull (hits)",
       raw: pctDBullGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
   ]);
@@ -3847,19 +3892,21 @@ const pctSetsWinX01 =
     {
       kind: "num",
       label: "AVG3D (globale)",
-      raw: totalSessions > 0 ? globalAvg3D : null,
+      raw: globalAvg3D,
       format: (v) => v.toFixed(1),
     },
     {
       kind: "num",
       label: "%Hits global",
       raw: pctHitsGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
     {
       kind: "num",
       label: "%T (global)",
       raw: pctTripleGlobal,
+      allowZero: true,
       format: (v) => `${v.toFixed(1)}%`,
     },
   ]);
@@ -4862,8 +4909,8 @@ return (
               const totalBustRow = gBust;
               const totalBullRow = gBull;
               const totalDBullRow = gDBull;
-              const throws = totalThrows || 1;
-              const hitsForPct = totalHitsRow || 1;
+              const throws = totalThrows;
+              const hitsForPct = totalHitsRow;
 
               const rows = [
                 {
@@ -4878,56 +4925,56 @@ return (
                   min: minHits,
                   max: maxHits,
                   total: totalHitsRow,
-                  pct: (totalHitsRow / throws) * 100,
+                  pct: throws > 0 ? (totalHitsRow / throws) * 100 : null,
                 },
                 {
                   label: "Miss",
                   min: minMiss,
                   max: maxMiss,
                   total: totalMissRow,
-                  pct: (totalMissRow / throws) * 100,
+                  pct: throws > 0 ? (totalMissRow / throws) * 100 : null,
                 },
                 {
                   label: "S",
                   min: minS,
                   max: maxS,
                   total: gHitsS,
-                  pct: (gHitsS / hitsForPct) * 100,
+                  pct: hitsForPct > 0 ? (gHitsS / hitsForPct) * 100 : null,
                 },
                 {
                   label: "D",
                   min: minD,
                   max: maxD,
                   total: gHitsD,
-                  pct: (gHitsD / hitsForPct) * 100,
+                  pct: hitsForPct > 0 ? (gHitsD / hitsForPct) * 100 : null,
                 },
                 {
                   label: "T",
                   min: minT,
                   max: maxT,
                   total: gHitsT,
-                  pct: (gHitsT / hitsForPct) * 100,
+                  pct: hitsForPct > 0 ? (gHitsT / hitsForPct) * 100 : null,
                 },
                 {
                   label: "Bull",
                   min: minBull,
                   max: maxBull,
                   total: totalBullRow,
-                  pct: (totalBullRow / throws) * 100,
+                  pct: hitsForPct > 0 ? (totalBullRow / hitsForPct) * 100 : null,
                 },
                 {
                   label: "DBull",
                   min: minDBull,
                   max: maxDBull,
                   total: totalDBullRow,
-                  pct: (totalDBullRow / throws) * 100,
+                  pct: hitsForPct > 0 ? (totalDBullRow / hitsForPct) * 100 : null,
                 },
                 {
                   label: "Bust",
                   min: minBust,
                   max: maxBust,
                   total: totalBustRow,
-                  pct: (totalBustRow / throws) * 100,
+                  pct: throws > 0 ? (totalBustRow / throws) * 100 : null,
                 },
                 // 🔥 Nouvelle ligne CO
                 {
@@ -4965,6 +5012,11 @@ return (
                     </div>
                   </div>
 
+                  <div style={{ fontSize: 11, color: T.text70, marginBottom: 8 }}>
+                    Hits/Miss : part des fléchettes renseignées · S/D/T/Bull/DBull : part des hits ·
+                    Bust : événements par fléchettes renseignées · CO : parties avec checkout.
+                    {totalDarts > totalThrows ? " Données de hits partielles : les pourcentages ne couvrent pas toutes les fléchettes enregistrées." : ""}
+                  </div>
                   {/* Tableau principal : Stat / min-max / total / % */}
                   <table
                     style={{
@@ -5112,7 +5164,7 @@ return (
                             color: "#FFB8DE",
                           }}
                         >
-                          {globalAvg1D ? globalAvg1D.toFixed(2) : "-"}
+                          {globalAvg1D !== null ? globalAvg1D.toFixed(2) : "—"}
                         </div>
                       </div>
                       <div style={{ flex: 1 }}>
@@ -5132,7 +5184,7 @@ return (
                             color: "#FFB8DE",
                           }}
                         >
-                          {globalAvg3D ? globalAvg3D.toFixed(1) : "-"}
+                          {globalAvg3D !== null ? globalAvg3D.toFixed(1) : "—"}
                         </div>
                       </div>
                       <div style={{ flex: 1 }}>
@@ -6671,7 +6723,7 @@ return (
               }}
             >
               {pagedSessions.map((s: any) => {
-  const hits = s.hitsS + s.hitsD + s.hitsT;
+  const hits = s.hitsS + s.hitsD + s.hitsT + (s.bull ?? 0) + (s.dBull ?? 0);
   const throws = hits + s.miss;
   const pctHitsSession =
     throws > 0 ? (hits / throws) * 100 : null;

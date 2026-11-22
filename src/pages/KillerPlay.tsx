@@ -45,6 +45,7 @@ import tickerKiller from "../assets/tickers/ticker_killer.png";
 import tickerKillerProgressiveFr from "../assets/tickers/ticker_killer_progressive_fr.webp";
 import tickerKillerProgressiveEn from "../assets/tickers/ticker_killer_progressive_en.webp";
 import { useLang } from "../contexts/LangContext";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 
 // ✅ Ticker 2 (fond carte JOUEURS) — safe fallback (évite crash si nom diff)
 // On scanne les tickers killer existants et on tente de prendre la variante "2".
@@ -2231,6 +2232,10 @@ function AssignOverlay({
   progressiveMode = false,
   onPickThrow,
   onPickFreeNumber,
+  onPickBullNumber,
+  onUndo,
+  canUndo,
+  assignmentPlayers = [],
 }: {
   open: boolean;
   player?: KillerPlayerState | null;
@@ -2242,6 +2247,10 @@ function AssignOverlay({
   progressiveMode?: boolean;
   onPickThrow: (thr: Throw) => void;
   onPickFreeNumber: (n: number) => void;
+  onPickBullNumber: (n: number, isDBull: boolean) => void;
+  onUndo: () => void;
+  canUndo: boolean;
+  assignmentPlayers?: KillerPlayerState[];
 }) {
   if (!open || !player) return null;
 
@@ -2258,15 +2267,31 @@ function AssignOverlay({
     WebkitTapHighlightColor: "transparent",
   };
 
-  const pickModeBtn = (active: boolean): React.CSSProperties => ({
+  // Réutilise les tokens CSS officiels du keypad MSS/X01, sans palette locale.
+  const pickModeBtn = (mode: "single" | "double" | "triple" | "bull" | "dbull", active: boolean): React.CSSProperties => {
+    const tone = mode === "single" ? "s" : mode === "double" ? "d" : mode === "triple" ? "t" : mode === "bull" ? "bull25" : "bull50";
+    return {
+      ...btn,
+      height: 34,
+      fontSize: 12,
+      letterSpacing: 0.3,
+      background: `var(--mss-hit-${tone}-bg)`,
+      border: `1px solid var(--mss-hit-${tone}-border)`,
+      color: `var(--mss-hit-${tone}-text)`,
+      boxShadow: active ? "0 0 0 2px rgba(255,198,58,.90) inset" : (btn.boxShadow as any),
+    };
+  };
+  const undoKeyStyle: React.CSSProperties = {
     ...btn,
     height: 34,
-    fontSize: 12,
-    letterSpacing: 0.3,
-    background: active ? "linear-gradient(180deg,#3a2b10,#1b1408)" : "rgba(0,0,0,.42)",
-    border: active ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
-    boxShadow: active ? "0 0 0 1px rgba(255,198,58,.18) inset, 0 10px 24px rgba(0,0,0,.25)" : (btn.boxShadow as any),
-  });
+    fontSize: 20,
+    background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
+    color: "#1a1a1a",
+    border: "1px solid rgba(255,180,0,.34)",
+    boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+    opacity: canUndo ? 1 : 0.45,
+    cursor: canUndo ? "pointer" : "not-allowed",
+  };
 
   const [pickMode, setPickMode] = React.useState<"single" | "double" | "triple" | "bull" | "dbull">("single");
 
@@ -2275,6 +2300,11 @@ function AssignOverlay({
     if (pendingChoiceNumber?.playerId === player?.id) return;
     setPickMode("single");
   }, [open, player?.id, pendingChoiceNumber?.playerId]);
+
+  // Sans bonus d’assignation, le choix du secteur est toujours un simple.
+  React.useEffect(() => {
+    if (!selectBonusShieldOn && pickMode !== "single") setPickMode("single");
+  }, [selectBonusShieldOn, pickMode]);
 
   return (
     <div
@@ -2302,20 +2332,7 @@ function AssignOverlay({
       >
         <div
           style={{
-            fontWeight: 1000,
-            letterSpacing: 1.6,
-            textTransform: "uppercase",
-            color: gold,
-            textAlign: "center",
-            fontSize: 12,
-          }}
-        >
-          ASSIGNATION DU NUMÉRO
-        </div>
-
-        <div
-          style={{
-            marginTop: 10,
+            marginTop: 4,
             display: "grid",
             gridTemplateColumns: "72px 1fr",
             gap: 12,
@@ -2336,6 +2353,8 @@ function AssignOverlay({
                 fontSize: 12,
                 fontWeight: 1000,
                 textAlign: "center",
+                textTransform: "uppercase",
+                color: gold,
               }}
             >
               {player.name}
@@ -2343,10 +2362,34 @@ function AssignOverlay({
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "grid", gap: 4, justifyItems: "center", textAlign: "center", minHeight: 48 }}>
+              <div
+                style={{
+                  fontWeight: 1000,
+                  letterSpacing: 1.6,
+                  textTransform: "uppercase",
+                  color: gold,
+                  textAlign: "center",
+                  fontSize: 12,
+                }}
+              >
+                ASSIGNATION DU NUMÉRO
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.94, lineHeight: 1.25 }}>
+                <b>{progressiveMode ? "Lance avec ta main opposée puis sélectionne le numéro obtenu" : "Sélectionne le résultat réel du lancer"}</b>
+              </div>
+            </div>
             {pendingChoiceNumber?.playerId === player.id ? (
               <div style={{ display: "grid", gap: 8 }}>
-                <div style={{ fontSize: 12, opacity: 0.92, lineHeight: 1.25 }}>
+                <div style={{ fontSize: 12, opacity: 0.92, lineHeight: 1.25, textAlign: "center" }}>
                   <b>Choisis maintenant ton numéro libre</b>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "0.58fr 1fr 1fr", gap: 8, justifyContent: "stretch" }}>
+                  <button type="button" onClick={onUndo} disabled={!canUndo} style={undoKeyStyle} aria-label="Retour : corriger la dernière attribution" title="Retour / annuler">
+                    <span style={{ display: "inline-block", transform: "scaleX(-1)" }}>➜</span>
+                  </button>
+                  <div />
+                  <div />
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.82, textAlign: "center", color: "rgba(255,214,102,.95)" }}>
                   {pendingChoiceNumber.shieldTurns > 0
@@ -2395,11 +2438,16 @@ function AssignOverlay({
               </div>
             ) : (
               <>
-                <div style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.25 }}>
-                  <b>{progressiveMode ? "Lance avec ta main opposée puis sélectionne le numéro obtenu" : "Sélectionne le résultat réel du lancer"}</b>
-                </div>
-
-                {!progressiveMode && (
+                {progressiveMode && (
+                  <div style={{ display: "grid", gridTemplateColumns: "0.58fr 1fr 1fr", gap: 8 }}>
+                    <button type="button" onClick={onUndo} disabled={!canUndo} style={undoKeyStyle} aria-label="Retour : corriger la dernière attribution">
+                      <span style={{ display: "inline-block", transform: "scaleX(-1)" }}>➜</span>
+                    </button>
+                    <div />
+                    <div />
+                  </div>
+                )}
+                {!progressiveMode && selectBonusShieldOn && (
                 <div style={{ display: "grid", gap: 8 }}>
                   <div
                     style={{
@@ -2408,21 +2456,31 @@ function AssignOverlay({
                       gap: 8,
                     }}
                   >
-                    <button type="button" onClick={() => setPickMode("single")} style={pickModeBtn(pickMode === "single")}>SIMPLE</button>
-                    <button type="button" onClick={() => setPickMode("double")} style={pickModeBtn(pickMode === "double")}>DOUBLE</button>
-                    <button type="button" onClick={() => setPickMode("triple")} style={pickModeBtn(pickMode === "triple")}>TRIPLE</button>
+                    <button type="button" onClick={() => setPickMode("single")} style={pickModeBtn("single", pickMode === "single")}>SIMPLE</button>
+                    <button type="button" onClick={() => setPickMode("double")} style={pickModeBtn("double", pickMode === "double")}>DOUBLE</button>
+                    <button type="button" onClick={() => setPickMode("triple")} style={pickModeBtn("triple", pickMode === "triple")}>TRIPLE</button>
                   </div>
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(2, 1fr)",
+                      gridTemplateColumns: "0.58fr 1fr 1fr",
                       gap: 8,
                     }}
                   >
-                    <button type="button" onClick={() => setPickMode("bull")} style={pickModeBtn(pickMode === "bull")}>BULL</button>
-                    <button type="button" onClick={() => setPickMode("dbull")} style={pickModeBtn(pickMode === "dbull")}>DBULL</button>
+                    <button type="button" onClick={onUndo} disabled={!canUndo} style={undoKeyStyle} aria-label="Retour : corriger la dernière attribution" title="Retour / annuler la dernière attribution">
+                      <span style={{ display: "inline-block", transform: "scaleX(-1)" }}>➜</span>
+                    </button>
+                    <button type="button" onClick={() => setPickMode("bull")} style={pickModeBtn("bull", pickMode === "bull")}>BULL25</button>
+                    <button type="button" onClick={() => setPickMode("dbull")} style={pickModeBtn("dbull", pickMode === "dbull")}>BULL50</button>
                   </div>
                 </div>
+                )}
+                {!progressiveMode && !selectBonusShieldOn && (
+                  <div style={{ display: "grid", gridTemplateColumns: "0.58fr 1fr 1fr", gap: 8 }}>
+                    <button type="button" onClick={onUndo} disabled={!canUndo} style={undoKeyStyle} aria-label="Retour : corriger la dernière attribution" title="Retour / annuler la dernière attribution">
+                      <span style={{ display: "inline-block", transform: "scaleX(-1)" }}>➜</span>
+                    </button>
+                  </div>
                 )}
 
                 {(pickMode === "double" || pickMode === "triple" || pickMode === "bull" || pickMode === "dbull") && selectBonusShieldOn && !progressiveMode && (
@@ -2434,7 +2492,7 @@ function AssignOverlay({
                   </div>
                 )}
 
-                {(progressiveMode || pickMode === "single" || pickMode === "double" || pickMode === "triple") && (
+                {(progressiveMode || !selectBonusShieldOn || pickMode === "single" || pickMode === "double" || pickMode === "triple") && (
                   <div
                     style={{
                       display: "grid",
@@ -2444,7 +2502,7 @@ function AssignOverlay({
                   >
                     {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
                       const isTaken = takenNumbers?.has(n);
-                      const mult = progressiveMode ? 1 : pickMode === "triple" ? 3 : pickMode === "double" ? 2 : 1;
+                      const mult = (progressiveMode || !selectBonusShieldOn) ? 1 : pickMode === "triple" ? 3 : pickMode === "double" ? 2 : 1;
                       return (
                         <button
                           key={n}
@@ -2477,7 +2535,7 @@ function AssignOverlay({
                   </div>
                 )}
 
-                {!progressiveMode && (pickMode === "bull" || pickMode === "dbull") && (
+                {!progressiveMode && selectBonusShieldOn && (pickMode === "bull" || pickMode === "dbull") && (
                   <div
                     style={{
                       display: "grid",
@@ -2494,8 +2552,9 @@ function AssignOverlay({
                           disabled={isTaken}
                           onClick={() => {
                             if (isTaken) return;
-                            onPickThrow({ target: 25, mult: pickMode === "dbull" ? 2 : 1 });
-                            setTimeout(() => onPickFreeNumber(n), 0);
+                            // Un seul commit pour le numéro + bouclier : pas de 2e lancer
+                            // qui serait refusé lorsque dartsLeft vient de passer à zéro.
+                            onPickBullNumber(n, pickMode === "dbull");
                           }}
                           style={{
                             ...btn,
@@ -2521,8 +2580,54 @@ function AssignOverlay({
                 )}
               </>
             )}
-            <div style={{ fontSize: 11, opacity: 0.75, textAlign: "center" }}>
-              Joueur {index + 1}/{total} • ensuite on passe au suivant
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                flexWrap: "nowrap",
+                overflowX: "auto",
+                paddingTop: 2,
+              }}
+            >
+              {assignmentPlayers.map((ap, apIndex) => {
+                const assigned = Number.isFinite(Number(ap?.number)) && Number(ap?.number) >= 1 && Number(ap?.number) <= 20 && ap?.killerPhase !== "SELECT";
+                const isCurrent = ap?.id === player?.id;
+                return (
+                  <div
+                    key={ap?.id || apIndex}
+                    style={{
+                      position: "relative",
+                      flex: "0 0 auto",
+                      opacity: assigned ? 1 : 0.42,
+                      filter: assigned ? "none" : "grayscale(1)",
+                      transform: isCurrent ? "scale(1.06)" : "none",
+                      transition: "all .18s ease",
+                    }}
+                    title={String(ap?.name || `Joueur ${apIndex + 1}`)}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: -3,
+                        borderRadius: 999,
+                        border: isCurrent ? "1px solid rgba(255,198,58,.60)" : "1px solid transparent",
+                        boxShadow: isCurrent ? "0 0 0 2px rgba(255,198,58,.16)" : "none",
+                        pointerEvents: "none",
+                      }}
+                    />
+                    <AvatarMedallion
+                      size={26}
+                      src={ap?.avatarDataUrl}
+                      name={ap?.name}
+                      shieldTurns={0}
+                      resurrected={false}
+                      resurrectShield={false}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2540,6 +2645,11 @@ function truthy(v: any) {
 
 export default function KillerPlay({ store, go, config, onFinish }: Props) {
   const { lang } = useLang();
+  const awena = useAwenaOptional();
+  const awenaSayRef = React.useRef(awena?.say);
+  awenaSayRef.current = awena?.say;
+  const assignmentIntroSpokenRef = React.useRef(false);
+  const assignmentPlayerSpokenRef = React.useRef<string | null>(null);
   const [castStatusTick, setCastStatusTick] = React.useState(0);
   React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   const startedAt = React.useMemo(() => Date.now(), []);
@@ -2968,6 +3078,30 @@ React.useEffect(() => {
   const assignPlayer = assignActive ? (players[effectiveAssignIndex] || null) : null;
   const assignHumanOrdinal = Math.max(0, humanAssignIndices.indexOf(effectiveAssignIndex));
   const assignHumanTotal = humanAssignIndices.length;
+
+  const assignmentOverlayPlayers = React.useMemo(() => {
+    const ordered = humanAssignIndices
+      .map((idx) => players[idx])
+      .filter(Boolean) as KillerPlayerState[];
+    return ordered;
+  }, [humanAssignIndices, players]);
+
+  // Awena : consigne une seule fois à l'ouverture, puis appel de chaque joueur.
+  // La voix centrale respecte les réglages audio/voix Awena (dont le mode silencieux).
+  React.useEffect(() => {
+    if (!assignActive || !assignPlayer || !voiceEnabled) {
+      assignmentPlayerSpokenRef.current = null;
+      return;
+    }
+    if (assignmentPlayerSpokenRef.current === assignPlayer.id) return;
+    assignmentPlayerSpokenRef.current = assignPlayer.id;
+    const isFirst = !assignmentIntroSpokenRef.current;
+    assignmentIntroSpokenRef.current = true;
+    const message = isFirst
+      ? `Lance ta flèche pour déterminer ton secteur. ${assignPlayer.name}, à toi de lancer ta flèche.`
+      : `${assignPlayer.name}, à toi de lancer ta flèche.`;
+    void awenaSayRef.current?.(message);
+  }, [assignActive, assignPlayer?.id, voiceEnabled]);
 
   function nextPendingHumanAssignIndex(fromIndex: number): number {
     if (!players.length) return 0;
@@ -4215,7 +4349,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   }
 
 
-  function applyThrow(t: ThrowInput) {
+  function applyThrow(t: ThrowInput, chosenBullAssignmentNumber?: number) {
     if (inputDisabledBase) return;
     if (dartsLeft <= 0) return;
     if (isBotTurn) return;
@@ -4364,6 +4498,39 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   const isDBull = thr.mult === 2;
 
   if (assignActive && numberAssignMode === "throw" && me.killerPhase === "SELECT") {
+    // Le pavé d'assignation BULL25/BULL50 envoie le numéro libre choisi
+    // dans le même appel : un seul lancer, une attribution et un seul bonus.
+    if (selectBonusShieldOn && chosenBullAssignmentNumber !== undefined) {
+      const chosen = normalizeNumberFromHit(chosenBullAssignmentNumber);
+      if (!chosen || next.some((p, idx) => idx !== actingTurnIndex && !p.eliminated && p.number === chosen)) {
+        pushLog(`⚠️ ${me.name} : numéro libre indisponible`);
+        return next;
+      }
+      const freeShield = isDBull ? 3 : 2;
+      me.number = chosen;
+      me.killerPhase = "ARMING";
+      me.isKiller = false;
+      grantShieldTurns(me, freeShield);
+      setPendingChoiceNumber(null);
+      pushLog(`🛡️ ${me.name} fait ${fmtThrow(thr)} → numéro ${chosen} + bouclier ${shieldLabel(freeShield)}`);
+      pushEvent({
+        t: Date.now(),
+        type: "SELECT_NUMBER_FREE",
+        actorId: me.id,
+        number: chosen,
+        throw: thr,
+        shieldTurns: freeShield,
+      });
+      setTimeout(() => {
+        const nextIdx = nextPendingHumanAssignIndex(actingTurnIndex);
+        setAssignIndex(nextIdx);
+        setTurnIndex(nextIdx);
+        setDartsLeft(1);
+        setVisit([]);
+        setTimeout(() => finishAssignIfReady(), 0);
+      }, 0);
+      return next;
+    }
     if (selectBonusShieldOn && (thr.mult === 1 || thr.mult === 2)) {
       const freeShield = thr.mult === 2 ? 3 : 2;
       setPendingChoiceNumber({
@@ -6058,11 +6225,17 @@ if (assignOnlyMode) {
         selectBonusShieldOn={selectBonusShieldOn}
         pendingChoiceNumber={pendingChoiceNumber}
         progressiveMode={progressiveMode}
+        onUndo={undo}
+        canUndo={undoRef.current.length > 0}
+        assignmentPlayers={assignmentOverlayPlayers}
         onPickThrow={(thr) => {
           applyThrow(thr);
         }}
         onPickFreeNumber={(n) => {
           applyThrow({ target: n, mult: 1 });
+        }}
+        onPickBullNumber={(n, isDBull) => {
+          applyThrow({ target: 25, mult: isDBull ? 2 : 1 }, n);
         }}
       />
     </div>
@@ -6122,11 +6295,17 @@ return (
       selectBonusShieldOn={selectBonusShieldOn}
       pendingChoiceNumber={pendingChoiceNumber}
       progressiveMode={progressiveMode}
+      onUndo={undo}
+      canUndo={undoRef.current.length > 0}
+      assignmentPlayers={assignmentOverlayPlayers}
       onPickThrow={(thr) => {
         applyThrow(thr);
       }}
       onPickFreeNumber={(n) => {
         applyThrow({ target: n, mult: 1 });
+      }}
+      onPickBullNumber={(n, isDBull) => {
+        applyThrow({ target: 25, mult: isDBull ? 2 : 1 }, n);
       }}
     />
 

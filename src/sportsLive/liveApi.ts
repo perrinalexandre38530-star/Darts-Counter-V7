@@ -2,8 +2,8 @@ import type { SportId } from "../contexts/SportContext";
 import { compressToUTF16, decompressFromUTF16 } from "lz-string";
 import type { SportLiveOverview, SportLiveSportId } from "./types";
 
-const CACHE_PREFIX = "msc_sport_live_cache_v15:";
-const LEGACY_CACHE_PREFIXES = ["msc_sport_live_cache_v14:", "msc_sport_live_cache_v13:", "msc_sport_live_cache_v12:", "msc_sport_live_cache_v11:", "msc_sport_live_cache_v10:", "msc_sport_live_cache_v8:"];
+const CACHE_PREFIX = "msc_sport_live_cache_v16:";
+const LEGACY_CACHE_PREFIXES = ["msc_sport_live_cache_v15:", "msc_sport_live_cache_v14:", "msc_sport_live_cache_v13:", "msc_sport_live_cache_v12:", "msc_sport_live_cache_v11:", "msc_sport_live_cache_v10:", "msc_sport_live_cache_v8:"];
 const CACHE_RESULT_LIMIT = 50_000;
 const CACHE_FIXTURE_LIMIT = 50_000;
 const CACHE_EVENT_LIMIT = 50_000;
@@ -247,7 +247,7 @@ export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSigna
 
   try {
     const locale = localeCode(lang);
-    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&phase=${encodeURIComponent(phase)}&v=15`, {
+    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&phase=${encodeURIComponent(phase)}&v=16`, {
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "default",

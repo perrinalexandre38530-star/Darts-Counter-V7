@@ -6,6 +6,7 @@ import { installResponsiveLayout } from "../../lib/responsiveLayout";
 import "../../index.css";
 import "../../styles/responsive-landscape.css";
 import "./samsung-shared-app.css";
+import tvViewportV243Css from "./samsung-tv-viewport-v243.css?inline";
 
 const AppRoot = React.lazy(() => import("../../App"));
 
@@ -302,6 +303,9 @@ export default function SamsungTvSharedAppHost({ boot, snapshot, onExit, onNavig
         <AppRoot />
       </React.Suspense>
       <div className="mss-tv-shared-app-hint">← ↑ ↓ → naviguer · OK valider · Retour : menu TV</div>
+      {/* Keep TV-only layout rules last in the document. AppRoot is lazy-loaded,
+          and its dynamically imported CSS otherwise overrides Samsung rules. */}
+      <style id="mss-samsung-tv-viewport-v243" data-mss-tv-styles="last">{tvViewportV243Css}</style>
     </div>
   );
 }

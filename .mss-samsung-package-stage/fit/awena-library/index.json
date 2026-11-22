@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-30T21:16:02.965Z",
+  "count": 1,
+  "entries": [
+    {
+      "assetKey": "bench",
+      "exerciseId": "bench",
+      "name": null,
+      "videoUrl": "/fit/awena-library/bench/awena-preview.webm",
+      "posterUrl": "/fit/awena-library/bench/awena-poster.webp",
+      "stepImages": [
+        "/fit/awena-library/bench/awena-step-01.webp",
+        "/fit/awena-library/bench/awena-step-02.webp",
+        "/fit/awena-library/bench/awena-step-03.webp",
+        "/fit/awena-library/bench/awena-step-04.webp"
+      ],
+      "transparentVideo": true,
+      "generatedAt": null
+    }
+  ]
+}

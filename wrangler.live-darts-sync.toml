@@ -1,0 +1,11 @@
+# Separate Cloudflare Worker, not the existing Pages project.
+name = "mss-live-darts-sync"
+main = "cloudflare/mss-live-darts-sync-worker.mjs"
+compatibility_date = "2026-07-21"
+
+[triggers]
+# UTC — recent scores every 6 hours, archive backfill 15 minutes later.
+crons = ["0 */6 * * *", "15 */6 * * *"]
+
+# Set LIVE_SYNC_TARGET and LIVE_OFFICIAL_INGEST_TOKEN as Worker secrets.
+# Do not put credentials or bearer tokens in this file.

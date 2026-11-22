@@ -87,6 +87,26 @@ const fiestaOptions={...manualOptions,mariachiMode:'fiesta',mariachiPick:'random
   mariachiColors:'RED,GREEN',mariachiBeds:'all'};
 const cycle=Array.from({length:5},(_,i)=>mariachiContract(fiestaOptions,'seed-fiesta',i));
 assert.deepEqual(new Set(cycle.map(c=>c.kind)),new Set(['multisectors','doubles','triples','colors','parity']));
+// Previously 'round' silently re-rolled only numbers, so users never saw
+// COULEURS or PAIRS/IMPAIRS. Explicit family rotation fixes this without
+// changing saved fixed-family games.
+const rotatedOptions={...manualOptions,mariachiRotation:'families',mariachiPick:'random',mariachiColors:'RED,GREEN'};
+const familySequence=Array.from({length:15},(_,i)=>mariachiContract(rotatedOptions,'test-visible-families',i));
+assert.deepEqual(new Set(familySequence.slice(0,5).map(c=>c.kind)),new Set(['multisectors','doubles','triples','colors','parity']));
+assert(familySequence.every(c=>mariachiLegalDarts(c).length>0), 'all generated contracts playable');
+assert(familySequence.every((c,i)=>i===0 || c.kind!==familySequence[i-1].kind), 'no family repeats consecutively');
+assert.notEqual(familySequence.find(c=>c.kind==='parity')?.parity,
+  familySequence.slice(5,10).find(c=>c.kind==='parity')?.parity, 'FIESTA alternates PAIRS and IMPAIRS');
+assert(familySequence.some(c=>c.kind==='colors' && c.colors.length>0),'COULEURS contract exists');
+const sameFamily=Array.from({length:8},(_,i)=>mariachiContract({...manualOptions,mariachiRotation:'targets',mariachiPick:'random'},'test-same-family',i));
+assert(sameFamily.every(c=>c.kind==='multisectors'),'renew targets preserves explicit family');
+const migratedRound=Array.from({length:5},(_,i)=>mariachiContract({...manualOptions,mariachiRotation:'round'},'legacy-rotation',i));
+assert.equal(new Set(migratedRound.map(c=>c.kind)).size,5,'legacy round option now rotates all families when starting a new game');
+const missingRotation=Array.from({length:5},(_,i)=>mariachiContract({...manualOptions,mariachiRotation:undefined},'missing-rotation',i));
+assert.equal(new Set(missingRotation.map(c=>c.kind)).size,5,'previous default MULTISECTEURS now gives full variation on a new game');
+assert.deepEqual(mariachiContract({...manualOptions,mariachiRotation:'fixed'},'fixed',0).sectors,
+  mariachiContract({...manualOptions,mariachiRotation:'fixed'},'fixed',4).sectors);
+
 for (const c of cycle) assert(mariachiLegalDarts(c).length>0,'every fiesta round must be playable');
 assert.deepEqual(mariachiContract(fiestaOptions,'seed-fiesta',3),cycle[3],
   'contracts must survive serialization/replay with deterministic seed');
@@ -190,6 +210,7 @@ vm.runInNewContext(reportCompiled,{
   if(spec.includes('historyDartsModeReport'))return{enrichHistoricalDartsModeReport:report=>report};
   if(spec.includes('historySportReport'))return{applyHistoricalSportResult:report=>report};
   if(spec.includes('shoveAPennyHistoryReport'))return{enrichShoveHistoryReport:report=>report};
+  if(spec.includes('mexicainPresentation'))return{mexicainVariantName:require('../src/lib/gameEngines/mexicainPresentation.ts').mexicainVariantName};
   if(spec==='fflate')return{zipSync:()=>new Uint8Array([])};
   if(spec.endsWith('.png')||spec.endsWith('.webp'))return spec;
   throw Error('Unexpected export import: '+spec);
@@ -215,6 +236,45 @@ assert.equal(scoresSection.rows[0][3],'ENCHILADAS +80');
 assert.equal(scoresSection.rows[2][3],'TORTILLA +20');
 assert.equal(scoresSection.rows[1][4],'1');
 assert.equal(livesSection.rows.find(row=>row[0]==='Bravo')[1],'1');
+
+// V7(2): real export titles must follow the saved variant, not infer FIESTA
+// from a generic MARIACHI contract label. Keep legacy History V4 readable.
+const exportBase = {
+ kind:'darts', game:{mode:'mexicain'},
+ players:[{id:'a',name:'Alpha'},{id:'b',name:'Bravo'}],
+};
+const exportRound = {
+ round:1,target:20,scores:[{id:'a',score:40},{id:'b',score:0}],
+ losers:['b'],lifeLoss:1,
+};
+function reportFor(options, round={...exportRound}) {
+ const summary = {
+  mode:'mexicain', rankings:[{id:'a',name:'Alpha',score:40,rank:1},{id:'b',name:'Bravo',score:0,rank:2}],
+  mexicain:{rounds:[round],finalLives:{a:3,b:2}},
+ };
+ if (options) summary.config={modeOptions:options};
+ return reportModule.exports.visualReportFromHistory({...exportBase,summary});
+}
+assert.equal(reportFor({targetMode:'fixed'}).title,'LE MEXICAIN');
+assert.equal(reportFor({targetMode:'mexico'}).title,'LE MEXICAIN · MEXICO');
+assert.equal(reportFor({mariachiEnabled:'yes',mariachiMode:'multisectors'},
+ {...exportRound,contractLabel:'MULTISECTEURS · 10 · 20'}).title,'LE MEXICAIN · MARIACHI');
+assert.equal(reportFor({mariachiEnabled:'yes',mariachiMode:'multisectors',mariachiRotation:'families'},
+ {...exportRound,contractLabel:'PAIRS'}).title,'LE MEXICAIN · FIESTA');
+assert.equal(reportFor({mariachiEnabled:'yes',mariachiMode:'fiesta'},
+ {...exportRound,contractLabel:'COULEURS · ROUGE'}).title,'LE MEXICAIN · FIESTA');
+assert.equal(reportFor(null,{...exportRound,contractLabel:'MULTISECTEURS · 20'}).title,
+ 'LE MEXICAIN · MARIACHI','legacy contracts without config must remain identifiable');
+const restoredFiestaReport=reportModule.exports.visualReportFromHistory({
+ ...exportBase,
+ payload:{stateSnapshot:{config:{modeOptions:{mariachiEnabled:'yes',mariachiMode:'fiesta'}}}},
+ summary:{mode:'mexicain',rankings:[{id:'a',name:'Alpha',score:40,rank:1}],
+  mexicain:{rounds:[{...exportRound,contractLabel:'PAIRS'}],finalLives:{a:3,b:2}}},
+});
+assert.equal(restoredFiestaReport.title,'LE MEXICAIN · FIESTA',
+ 'export must read variant options from restored snapshot if absent from summary');
+assert.equal(restoredFiestaReport.details.find(s=>s.title==='SCORES ET BONUS PAR MANCHE').rows[0][2], '40',
+ 'report title correction cannot alter awarded points');
 
 // V245: five real FIESTA rounds, equal scores and deterministic contract history.
 // This exercises the engine loop rather than merely checking a text marker.
@@ -242,7 +302,7 @@ const configSrc=fs.readFileSync(path.join(__dirname,'../src/pages/Wave61SharedCo
 const endSrc=fs.readFileSync(path.join(__dirname,'../src/pages/wave61/MexicainFinalSummary.tsx'),'utf8');
 assert.match(playSrc,/entry\.contractLabel \|\|/,'history overlay uses the saved contract label');
 assert.match(playSrc,/inclus dans le score/,'floating history identifies already credited bonuses');
-assert.match(configSrc,/FIESTA · EXEMPLE DES 5 FAMILLES/,'config previews the FIESTA rotation');
+assert.match(configSrc,/5 CONTRATS À VENIR · ROTATION DES FAMILLES/,'config previews the FIESTA rotation');
 assert.match(endSrc,/inclus dans chaque total/,'end recap distinguishes bonus from additional points');
 for(const file of ['src/pages/Wave61SharedConfig.tsx','src/pages/wave61/MexicainFinalSummary.tsx']){
   const filename=path.join(__dirname,'..',file);

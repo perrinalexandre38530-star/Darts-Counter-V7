@@ -32,41 +32,138 @@ export function loadFinishDoProgress(profileId?: string | null): FinishDoProgres
     return { version: 1, darts: num(raw.darts), sessions: num(raw.sessions), aims, days, checkoutByDouble };
   } catch { return empty; }
 }
-export type FinishAimEvidence = { aimedDouble?: string; actual: string };
-export function saveFinishDoAttempt(profileId: string | null | undefined, evidence: FinishAimEvidence[], finishedDouble?: string): FinishDoProgress {
-  const progress = loadFinishDoProgress(profileId);
+/** FINISH DO immutable accepted-attempt ledger. The original V1 aggregate is a baseline,
+ * never a second event: imported historical totals cannot be reconstructed as visits. */
+export type FinishDoAttemptEvent = {
+  id: string;
+  at: number;
+  date: string;
+  shots: { aimedDouble?: string; actual: string }[];
+  finishedDouble?: string;
+};
+export type FinishDoAttemptJournal = {
+  version: 1;
+  lineageId: string;
+  baseline: FinishDoProgress;
+  events: FinishDoAttemptEvent[];
+};
+const JOURNAL_PREFIX = "mss.training.finish-do.attempts.v1:";
+export const finishDoAttemptJournalKey = (profileId?: string | null) => JOURNAL_PREFIX + encodeURIComponent(profileId || "guest");
+const newJournalId = () => {
+  try { if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID(); } catch {}
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+};
+const validShot = (shot: any) => !!shot && typeof shot.actual === "string" &&
+  /^(?:MISS|BULL25|BULL50|[SDT](?:[1-9]|1[0-9]|20))$/.test(shot.actual) &&
+  (shot.aimedDouble === undefined || validAim(shot.aimedDouble));
+const validEvent = (event: any): event is FinishDoAttemptEvent => !!event &&
+  typeof event.id === "string" && event.id.length >= 8 && event.id.length <= 128 &&
+  Number.isSafeInteger(event.at) && event.at > 0 &&
+  typeof event.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(event.date) &&
+  Array.isArray(event.shots) && event.shots.length >= 1 && event.shots.length <= 1000 &&
+  event.shots.every(validShot) &&
+  (event.finishedDouble === undefined || validAim(event.finishedDouble));
+export function loadFinishDoAttemptJournal(profileId?: string | null): FinishDoAttemptJournal | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(finishDoAttemptJournalKey(profileId)) || "null");
+    if (value?.version !== 1 || typeof value.lineageId !== "string" || !value.lineageId ||
+        value.baseline?.version !== 1 || !Array.isArray(value.events) ||
+        value.events.length > 10000 || !value.events.every(validEvent)) return null;
+    const ids = new Set<string>();
+    if (value.events.some((event: FinishDoAttemptEvent) => { if (ids.has(event.id)) return true; ids.add(event.id); return false; })) return null;
+    return value as FinishDoAttemptJournal;
+  } catch { return null; }
+}
+function applyAttempt(progress: FinishDoProgress, event: FinishDoAttemptEvent): void {
   progress.sessions += 1;
-  progress.darts += evidence.length;
-  const today = new Date();
-  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  progress.darts += event.shots.length;
   const days = progress.days || (progress.days = {});
-  const day = days[date] || { date, sessions: 0, darts: 0, attempts: 0, hits: 0 };
+  const day = days[event.date] || { date:event.date, sessions:0, darts:0, attempts:0, hits:0 };
   day.sessions += 1;
-  day.darts += evidence.length;
-  for (const shot of evidence) {
-    const label = String(shot.aimedDouble || "");
+  day.darts += event.shots.length;
+  for (const shot of event.shots) {
+    const label = shot.aimedDouble || "";
     if (!validAim(label)) continue;
-    const row = progress.aims[label] || { label, attempts: 0, hits: 0, singleHits: 0, updatedAt: 0 };
+    const row = progress.aims[label] || { label, attempts:0, hits:0, singleHits:0, updatedAt:0 };
     row.attempts += 1;
     day.attempts += 1;
     if (shot.actual === label) { row.hits += 1; day.hits += 1; }
     else if (shot.actual === (label === "BULL50" ? "BULL25" : `S${label.slice(1)}`)) row.singleHits += 1;
-    row.updatedAt = Date.now();
+    row.updatedAt = Math.max(row.updatedAt, event.at);
     progress.aims[label] = row;
   }
-  days[date] = day;
-  // Only a verified winning last dart may validate a checkout step.
-  if (finishedDouble && validAim(finishedDouble) && evidence.at(-1)?.actual === finishedDouble) {
+  days[event.date] = day;
+  if (event.finishedDouble && event.shots.at(-1)?.actual === event.finishedDouble) {
     const byDouble = progress.checkoutByDouble || (progress.checkoutByDouble = {});
-    byDouble[finishedDouble] = (byDouble[finishedDouble] || 0) + 1;
+    byDouble[event.finishedDouble] = (byDouble[event.finishedDouble] || 0) + 1;
   }
-  // Keep only recent daily buckets; old aggregate totals are never discarded.
+  // Retain recent daily buckets without deleting cumulative precision.
   const dates = Object.keys(days).sort();
   for (const old of dates.slice(0, Math.max(0, dates.length - 120))) delete days[old];
+}
+function rebuiltProgress(journal: FinishDoAttemptJournal): FinishDoProgress {
+  const result = JSON.parse(JSON.stringify(journal.baseline)) as FinishDoProgress;
+  for (const event of journal.events.slice().sort((a,b) => a.at-b.at || a.id.localeCompare(b.id))) applyAttempt(result,event);
+  return result;
+}
+/** Import is explicit: refuse independent baselines, ambiguous IDs or inconsistent local state.
+ * This does not merge pedagogical cycle stages, which are sequential. */
+export function mergeFinishDoAttemptJournal(profileId: string | null | undefined, remote: FinishDoAttemptJournal):
+  { status: "merged" | "unchanged" | "conflict"; imported: number; reason?: string } {
+  const local = loadFinishDoAttemptJournal(profileId);
+  if (!local) return { status:"conflict", imported:0, reason:"Journal local absent : fusion automatique non fiable." };
+  if (!remote || remote.version !== 1 || remote.lineageId !== local.lineageId ||
+      !Array.isArray(remote.events) || remote.events.length > 10000 || !remote.events.every(validEvent) ||
+      JSON.stringify(remote.baseline) !== JSON.stringify(local.baseline))
+    return { status:"conflict", imported:0, reason:"Bases historiques différentes ou journal invalide." };
+  const known = new Map(local.events.map(event => [event.id, JSON.stringify(event)]));
+  const additions: FinishDoAttemptEvent[] = [];
+  const remoteSeen = new Set<string>();
+  for (const event of remote.events) {
+    if (remoteSeen.has(event.id)) return { status:"conflict", imported:0, reason:"Identifiants dupliqués dans le journal distant." };
+    remoteSeen.add(event.id);
+    const existing = known.get(event.id);
+    if (existing && existing !== JSON.stringify(event)) return { status:"conflict", imported:0, reason:"Identifiant de tentative contradictoire." };
+    if (!existing) { additions.push(event); known.set(event.id, JSON.stringify(event)); }
+  }
+  if (!additions.length) return { status:"unchanged", imported:0 };
+  // Refuse to erase any local progress changed outside this journal.
+  if (JSON.stringify(loadFinishDoProgress(profileId)) !== JSON.stringify(rebuiltProgress(local)))
+    return { status:"conflict", imported:0, reason:"Agrégats locaux divergents : intervention manuelle nécessaire." };
+  const merged: FinishDoAttemptJournal = { ...local, events:[...local.events,...additions] };
+  const aggregate = rebuiltProgress(merged);
   try {
-    localStorage.setItem(finishDoProgressKey(profileId), JSON.stringify(progress));
-    window.dispatchEvent(new CustomEvent("mss-finish-do-progress", { detail: { profileId: profileId || "guest" } }));
-  } catch { /* local storage may be unavailable; training stays playable */ }
+    localStorage.setItem(finishDoAttemptJournalKey(profileId), JSON.stringify(merged));
+    localStorage.setItem(finishDoProgressKey(profileId), JSON.stringify(aggregate));
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("mss-finish-do-progress", { detail:{profileId:profileId || "guest"} }));
+    return { status:"merged", imported:additions.length };
+  } catch { return { status:"conflict", imported:0, reason:"Écriture locale indisponible." }; }
+}
+
+export type FinishAimEvidence = { aimedDouble?: string; actual: string };
+export function saveFinishDoAttempt(profileId: string | null | undefined, evidence: FinishAimEvidence[], finishedDouble?: string): FinishDoProgress {
+  const progress = loadFinishDoProgress(profileId);
+  const today = new Date();
+  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const last = evidence.at(-1)?.actual;
+  const event: FinishDoAttemptEvent = {
+    id: newJournalId(), at: Date.now(), date,
+    shots: evidence.map(shot => ({ ...(validAim(String(shot.aimedDouble || "")) ? { aimedDouble:shot.aimedDouble } : {}), actual:shot.actual })),
+    ...(finishedDouble && validAim(finishedDouble) && last === finishedDouble ? { finishedDouble } : {}),
+  };
+  // Legacy V1 progress remains usable even when journaling is unsupported by the browser.
+  const prior = loadFinishDoAttemptJournal(profileId);
+  const journal: FinishDoAttemptJournal = prior || {
+    version:1, lineageId:newJournalId(), baseline:JSON.parse(JSON.stringify(progress)), events:[],
+  };
+  if (event.shots.length && event.shots.every(validShot)) {
+    applyAttempt(progress,event);
+    try {
+      localStorage.setItem(finishDoAttemptJournalKey(profileId), JSON.stringify({ ...journal, events:[...journal.events,event] }));
+      localStorage.setItem(finishDoProgressKey(profileId), JSON.stringify(progress));
+      window.dispatchEvent(new CustomEvent("mss-finish-do-progress", { detail:{profileId:profileId || "guest"} }));
+    } catch { /* unavailable storage must not prevent a training session */ }
+  }
   return progress;
 }
 export function getFinishDoPriority(progress: FinishDoProgress, minimumAttempts = 3): FinishAimProgress | null {

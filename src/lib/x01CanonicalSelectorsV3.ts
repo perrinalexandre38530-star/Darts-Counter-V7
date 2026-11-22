@@ -10,6 +10,7 @@ export type X01Metric = { value: number | null; eligible: number; excluded: numb
 export type X01ProfileView = {
   profileId: string;
   totalMatches: number;
+  lifetimeAllX01: X01Metric;
   reference501DO: number;
   referenceCurrentMatches: number;
   referenceLifetime: X01Metric;
@@ -66,7 +67,7 @@ export function selectCanonicalX01ProfileV3(index: CanonicalX01IndexV2, profileI
   for (const mode of ['simple', 'double', 'master', 'unknown'] as const) {
     exitModes[mode] = exitMode(observations.filter(({ match }) => match.outMode === mode));
   }
-  return { profileId, totalMatches: observations.length, reference501DO: reference.length,
+  return { profileId, totalMatches: observations.length, lifetimeAllX01: avg3d(observations), reference501DO: reference.length,
     referenceCurrentMatches: current.length, referenceLifetime: avg3d(reference),
     referenceCurrent: avg3d(current), exitModes };
 }

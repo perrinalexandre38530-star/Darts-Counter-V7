@@ -372,7 +372,7 @@ export default function Wave61SharedConfig(props: any) {
   const participantProfiles = spec.id === "green_vs_red" && greenRedFormat === "teams" ? activeTeamProfiles : selectedProfiles;
   const mariachiPreview = spec.id === "mexicain" && modeOptions?.mariachiEnabled === "yes"
     ? mariachiContract(modeOptions, "mariachi-preview", 0) : null;
-  const mariachiValid = !mariachiPreview || Array.from({length:modeOptions?.mariachiMode==='fiesta'?5:1},(_,i)=>
+  const mariachiValid = !mariachiPreview || Array.from({length:(modeOptions?.mariachiMode==='fiesta'||['families','round'].includes(modeOptions?.mariachiRotation)||(!modeOptions?.mariachiRotation && modeOptions?.mariachiMode==='multisectors'))?5:1},(_,i)=>
     mariachiContract(modeOptions,'mariachi-preview',i)).every(c=>mariachiLegalDarts(c).length>0);
   const valid = participantProfiles.length >= minPlayers && greenRedCountValid && mariachiValid;
   const botCount = participantProfiles.filter(isBotLike).length;
@@ -381,6 +381,17 @@ export default function Wave61SharedConfig(props: any) {
 
   function start() {
     if (!(isQuick ? quickPlayersValid : valid) || typeof go !== "function") return;
+    // Legacy Mariachi "round" meant a whole new contract in the UI but only
+    // re-rolled numbers. New games explicitly store FIESTA family rotation,
+    // allowing their final report to name the variant accurately. Do not
+    // mutate older running-game snapshots or their precomputed contracts.
+    const launchModeOptions = spec.id === "mexicain" && modeOptions?.mariachiEnabled === "yes"
+      ? (!modeOptions?.mariachiMode
+          ? { ...modeOptions, mariachiMode: "fiesta", mariachiRotation: "families" }
+          : (modeOptions?.mariachiRotation === "round" || (!modeOptions?.mariachiRotation && modeOptions?.mariachiMode === "multisectors"))
+            ? { ...modeOptions, mariachiRotation: "families" }
+            : modeOptions)
+      : modeOptions;
     const teamByPlayer: Record<string, string> = {};
     let orderedIds: string[] = [];
     if (spec.id === "green_vs_red" && greenRedFormat === "teams") {
@@ -429,7 +440,7 @@ export default function Wave61SharedConfig(props: any) {
       lives: spec.id === "mexicain" ? (modeOptions?.progressive === "survival" ? 5 : 3) : Math.max(0, Math.min(9, Number(lives) || 0)),
       randomOrder,
       scoreInputMethod,
-      modeOptions: isQuick && spec.id === "green_vs_red" ? { ...modeOptions, matchFormat: "duel" } : modeOptions,
+      modeOptions: isQuick && spec.id === "green_vs_red" ? { ...launchModeOptions, matchFormat: "duel" } : launchModeOptions,
       targetAdviceEnabled,
       awenaCommentaryEnabled,
       wave61SfxEnabled: isQuick ? false : wave61SfxEnabled,
@@ -664,7 +675,7 @@ export default function Wave61SharedConfig(props: any) {
                 const value = modeOptions?.[option.key] ?? option.defaultValue;
                 const setValue = (next:any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
                 return <div key={option.key} style={{ marginBottom:4 }}>
-                  <OptionRow label={option.label}>{option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width:72, borderRadius:10, border:"1px solid rgba(255,255,255,.14)", background:"rgba(0,0,0,.28)", color:"#fff", padding:"8px 7px", fontWeight:900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={setValue} />}</OptionRow>
+                  <OptionRow label={option.label}>{option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width:72, borderRadius:10, border:"1px solid rgba(255,255,255,.14)", background:"rgba(0,0,0,.28)", color:"#fff", padding:"8px 7px", fontWeight:900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={option.key === 'mariachiEnabled' ? (v:any) => { setValue(v); if(v === 'yes') setModeOptions(prev => prev.mariachiMode ? prev : {...prev,mariachiMode:'fiesta',mariachiRotation:'families'}); } : setValue} />}</OptionRow>
                   {option.help ? <div style={{ color:"#777f91", fontSize:9.1, lineHeight:1.35, padding:"0 4px 5px" }}>{option.help}</div> : null}
                 </div>;
               })}
@@ -674,20 +685,20 @@ export default function Wave61SharedConfig(props: any) {
           const value = modeOptions?.[option.key] ?? option.defaultValue;
           const setValue = (next: any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
           return <div key={option.key} style={{ marginBottom: 4 }}>
-            <OptionRow label={option.key === "bullEnabled" && modeOptions?.mariachiEnabled === "yes" ? "BULL autorisé avec les couleurs" : option.label}>{option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.28)", color: "#fff", padding: "8px 9px", fontWeight: 900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={setValue} />}</OptionRow>
+            <OptionRow label={option.key === "bullEnabled" && modeOptions?.mariachiEnabled === "yes" ? "BULL autorisé avec les couleurs" : option.label}>{option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.28)", color: "#fff", padding: "8px 9px", fontWeight: 900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={option.key === 'mariachiEnabled' ? (v:any) => { setValue(v); if(v === 'yes') setModeOptions(prev => prev.mariachiMode ? prev : {...prev,mariachiMode:'fiesta',mariachiRotation:'families'}); } : setValue} />}</OptionRow>
             {option.help ? <div style={{ color: "#777f91", fontSize: 9.3, lineHeight: 1.35, padding: "0 4px 5px" }}>{option.help}</div> : null}
           </div>;
         })}
         {spec.id === "mexicain" && modeOptions?.mariachiEnabled === "yes" ? <div className="mex-mariachi-config" data-mariachi-config="1">
           <strong className="mex-mariachi-config-heading">🎺 MARIACHI · CONTRAT DE TIR</strong>
-          <p className="mex-mariachi-config-help">Seules les cases autorisées marquent. Le contrat est commun à tous les joueurs ; la dernière place fait perdre une vie.</p>
+          <p className="mex-mariachi-config-help">Un contrat commun par RONDA. Pour alterner les secteurs, doubles, triples, couleurs et pairs/impairs, choisis FIESTA ou « Rotation des familles ». Sinon, seule la cible de la famille sélectionnée change.</p>
           <OptionRow label="Type de contrat"><OptionSelect value={modeOptions.mariachiMode || "multisectors"} options={[
             {value:"multisectors",label:"MULTISECTEURS"},{value:"doubles",label:"DOUBLES sur plusieurs secteurs"},
             {value:"triples",label:"TRIPLES sur plusieurs secteurs"},{value:"colors",label:"COULEURS de la cible"},
             {value:"parity",label:"PAIRS / IMPAIRS"},{value:"custom",label:"PERSONNALISÉ · critères combinés"},
-            {value:"fiesta",label:"FIESTA · contrats alternés"},
-          ]} onChange={(v:any)=>setModeOptions((prev)=>({...prev,mariachiMode:v}))}/></OptionRow>
-          {modeOptions.mariachiMode === "fiesta" ? <p className="mex-mariachi-config-help">FIESTA change automatiquement de famille de contrat à chaque RONDA.</p> : <OptionRow label="Changement de contrat"><OptionSelect value={modeOptions.mariachiRotation || "round"} options={[{value:"round",label:"Renouveler le tirage / contrat à chaque RONDA"},{value:"fixed",label:"Même contrat toute la partie"}]} onChange={(v:any)=>setModeOptions(prev=>({...prev,mariachiRotation:v}))}/></OptionRow>}
+            {value:"fiesta",label:"FIESTA · 5 familles, une différente à chaque RONDA"},
+          ]} onChange={(v:any)=>setModeOptions((prev)=>({...prev,mariachiMode:v,mariachiRotation:v==="fiesta"?"families":"targets"}))}/></OptionRow>
+          {modeOptions.mariachiMode === "fiesta" ? <p className="mex-mariachi-config-help">FIESTA alterne cinq familles sans répétition : MULTISECTEURS, DOUBLES, TRIPLES, COULEURS et PAIRS/IMPAIRS. La prochaine ronde change de contrat pour TOUS les joueurs.</p> : <OptionRow label="Changement de contrat"><OptionSelect value={modeOptions.mariachiRotation === "round" ? "families" : (modeOptions.mariachiRotation || (modeOptions.mariachiMode === "multisectors" ? "families" : "targets"))} options={[{value:"families",label:"FIESTA · familles différentes à chaque RONDA"},{value:"targets",label:"Même FAMILLE · renouveler les cibles"},{value:"fixed",label:"Même contrat pendant toute la partie"}]} onChange={(v:any)=>setModeOptions(prev=>({...prev,mariachiRotation:v}))}/></OptionRow>}
           {!["colors","parity"].includes(modeOptions.mariachiMode||"multisectors") ? <>
             <OptionRow label="Choix des secteurs"><OptionSelect value={modeOptions.mariachiPick || "random"} options={[{value:"random",label:"Tirage automatique"},{value:"manual",label:"Choix manuel"}]} onChange={(v:any)=>setModeOptions(prev=>({...prev,mariachiPick:v}))}/></OptionRow>
             {modeOptions.mariachiPick === "manual" ? <div className="mex-mariachi-select-numbers" role="group" aria-label="Secteurs MARIACHI sélectionnés">
@@ -714,8 +725,8 @@ export default function Wave61SharedConfig(props: any) {
             })}
           </div></div> : null}
           {["parity","custom","fiesta"].includes(modeOptions.mariachiMode) ? <OptionRow label="Numéros"><OptionSelect value={modeOptions.mariachiParity || "even"} options={[{value:"even",label:"PAIRS"},{value:"odd",label:"IMPAIRS"},...(modeOptions.mariachiMode==='custom'?[{value:'all',label:'PAIRS et IMPAIRS'}]:[])]} onChange={(v:any)=>setModeOptions(prev=>({...prev,mariachiParity:v}))}/></OptionRow> : null}
-          <div className="mex-mariachi-contract-preview"><strong>{modeOptions.mariachiMode === "fiesta" ? "FIESTA · EXEMPLE DES 5 FAMILLES" : "CONTRAT EXEMPLE"}</strong>
-            {modeOptions.mariachiMode === "fiesta" ? <><small>Ordre indicatif : le tirage réel des contrats est effectué au lancement de la partie.</small>{Array.from({length:5},(_,i)=>mariachiContract(modeOptions,"mariachi-preview",i)).map((example,i)=><span key={i}>Exemple {i+1} · {example.label} <small>({mariachiLegalDarts(example).length} impacts possibles)</small></span>)}</> : <><span>{mariachiPreview?.label}</span><small>{mariachiPreview ? mariachiLegalDarts(mariachiPreview).length : 0} impacts possibles · les autres valent 0</small></>}
+          <div className="mex-mariachi-contract-preview"><strong>{(modeOptions.mariachiMode === "fiesta" || ["families","round"].includes(modeOptions.mariachiRotation) || (!modeOptions.mariachiRotation && modeOptions.mariachiMode === "multisectors")) ? "5 CONTRATS À VENIR · ROTATION DES FAMILLES" : "CONTRAT EXEMPLE"}</strong>
+            {(modeOptions.mariachiMode === "fiesta" || ["families","round"].includes(modeOptions.mariachiRotation) || (!modeOptions.mariachiRotation && modeOptions.mariachiMode === "multisectors")) ? <><small>Ordre indicatif : le tirage réel des contrats est effectué au lancement de la partie.</small>{Array.from({length:5},(_,i)=>mariachiContract(modeOptions,"mariachi-preview",i)).map((example,i)=><span key={i}>Exemple {i+1} · {example.label} <small>({mariachiLegalDarts(example).length} impacts possibles)</small></span>)}</> : <><span>{mariachiPreview?.label}</span><small>{mariachiPreview ? mariachiLegalDarts(mariachiPreview).length : 0} impacts possibles · les autres valent 0</small></>}
           </div>
           {!mariachiValid ? <p role="alert" className="mex-mariachi-error">Contrat impossible : adapte les secteurs, les multiplicateurs ou les couleurs avant de jouer.</p> : null}
         </div> : null}

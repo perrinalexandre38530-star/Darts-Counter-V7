@@ -161,3 +161,31 @@ html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route :is(
   outline-offset: 2px !important;
   scroll-margin: 18px;
 }
+
+
+/* V7(5) — SAFE landscape foundation.
+ * Responsive space is allocated to CONTAINERS, never to grid cells, keys,
+ * avatars, or score tiles. Every game retains ownership of its inner layout.
+ * Do not add universal height:100% to page shells or align-content:space-between
+ * to arbitrary card groups: those rules caused the V7(4) visual regression.
+ */
+@media (orientation: landscape) and (min-width: 840px) and (min-height: 650px) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-mss-landscape-spacious="1"] {
+    --mss-landscape-room-gap: clamp(8px, 1.1vmin, 22px);
+    --mss-landscape-room-pad: clamp(7px, 1vmin, 22px);
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  /* Respect the top/bottom navigation and route-owned heights. Avoid
+     making a page shell taller than its available viewport. */
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-mss-landscape-spacious="1"] > .msc-landscape-page-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-mss-landscape-spacious="1"] [data-wave61-play-grid="three-zone"] > [data-wave61-zone] {
+    min-width: 0;
+    min-height: 0;
+  }
+}

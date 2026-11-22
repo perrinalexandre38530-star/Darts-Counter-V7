@@ -78,6 +78,8 @@ export type SportLiveSource = {
   calendarUrl?: string;
   watchUrl?: string;
   badges?: string[];
+  /** Directory links are not automatically imported score feeds. */
+  accessMode?: "directory" | "api_key" | "agreement";
   countryCode?: string | null;
   countryName?: string | null;
   competitionFamily?: "national_teams" | "continental" | "domestic_league" | "domestic_cup" | "regional" | "amateur" | "youth" | "women" | "world" | "other";

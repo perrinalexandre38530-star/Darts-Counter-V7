@@ -1,6 +1,7 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import CompetitionDashboard from "./CompetitionDashboard";
+import DartsResultsExplorer from "./DartsResultsExplorer";
 import { matchCompetitionIndex } from "./competitionModels";
 import { BottomNavIcon } from "../components/BottomNav";
 import { LIVE_SPORTS_APP_ORDER } from "./support";
@@ -1826,6 +1827,8 @@ function EmptySection({ title, copy, sources }: { title: string; copy: string; s
               <div style={{ minWidth: 0, textAlign: "left" }}>
                 <div className="msc-source-name" translate="no" data-i18n-skip="true">{source.name}</div>
                 <div className="msc-source-desc">{source.description}</div>
+            {source.accessMode === "agreement" ? <div className="msc-source-desc">🔒 SCORES MSS : ACCORD FOURNISSEUR REQUIS · CONSULTATION PUBLIQUE DISPONIBLE</div> : null}
+            {source.accessMode === "api_key" ? <div className="msc-source-desc">🔑 IMPORT AUTOMATIQUE : CLÉ API ET DROITS D’ACCÈS REQUIS</div> : null}
               </div>
               <div className="msc-source-actions">
                 <a className="msc-mini-link is-primary" href={bestPrimaryLink(source) || source.homeUrl} target="_blank" rel="noreferrer noopener">OUVRIR</a>
@@ -2299,9 +2302,18 @@ export default function SportLiveHub({ go, onBack }: { go?: (route: any, params?
           <div className="msc-archive-summary" style={{ marginBottom: 8 }}>
             <div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong></div>
             <div><b>{archiveStorage?.competitions ?? competitionIndex.length}</b><small>compétitions</small></div>
-            <div><b>{archiveStorage?.results ?? resultRows.length}</b><small>résultats</small></div>
+            <div><b>{resultRows.length}</b><small>scores chargés</small></div>
           </div>
-          {resultRows.length || fixtureRows.length ? <><GroupedResults rows={resultRows} fixtures={fixtureRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+          <>
+              <DartsResultsExplorer sport={liveSport} lang={lang} localResults={resultRows} />
+              <details style={{ marginTop: 12 }}>
+                <summary style={{ padding: "12px 14px", border: "1px solid #354353", borderRadius: 10, background: "#101a25", color: "#f2d85f", fontWeight: 900, fontSize: 12, cursor: "pointer" }}>VOIR AUSSI LES FICHES COMPÉTITIONS ET LES ARCHIVES DÉJÀ CHARGÉES · {resultRows.length}</summary>
+                <div style={{ marginTop: 10 }}>
+                  {resultRows.length || fixtureRows.length ? <GroupedResults rows={resultRows} fixtures={fixtureRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} /> : <EmptySection title="Archives locales vides" copy="Les nouvelles archives seront visibles ici à mesure que les flux autorisés sont importés." sources={[]} />}
+                </div>
+              </details>
+              {resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>PALMARÈS / PODIUMS PUBLIÉS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}
+          </>
         </section>
       ) : null}
 
@@ -2315,6 +2327,7 @@ export default function SportLiveHub({ go, onBack }: { go?: (route: any, params?
       {supportedSport && view === "sources" ? (
         <section className="msc-live-section">
           <SectionHeader title="SOURCES" count={`${sources.length}`} />
+          {liveSport === "darts" ? <div className="msc-empty-card" style={{ marginBottom: 10 }}><div className="msc-empty-title">COUVERTURE DARTS · RÉSULTATS ET SOURCES</div><div className="msc-empty-copy">Cet annuaire rassemble des fournisseurs vérifiés mais un lien public n’est pas une connexion aux scores MSS. Les résultats automatiques ne couvrent que les flux réellement accessibles et autorisés ; DartUP nécessite un accord de partage, DartConnect une clé et les droits API. Le direct dépend des forfaits disponibles.</div></div> : null}
           <div className="msc-region-row">
             <button className={`msc-region-btn${region === "recommended" ? " is-active" : ""}`} type="button" onClick={() => setRegion("recommended")}>★ RECOMMANDÉ</button>
             {preferredRegions.map((item) => <button key={item} className={`msc-region-btn${region === item ? " is-active" : ""}`} type="button" onClick={() => setRegion(item)}>{SPORT_LIVE_REGION_LABELS[item]}</button>)}

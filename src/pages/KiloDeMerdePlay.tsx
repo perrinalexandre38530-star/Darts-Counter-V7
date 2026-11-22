@@ -32,18 +32,20 @@ export default function KiloDeMerdePlay(props:any){
   // Demander confirmation avant toute pénalité : la dernière est irréversible une fois la partie enregistrée.
   const [pendingPenalty,setPendingPenalty]=React.useState<{id:string;premature:boolean;round:number;phase:KiloState['phase'];epoch:number}|null>(null);
   const [undoStack,setUndoStack]=React.useState<KiloState[]>([]);
+  // Un résultat terminé reste réversible tant que le classement n’est pas confirmé.
+  const [finalConfirmed,setFinalConfirmed]=React.useState(false);
   const liveGameRef=React.useRef(game);
   liveGameRef.current=game;
   const savedOnce=React.useRef(false);
   React.useEffect(()=>{
-    if(game.phase!=='finished'||savedOnce.current)return;
+    if(game.phase!=='finished'||!finalConfirmed||savedOnce.current)return;
     savedOnce.current=true;
     const now=Date.now();
     const sorted=[...game.playerIds].sort((a,b)=>(game.kilos[a]||0)-(game.kilos[b]||0));
     const rows=sorted.map((id,i)=>({id,name:label(id),rank:sorted.filter(other=>(game.kilos[other]||0)<(game.kilos[id]||0)).length+1,score:game.kilos[id]||0,kilos:game.kilos[id]||0,win:(game.kilos[id]||0)===Math.min(...game.playerIds.map(pid=>game.kilos[pid]||0))}));
     const record={id:`kilo_de_merde-${now}`,matchId:`kilo_de_merde-${now}`,kind:'kilo_de_merde',mode:'kilo_de_merde',sport:'darts',status:'finished',createdAt:now,updatedAt:now,winnerId:game.winnerId,players:rows,game:{mode:'kilo_de_merde'},summary:{kind:'kilo_de_merde',mode:'kilo_de_merde',sport:'darts',winnerId:game.winnerId,players:rows,rounds:game.rounds.length,scoreType:'kilos_lower_is_better',scoreLine:rows.map(row=>`${row.name} ${row.kilos} kg`).join(' • ')},payload:{kind:'kilo_de_merde',mode:'kilo_de_merde',players:rows,rounds:game.rounds,config:cfg,game:{mode:'kilo_de_merde'},rules:{mode:'kilo_de_merde'},stats:{mode:'kilo_de_merde',players:rows}}};
     try{props?.onFinish?.(record,{navigate:false});}catch{}
-  },[game.phase]);
+  },[game.phase,finalConfirmed]);
   const activeId=game.playerIds[game.selectorIndex];
   const person=profile(activeId);
   const hands=game.hands[activeId]||[];
@@ -77,11 +79,12 @@ export default function KiloDeMerdePlay(props:any){
     setPendingPenalty(null);setSelected(null);setRevealed(false);setPrematureChoice(false);
   };
   const undo=()=>{
-    if(game.phase==='finished'||!undoStack.length)return;
+    if((game.phase==='finished'&&finalConfirmed)||!undoStack.length)return;
     const previous=undoStack[undoStack.length-1];
     liveGameRef.current=previous;
     setUndoStack(stack=>stack.slice(0,-1));
     setGame(previous);
+    setFinalConfirmed(false);
     setSelected(null);setRevealed(false);setPrematureChoice(false);setPendingPenalty(null);
   };
   const card=(c:any,i:number,click?:()=>void,chosen=false)=> <button key={`${c.suit}-${c.value}-${i}`} type="button" onClick={click} disabled={!click} style={{...cardStyle(chosen),cursor:click?'pointer':'default'}} aria-label={`${kiloCardLabel(c.value)} carte`}><img draggable={false} src={mssPresidentCardUrl(c.suit,c.value)} alt={`${kiloCardLabel(c.value)}`} style={{width:67,height:96,objectFit:'fill',borderRadius:7}}/></button>;
@@ -93,7 +96,7 @@ export default function KiloDeMerdePlay(props:any){
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}><div><div style={{fontSize:20,fontWeight:1100,color:GOLD}}>🚽 KILO DE MERDE</div><div style={{fontSize:11,color:'#b7cdc1'}}>JEU DE CARTES MSS · 4 CARTES EN MAIN · TAS CENTRAL</div></div><button onClick={()=>setRules(true)} style={{border:'1px solid #c9af6866',borderRadius:99,background:'#111e1d',color:GOLD,padding:'9px 12px'}}>ⓘ RÈGLES</button></div>
       <section style={block}><div style={{color:GOLD,fontWeight:1000,fontSize:12,marginBottom:10}}>CLASSEMENT · MOINS DE KILOS = MEILLEUR</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8}}>{rank.map((id,i)=><div key={id} style={{background:'#0005',borderRadius:13,padding:9,display:'flex',gap:8,alignItems:'center',border:i===0?'1px solid #d8bd6a':'1px solid #ffffff22'}}><ProfileAvatar profile={profile(id)} size={32}/><div><div style={{fontSize:10,fontWeight:1000}}>{label(id)}</div><div style={{fontWeight:1100,color:i===0?'#85edbd':GOLD}}>{game.kilos[id]} kg</div></div></div>)}</div></section>
       <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-        <button type="button" disabled={!undoStack.length||game.phase==='finished'} onClick={undo} style={{border:'1px solid #dfb85a66',background:'#1a2423',borderRadius:11,color:GOLD,padding:'9px 14px',opacity:!undoStack.length||game.phase==='finished'?.45:1,fontWeight:850}}>↶ ANNULER LA DERNIÈRE ACTION</button>
+        <button type="button" disabled={!undoStack.length||(game.phase==='finished'&&finalConfirmed)} onClick={undo} style={{border:'1px solid #dfb85a66',background:'#1a2423',borderRadius:11,color:GOLD,padding:'9px 14px',opacity:!undoStack.length||(game.phase==='finished'&&finalConfirmed)?.45:1,fontWeight:850}}>↶ ANNULER LA DERNIÈRE ACTION</button>
       </div>
       <section style={{...block,textAlign:'center'}}><div style={{color:GOLD,fontWeight:1000,fontSize:12}}>TAS DES KILOS</div><div style={{fontSize:45,marginTop:5}}>🂠</div><div style={{fontSize:13,fontWeight:900}}>{game.pile.length} cartes · {game.rounds.length}/{game.maxRounds} pénalités</div><div style={{color:'#cbded8',fontSize:11,marginTop:8}}>{game.notice}</div></section>
       {game.phase==='select' ? <section style={block}>
@@ -103,7 +106,7 @@ export default function KiloDeMerdePlay(props:any){
         {!revealed?<button onClick={()=>setRevealed(true)} style={{width:'100%',minHeight:52,background:'#efc45a',color:'#14130b',border:0,borderRadius:14,fontWeight:1000}}>JE SUIS {label(activeId)} · VOIR MA MAIN</button>:<><div style={{display:'flex',gap:5,overflowX:'auto',padding:'10px 0'}}>{hands.map((c,i)=>card(c,i,()=>setSelected(i),selected===i))}</div><div style={{fontSize:11,color:'#b8d4c8',margin:'5px 0 12px'}}>Ta main est cachée entre chaque joueur. Ne montre pas tes cartes aux adversaires.</div><button disabled={selected===null} onClick={()=>choose(selected!)} style={{width:'100%',minHeight:52,background:selected===null?'#4a4f4c':'#efc45a',color:'#161713',border:0,borderRadius:14,fontWeight:1000}}>PASSER LA CARTE À GAUCHE</button></>}
       </section>:null}
       {game.phase==='slap'?<section style={{...block,borderColor:'#f9d073'}}><div style={{color:GOLD,fontSize:20,fontWeight:1100,textAlign:'center'}}>✋ TOUT LE MONDE TAPE SUR LE TAS !</div><div style={{fontSize:12,color:'#cce8db',textAlign:'center',margin:'8px 0 15px'}}>Un joueur a quatre cartes identiques. Choisissez le dernier joueur à avoir tapé (ou celui ayant tapé trop tôt).</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(135px,1fr))',gap:8}}>{game.playerIds.map(id=><button key={id} onClick={()=>penalize(id)} style={{border:'1px solid #ffb48f',borderRadius:12,padding:10,color:'#fff',background:'#662d20',display:'flex',alignItems:'center',gap:8}}><ProfileAvatar profile={profile(id)} size={30}/><b>{label(id)}</b></button>)}</div></section>:null}
-      {game.phase==='result'||game.phase==='finished'?<section style={{...block,textAlign:'center'}}><div style={{fontSize:30}}>🚽</div><div style={{color:GOLD,fontSize:18,fontWeight:1100}}>{game.rounds.at(-1)?.flushed?"CHASSE D'EAU !":'PÉNALITÉ DU TAS'}</div><div style={{fontSize:12,margin:'8px 0 6px',fontWeight:900,color:'#f5dca8'}}>Joueur pénalisé : {label(game.rounds.at(-1)?.loserId||'')}</div><div style={{fontSize:12,margin:'8px 0 14px'}}>{game.notice}</div>{game.phase==='finished'?<><div style={{fontSize:22,color:'#9cf0ba',fontWeight:1100}}>🏆 {game.winnerId?label(game.winnerId):`EX ÆQUO · ${rank.filter(id=>game.kilos[id]===game.kilos[rank[0]]).map(label).join(" / ")}`}</div><div style={{fontSize:12}}>{game.winnerId?"Victoire au plus faible total de kilos.":"Égalité au plus faible total de kilos."}</div><button onClick={()=>{savedOnce.current=false;const fresh=createKiloState(ids,Number(cfg.rounds||5));liveGameRef.current=fresh;setGame(fresh);setUndoStack([]);setSelected(null);setRevealed(false);setPrematureChoice(false);setPendingPenalty(null)}} style={{...cardStyle(),background:'#efc45a',color:'#161313',padding:'14px 28px',marginTop:12}}>REJOUER</button></>:<button onClick={next} style={{border:0,borderRadius:12,padding:'13px 22px',background:GOLD,color:'#12120b',fontWeight:1000}}>{game.rounds.at(-1)?.premature?'REPRENDRE LES ÉCHANGES':'NOUVELLE DONNE'}</button>}</section>:null}
+      {game.phase==='result'||game.phase==='finished'?<section style={{...block,textAlign:'center'}}><div style={{fontSize:30}}>🚽</div><div style={{color:GOLD,fontSize:18,fontWeight:1100}}>{game.rounds.at(-1)?.flushed?"CHASSE D'EAU !":'PÉNALITÉ DU TAS'}</div><div style={{fontSize:12,margin:'8px 0 6px',fontWeight:900,color:'#f5dca8'}}>Joueur pénalisé : {label(game.rounds.at(-1)?.loserId||'')}</div><div style={{fontSize:12,margin:'8px 0 14px'}}>{game.notice}</div>{game.phase==='finished'?<><div style={{fontSize:22,color:'#9cf0ba',fontWeight:1100}}>🏆 {game.winnerId?label(game.winnerId):`EX ÆQUO · ${rank.filter(id=>game.kilos[id]===game.kilos[rank[0]]).map(label).join(" / ")}`}</div><div style={{fontSize:12}}>{game.winnerId?"Victoire au plus faible total de kilos.":"Égalité au plus faible total de kilos."}</div>{!finalConfirmed?<><div style={{fontSize:12,color:"#ffdb9b",margin:"10px 0"}}>Classement provisoire : vérifiez la dernière pénalité. Vous pouvez encore utiliser ANNULER.</div><button type="button" onClick={()=>setFinalConfirmed(true)} style={{border:0,borderRadius:12,padding:"13px 22px",background:"#9de8b8",color:"#102318",fontWeight:1000,marginTop:8}}>VALIDER LE CLASSEMENT ET ENREGISTRER</button></>:<div role="status" style={{marginTop:10,fontSize:12,color:"#9de8b8",fontWeight:900}}>CLASSEMENT VALIDÉ · ENREGISTREMENT DEMANDÉ</div>}<button onClick={()=>{savedOnce.current=false;setFinalConfirmed(false);const fresh=createKiloState(ids,Number(cfg.rounds||5));liveGameRef.current=fresh;setGame(fresh);setUndoStack([]);setSelected(null);setRevealed(false);setPrematureChoice(false);setPendingPenalty(null)}} style={{...cardStyle(),background:'#efc45a',color:'#161313',padding:'14px 28px',marginTop:12}}>REJOUER</button></>:<button onClick={next} style={{border:0,borderRadius:12,padding:'13px 22px',background:GOLD,color:'#12120b',fontWeight:1000}}>{game.rounds.at(-1)?.premature?'REPRENDRE LES ÉCHANGES':'NOUVELLE DONNE'}</button>}</section>:null}
     </main>
     {pendingPenalty?<div role="dialog" aria-modal="true" aria-label="Confirmer la pénalité" onClick={()=>setPendingPenalty(null)} style={{position:'fixed',inset:0,zIndex:9998,background:'#000d',display:'grid',placeItems:'center',padding:14}}>
       <div onClick={e=>e.stopPropagation()} style={{...block,width:'min(420px,100%)',textAlign:'center',display:'grid',gap:14,padding:20}}>
@@ -111,7 +114,7 @@ export default function KiloDeMerdePlay(props:any){
         <div style={{fontWeight:1000,fontSize:18,color:GOLD}}>{pendingPenalty.premature?'TAPE PRÉMATURÉE':'DERNIER À TAPER'}</div>
         <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap:10}}><ProfileAvatar profile={profile(pendingPenalty.id)} size={42}/><strong style={{fontSize:17}}>{label(pendingPenalty.id)}</strong></div>
         <div style={{fontSize:13,color:'#d8e8dc'}}>Confirmer la pénalité de ce joueur ? Il prendra la prochaine carte du tas. {pendingPenalty.premature?'Les choix d’échange en cours seront annulés.':'Une nouvelle donne suivra, sauf si la partie se termine.'}</div>
-        {game.rounds.length+1>=game.maxRounds?<div style={{fontSize:12,color:'#ffcf95',fontWeight:900}}>ATTENTION : dernière pénalité, le classement final sera enregistré.</div>:null}
+        {game.rounds.length+1>=game.maxRounds?<div style={{fontSize:12,color:'#ffcf95',fontWeight:900}}>Dernière pénalité : le classement restera modifiable jusqu’à votre validation finale.</div>:null}
         <div style={{display:'flex',gap:8}}>
           <button type="button" onClick={()=>setPendingPenalty(null)} style={{flex:1,padding:13,borderRadius:12,border:'1px solid #e8d6a066',background:'#28312e',color:'#fff',fontWeight:900}}>ANNULER</button>
           <button type="button" onClick={confirmPenalty} style={{flex:1,padding:13,borderRadius:12,border:0,background:GOLD,color:'#191611',fontWeight:1000}}>CONFIRMER</button>

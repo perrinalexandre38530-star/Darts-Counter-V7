@@ -28,6 +28,9 @@ export default function MssCombatActiveCard({
     >
       <div className="mss-combat-active-main">
         <div className="mss-combat-active-identity">
+          <div className="mss-combat-active-portrait" aria-hidden="true">
+            {avatar ? <img src={avatar} alt="" /> : <span>{name?.slice(0, 1) || "J"}</span>}
+          </div>
           <div className="mss-combat-active-avatar">
             {avatar ? <img src={avatar} alt="" /> : <span>{name?.slice(0, 1) || "J"}</span>}
           </div>
@@ -46,7 +49,7 @@ export default function MssCombatActiveCard({
             <small>{rightTitle}</small>
             <strong>{rightValue}</strong>
           </div>
-          <p>{objective}</p>
+          <p className="mss-combat-objective-instruction">{objective}</p>
           {rightDetail && <div className="mss-combat-goal-detail">{rightDetail}</div>}
         </div>
       </div>

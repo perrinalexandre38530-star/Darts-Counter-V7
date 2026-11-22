@@ -42,25 +42,47 @@ function bedsFor(raw:unknown):Array<'S'|'D'|'T'>{
 }
 export function mariachiContract(options:any, seedText:string, round:number):MariachiContract {
   if(options?.mariachiEnabled!=='yes')return {enabled:false,kind:'classic',label:'',sectors:[],beds:['S','D','T'],colors:[],parity:'all',allowBull:false};
-  const rotation=options?.mariachiMode==='fiesta' || options?.mariachiRotation!=='fixed';
-  const index=rotation?Math.max(0,round):0;
-  const types=['multisectors','doubles','triples','colors','parity'];
   const selected=String(options?.mariachiMode||'multisectors');
-  const kind=selected==='fiesta'?types[(hash(`${seedText}:mariachi:fiesta`)+index)%types.length]:selected;
+  // A new target each RONDA is NOT a new contract family. The family rotation
+  // must be explicitly chosen (or the FIESTA preset) so manually configured
+  // MULTISECTEURS / COULEURS / PAIRS games keep their rules.
+  // In legacy V195–V250 configuration, 'round' was labelled as renewing
+  // the *contract*, yet silently kept MULTISECTEURS. Treat it as full family
+  // rotation for NEW games. Old active games keep their cached round contracts.
+  const familyRotation=selected==='fiesta' || options?.mariachiRotation==='families'
+    || options?.mariachiRotation==='round'
+    || (!options?.mariachiRotation && selected==='multisectors');
+  const index=options?.mariachiRotation==='fixed' && !familyRotation ? 0 : Math.max(0,round);
+  const types=['multisectors','doubles','triples','colors','parity'];
+  // A complete cycle contains every family exactly once. No two consecutive
+  // RONDAS are the same family; cycles and order are deterministic on restore.
+  const familyOffset=hash(`${seedText}:mariachi:fiesta`) % types.length;
+  const kind=familyRotation ? types[(familyOffset+index)%types.length] : selected;
   const count=Math.max(1,Math.min(20,Math.round(Number(options?.mariachiSegmentCount||3))));
   const manual=mariachiSelectedNumbers(options?.mariachiNumbers);
   const useManual=options?.mariachiPick==='manual';
   const sectors=useManual?manual:shuffled(count,`${seedText}:mariachi:sectors:${index}`);
   const wantedColors=String(options?.mariachiColors ?? 'RED,GREEN').toUpperCase().split(',').filter((x:any)=>['RED','GREEN','BLACK','WHITE'].includes(x)) as MariachiColor[];
-  const colors=(kind==='colors'||kind==='custom')?[...new Set(wantedColors)]:[];
+  // During FIESTA the color contract changes among the selected target colors,
+  // and a PAIRS contract alternates with IMPAIRS on the following family cycle.
+  // Outside FIESTA, user-selected colors/parity remain unchanged.
+  const familyCycle=Math.floor(index/types.length);
+  const colors=(kind==='colors'||kind==='custom')
+    ? (familyRotation && kind==='colors' && wantedColors.length
+      ? [wantedColors[(hash(`${seedText}:colors`)+familyCycle)%wantedColors.length]]
+      : [...new Set(wantedColors)]) : [];
   const parityRaw=String(options?.mariachiParity||'even');
-  const parity=(kind==='parity'||kind==='custom')?(parityRaw==='odd'?'odd':parityRaw==='all'?'all':'even'):'all';
+  const requestedParity=parityRaw==='odd'?'odd':parityRaw==='all'?'all':'even';
+  const parity=(kind==='parity'||kind==='custom')
+    ? (familyRotation && kind==='parity'
+      ? (familyCycle%2 ? (requestedParity==='odd'?'even':'odd') : (requestedParity==='all'?'even':requestedParity))
+      : requestedParity) : 'all';
   const beds=kind==='doubles'?['D'] as Array<'S'|'D'|'T'>:kind==='triples'?['T'] as Array<'S'|'D'|'T'>:bedsFor(options?.mariachiBeds);
   const restrictSectors=['multisectors','doubles','triples','custom'].includes(kind);
   const validSectors=restrictSectors?sectors:allNumbers;
   const allowBull=kind==='colors' && options?.bullEnabled!=='no';
   const name:Record<string,string>={multisectors:'MULTISECTEURS',doubles:'DOUBLES',triples:'TRIPLES',colors:'COULEURS',parity:'PAIRS / IMPAIRS',custom:'PERSONNALISÉ'};
-  const details=[restrictSectors?validSectors.join(' · '):'',kind==='parity'?(parity==='odd'?'IMPAIRS':'PAIRS'):'',colors.length?colors.map(c=>({RED:'ROUGE',GREEN:'VERT',BLACK:'NOIR',WHITE:'BLANC'}[c])).join(' / '):'',beds.length!==3?beds.join(' / '):''].filter(Boolean).join(' · ');
+  const details=[restrictSectors?validSectors.join(' · '):'',kind==='parity'?(parity==='odd'?'IMPAIRS':parity==='even'?'PAIRS':'PAIRS / IMPAIRS'):'',colors.length?colors.map(c=>({RED:'ROUGE',GREEN:'VERT',BLACK:'NOIR',WHITE:'BLANC'}[c])).join(' / '):'',beds.length!==3?beds.join(' / '):''].filter(Boolean).join(' · ');
   return {enabled:true,kind,label:`${name[kind]||'MARIACHI'}${details?' · '+details:''}`,sectors:validSectors,beds,colors,parity,allowBull};
 }
 export function mariachiAccepts(d:GameDart, contract:MariachiContract):boolean {

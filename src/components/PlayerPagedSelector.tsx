@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import MssSelectorIconButton from "./MssSelectorIconButton";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
@@ -505,6 +506,9 @@ export default function PlayerPagedSelector({
   usageMode = "global",
   loopPages = false,
   showListButton = true,
+  toolbarExtra,
+  summaryExtra,
+  showToolbar = true,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -662,10 +666,11 @@ export default function PlayerPagedSelector({
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" onClick={() => setOpen(true)} style={pill(accent, true)}>Choisir joueurs {selected.length ? `(${selected.length})` : ""}</button>
-        {showListButton ? <button type="button" onClick={() => setListOpen((v) => !v)} style={pill(accent, listOpen)}>Liste profils</button> : null}
-      </div>
+      {showToolbar ? <div data-mss-selector-toolbar="players" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
+        <MssSelectorIconButton icon="players" label={`Choisir joueurs (${selected.length})`} onClick={() => setOpen(true)} accent={accent} active={open} />
+        {showListButton ? <MssSelectorIconButton icon="profiles" label="Liste des profils" onClick={() => setListOpen((v) => !v)} accent={accent} active={listOpen} /> : null}
+        {toolbarExtra}
+      </div> : null}
 
       {listOpen ? (
         <div className="dc-scroll-thin" style={{ maxHeight: 220, overflowY: "auto", borderRadius: 16, border: `1px solid ${accent}44`, background: "rgba(0,0,0,.24)", padding: 8 }}>
@@ -682,12 +687,13 @@ export default function PlayerPagedSelector({
         </div>
       ) : null}
 
-      {showSelectedSummary && selected.length && !open ? (
+      {showSelectedSummary && (selected.length > 0 || summaryExtra) && !open ? (
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Profils sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
             {selected.map((p: any) => <SelectedCard key={p.id} p={p} statsById={statsById} showProfileStarring={effectiveShowProfileStarring} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
           </div>
+          {summaryExtra}
         </div>
       ) : null}
 

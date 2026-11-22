@@ -33,7 +33,22 @@ function isLandscapeRuntime(): boolean {
 }
 
 function annotate(route: HTMLElement) {
-  if (!isLandscapeRuntime()) return;
+  // Clear stale landscape marks on rotation to portrait; the previous bridge
+  // only ever annotated, which could preserve landscape sizing after rotation.
+  if (!isLandscapeRuntime()) {
+    route.removeAttribute("data-mss-landscape-fit");
+    route.removeAttribute("data-mss-landscape-spacious");
+    route.querySelectorAll<HTMLElement>("[data-mss-landscape-unclamp]").forEach((node) =>
+      node.removeAttribute("data-mss-landscape-unclamp")
+    );
+    return;
+  }
+  const roomWidth = Math.min(window.innerWidth, route.getBoundingClientRect().width);
+  const roomHeight = Math.min(window.innerHeight, window.innerHeight - Math.max(0, route.getBoundingClientRect().top));
+  // Scale empty space only on genuinely spacious landscape screens. On short
+  // phones, preserve independent scroll and minimum 44px touch target sizes.
+  if (roomWidth >= 840 && roomHeight >= 650) route.dataset.mssLandscapeSpacious = "1";
+  else route.removeAttribute("data-mss-landscape-spacious");
   const screen = route.dataset.mscGameScreen || "page";
   route.dataset.mssLandscapeFit = screen;
 
@@ -72,7 +87,7 @@ function annotate(route: HTMLElement) {
 
 export default function LandscapePageFitBridge({ routeKey }: { routeKey: string }) {
   React.useLayoutEffect(() => {
-    if (typeof document === "undefined" || !isLandscapeRuntime()) return;
+    if (typeof document === "undefined") return;
     const route = document.querySelector<HTMLElement>(".dc-themed-route[data-msc-route]");
     if (!route) return;
     let frame = 0;
@@ -98,6 +113,7 @@ export default function LandscapePageFitBridge({ routeKey }: { routeKey: string 
       window.removeEventListener("orientationchange", refresh);
       window.removeEventListener("msc:responsive-layout", refresh as EventListener);
       route.removeAttribute("data-mss-landscape-fit");
+      route.removeAttribute("data-mss-landscape-spacious");
       route.querySelectorAll<HTMLElement>("[data-mss-landscape-unclamp]").forEach((node) =>
         node.removeAttribute("data-mss-landscape-unclamp")
       );

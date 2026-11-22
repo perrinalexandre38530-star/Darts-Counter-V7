@@ -3,9 +3,15 @@ import { managedCompetitionKey, managedFeedMatches, parseManagedCompetitionFeed 
 import type { ManagedCompetitionResponse } from "../../../src/sportsLive/officialCompetitionFeed";
 import { projectFootballCompetitionMatches } from "../../../src/sportsLive/officialCompetitionMatches";
 import { dartsCompetitionIdentity, projectDartsCompetitionMatches, tableTennisEventIdentity, projectTableTennisCompetitionMatches, providerNoData } from "../../../src/sportsLive/specialistCompetitionMatches";
+import { appendDartsArchiveBatch, appendDartsArchiveMonth, loadDartsSyncJob, monthQueryRange, previousArchiveMonth, saveDartsSyncJob, searchDartsV2Archive } from "../../../src/sportsLive/dartsArchiveV254";
 type Env = {
   USER_DATA_BUCKET?: R2Bucket;
   DARTS_API_KEY?: string;
+  LIVE_DARTS_BACKFILL_FROM_YEAR?: string;
+  DARTCONNECT_API_KEY?: string;
+  /** Only an explicit, licensed DartUP partner JSON endpoint; never the public HTML site. */
+  DARTUP_PARTNER_FEED_URL?: string;
+  DARTUP_PARTNER_FEED_TOKEN?: string;
   TABLE_TENNIS_API_KEY?: string;
   OPENAI_API_KEY?: string;
   FOOTBALL_DATA_API_KEY?: string;
@@ -560,41 +566,214 @@ function payloadRows(body: any, keys: string[] = []): any[] {
   return [];
 }
 
-async function dartsOverview(key: string) {
-  const usage = await apiFetch(DARTS_BASE, key, "/usage");
-  if (!usage.ok) {
-    return officialDartsFallbackOverview(`DartsAPI indisponible (HTTP ${usage.status}) : fallback PDC officiel activé.`);
+/** Read at most a bounded number of cursor pages: no claims of full world coverage. */
+async function dartsApiMorePages(key: string, endpoint: "results" | "fixtures", first: any, count: number, filters = ""): Promise<any[]> {
+  if (!first.ok) return [];
+  const rows = [...payloadRows(first.body, [endpoint, "matches"])];
+  let cursor = str(first.body?.meta?.next_cursor);
+  const seen = new Set<string>();
+  for (let page = 1; page < count && cursor && !seen.has(cursor); page++) {
+    seen.add(cursor);
+    const response = await apiFetch(DARTS_BASE, key, `/${endpoint}?${filters ? `${filters}&` : ""}limit=200&cursor=${encodeURIComponent(cursor)}`);
+    if (!response.ok) break;
+    rows.push(...payloadRows(response.body, [endpoint, "matches"]));
+    cursor = str(response.body?.meta?.next_cursor);
   }
+  return rows;
+}
+
+async function dartsOverview(key: string, depth: "fast" | "deep" = "fast") {
+  const usage = await apiFetch(DARTS_BASE, key, "/usage");
+  if (!usage.ok) return officialDartsFallbackOverview(`DartsAPI indisponible (HTTP ${usage.status}) : fallback PDC officiel activé.`);
   const plan = str(usage.body?.data?.plan?.key || usage.body?.meta?.plan || "free").toLowerCase();
   const hasLive = plan !== "free" && plan !== "archive";
   const now = new Date();
   const future = new Date(now.getTime() + 21 * 86400000);
-  const calls = [
-    apiFetch(DARTS_BASE, key, `/fixtures?from=${isoDate(now)}&to=${isoDate(future)}&limit=120`),
-    apiFetch(DARTS_BASE, key, "/results?limit=120"),
-  ];
-  const [fixtures, results] = await Promise.all(calls);
-  const live = hasLive ? await apiFetch(DARTS_BASE, key, "/live") : { ok: false, status: 402, body: { data: [] } };
+  const [fixtures, results, yesterday] = await Promise.all([
+    apiFetch(DARTS_BASE, key, `/fixtures?from=${isoDate(now)}&to=${isoDate(future)}&limit=200`),
+    apiFetch(DARTS_BASE, key, "/results?limit=200"),
+    // The provider documents this exceptional fresh endpoint even on a free key.
+    plan === "free" ? apiFetch(DARTS_BASE, key, "/results/yesterday") : Promise.resolve(null),
+  ]);
+  const [fixtureRows, resultRows, live] = await Promise.all([
+    depth === "deep" ? dartsApiMorePages(key, "fixtures", fixtures, 2, `from=${isoDate(now)}&to=${isoDate(future)}`) : Promise.resolve(fixtures.ok ? payloadRows(fixtures.body, ["fixtures", "matches"]) : []),
+    depth === "deep" ? dartsApiMorePages(key, "results", results, 4) : Promise.resolve(results.ok ? payloadRows(results.body, ["results", "matches"]) : []),
+    hasLive ? apiFetch(DARTS_BASE, key, "/live") : Promise.resolve({ ok: false, status: 402, body: { data: [] } }),
+  ]);
   const warnings: string[] = [];
   if (!fixtures.ok) warnings.push(`Fixtures Darts indisponibles (${fixtures.status}).`);
   if (!results.ok) warnings.push(`Résultats Darts indisponibles (${results.status}).`);
-  if (!hasLive) warnings.push("Le plan DartsAPI actuel ne fournit pas le score LIVE ; fixtures/résultats réels restent chargés automatiquement.");
+  if (yesterday && !yesterday.ok) warnings.push(`Résultats Darts d'hier indisponibles (${yesterday.status}).`);
+  if (!hasLive) warnings.push("Le plan DartsAPI actuel ne fournit pas de direct chiffré ; les résultats affichés dépendent des fenêtres et des accès du fournisseur.");
+  const combined = [...(yesterday?.ok ? payloadRows(yesterday.body, ["results", "matches"]) : []), ...resultRows];
+  const cleanResults = uniqNormalResults(combined.map(normalizeDartResult).filter(row => row.winner.name !== "—" && row.loser.name !== "—"));
   return {
     status: 200,
     ttl: hasLive ? 120 : 900,
     payload: {
-      sport: "darts",
-      configured: true,
-      automaticData: true,
-      provider: "dartsapi",
-      plan,
-      dataAsOf: str(live.body?.meta?.data_as_of || fixtures.body?.meta?.data_as_of || results.body?.meta?.data_as_of) || null,
+      sport: "darts", configured: true, automaticData: true, provider: "dartsapi", plan,
+      dataAsOf: str(live.body?.meta?.data_as_of || yesterday?.body?.meta?.data_as_of || fixtures.body?.meta?.data_as_of || results.body?.meta?.data_as_of) || null,
       liveAvailable: !!live.ok,
       liveReason: live.ok ? null : "Le direct Darts nécessite un plan DartsAPI compatible LIVE.",
       live: live.ok ? payloadRows(live.body, ["matches", "live"]).map(normalizeDartMatch) : [],
-      fixtures: fixtures.ok ? payloadRows(fixtures.body, ["fixtures", "matches"]).map(normalizeDartMatch) : [],
-      results: results.ok ? payloadRows(results.body, ["results", "matches"]).map(normalizeDartResult) : [],
+      fixtures: fixtureRows.map(normalizeDartMatch),
+      results: cleanResults,
       warnings,
+    },
+  };
+}
+
+type DartsSupplement = {
+  live: NormalMatch[]; fixtures: NormalMatch[]; results: NormalResult[]; events: NormalEvent[]; warnings: string[];
+};
+const emptyDartsSupplement = (): DartsSupplement => ({ live: [], fixtures: [], results: [], events: [], warnings: [] });
+const partnerText = (v: unknown, max = 140): string => str(v).trim().slice(0, max);
+const isDartUpHost = (host: string) => host === "dartup.fr" || host.endsWith(".dartup.fr");
+function safeDartUpLink(value: unknown): string {
+  try { const url = new URL(str(value)); if (url.protocol === "https:" && isDartUpHost(url.hostname)) return url.toString().slice(0, 600); }
+  catch {}
+  return "https://www.dartup.fr/public";
+}
+function validDartsPartnerDate(value: unknown): string | null {
+  const v = partnerText(value, 30);
+  if (!/^\d{4}-\d{2}-\d{2}(?:T[\d:.+-]+Z?)?$/.test(v) || !Number.isFinite(Date.parse(v))) return null;
+  return v;
+}
+function validPartnerScore(value: unknown): number | null {
+  const n = num(value);
+  return n !== null && Number.isInteger(n) && n >= 0 && n <= 100 ? n : null;
+}
+/**
+ * DartUP's CGU prohibit automated extraction. Only fetch a purpose-made,
+ * authenticated partner export explicitly configured after obtaining consent.
+ * This is an MSS JSON export contract (v1), NOT an undocumented DartUP API.
+ */
+async function authorizedDartUpFeed(env: Env): Promise<DartsSupplement> {
+  const out = emptyDartsSupplement();
+  const feedUrl = str(env.DARTUP_PARTNER_FEED_URL).trim();
+  const token = str(env.DARTUP_PARTNER_FEED_TOKEN).trim();
+  if (!feedUrl || !token) return out;
+  try {
+    const url = new URL(feedUrl);
+    if (url.protocol !== "https:" || !isDartUpHost(url.hostname)) {
+      out.warnings.push("Flux partenaire DartUP refusé : URL HTTPS DartUP officielle requise.");
+      return out;
+    }
+    const response = await timedFetch(url.toString(), { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } }, 5000);
+    if (!response.ok) { out.warnings.push(`DartUP partenaire indisponible (HTTP ${response.status}).`); return out; }
+    const body = await response.json().catch(() => null) as any;
+    if (body?.source !== "dartup" || body?.schemaVersion !== 1) {
+      out.warnings.push("DartUP partenaire : format d'export non reconnu (source=dartup, schemaVersion=1 attendu).");
+      return out;
+    }
+    const meta: CompetitionMeta = { countryCode: "FR", countryName: "France", family: "amateur", level: "grassroots", regionLabel: "France · ligues et clubs" };
+    for (const [i, row] of arr(body?.results).slice(0, 1200).entries()) {
+      const competition = partnerText(row?.competition);
+      const date = validDartsPartnerDate(row?.playedOn);
+      const wn = partnerText(row?.winner?.name);
+      const ln = partnerText(row?.loser?.name);
+      const ws = validPartnerScore(row?.winner?.score);
+      const ls = validPartnerScore(row?.loser?.score);
+      // Scores, identity, date and a declared winner must be present in source.
+      if (!competition || !date || !wn || !ln || ws === null || ls === null || ws <= ls) continue;
+      out.results.push({
+        id: `dartup-${partnerText(row?.id, 100) || `${i}-${date}`}`,
+        competition, round: partnerText(row?.round) || null, playedOn: date, competitionMeta: meta,
+        winner: { name: wn, score: ws }, loser: { name: ln, score: ls },
+        sourceName: "DartUP", sourceUrl: safeDartUpLink(row?.sourceUrl),
+      });
+    }
+    const readMatch = (row: any, i: number, live: boolean): NormalMatch | null => {
+      const competition = partnerText(row?.competition);
+      const startsAt = validDartsPartnerDate(row?.startsAt);
+      const players = arr(row?.players).slice(0, 2).map((p: any) => ({ name: partnerText(p?.name), score: validPartnerScore(p?.score) }));
+      if (!competition || !startsAt || players.length !== 2 || players.some(p => !p.name)) return null;
+      if (live && players.some(p => p.score === null)) return null;
+      return { id: `dartup-${live ? "live" : "fixture"}-${partnerText(row?.id, 100) || i}`,
+        competition, round: partnerText(row?.round) || null, startsAt, date: startsAt.slice(0, 10), players,
+        competitionMeta: meta, sourceName: "DartUP", sourceUrl: safeDartUpLink(row?.sourceUrl) };
+    };
+    for (const [i, row] of arr(body?.fixtures).slice(0, 900).entries()) {
+      const match = readMatch(row, i, false); if (match) out.fixtures.push(match);
+    }
+    for (const [i, row] of arr(body?.live).slice(0, 200).entries()) {
+      const match = readMatch(row, i, true); if (match) out.live.push(match);
+    }
+    for (const [i, row] of arr(body?.events).slice(0, 500).entries()) {
+      const title = partnerText(row?.title);
+      const startsAt = validDartsPartnerDate(row?.startsAt);
+      if (!title || !startsAt) continue;
+      out.events.push({ id: `dartup-event-${partnerText(row?.id, 100) || i}`, title, startsAt,
+        status: row?.status === "result" || row?.status === "upcoming" || row?.status === "live" ? row.status : "info",
+        competitionMeta: meta, sourceName: "DartUP", sourceUrl: safeDartUpLink(row?.sourceUrl) });
+    }
+  } catch { out.warnings.push("Flux DartUP partenaire non joignable (aucun score inventé)."); }
+  return out;
+}
+
+/** The published DartConnect API exposes tournament metadata and UKDA fixtures,
+ * not general public match-score results. Never convert it to completed matches. */
+async function authorizedDartConnectCalendar(env: Env): Promise<DartsSupplement> {
+  const out = emptyDartsSupplement();
+  const key = str(env.DARTCONNECT_API_KEY).trim();
+  if (!key) return out;
+  const headers = { Accept: "application/json", Authorization: `Bearer ${key}` };
+  try {
+    const since = isoDate(new Date(Date.now() - 30 * 86400000));
+    const queries = [
+      `https://public-api.dartconnect.com/api/v1/tournaments?page%5Bnumber%5D=1&page%5Bsize%5D=100&filter%5Bstarts_after%5D=${since}&sort=-start_date`,
+      "https://public-api.dartconnect.com/api/v1/ukda-matches?page%5Bnumber%5D=1&page%5Bsize%5D=100",
+    ];
+    const [tour, ukda] = await Promise.allSettled(queries.map(url => timedFetch(url, { headers }, 5000)));
+    if (tour.status === "fulfilled" && tour.value.ok) {
+      const body = await tour.value.json().catch(() => null) as any;
+      for (const row of arr(body?.data).slice(0, 100)) {
+        const title = partnerText(row?.dctv_title);
+        const startsAt = validDartsPartnerDate(row?.start_date);
+        if (!title || !startsAt) continue;
+        out.events.push({ id: `dartconnect-${partnerText(row.id, 100)}`, title, startsAt,
+          status: row?.closed === "Y" ? "info" : Date.parse(startsAt) > Date.now() ? "upcoming" : "info",
+          sourceName: "DartConnect", sourceUrl: "https://tv.dartconnect.com/",
+          competitionMeta: { countryCode: partnerText(row.country_code, 2) || null, countryName: null, family: "other", level: "mixed" } });
+      }
+    } else out.warnings.push("DartConnect : catalogue privé de tournois indisponible ou droits insuffisants.");
+    if (ukda.status === "fulfilled" && ukda.value.ok) {
+      const body = await ukda.value.json().catch(() => null) as any;
+      for (const row of arr(body?.data).slice(0, 100)) {
+        const startsAt = validDartsPartnerDate(row?.start_date);
+        const left = partnerText(row?.home_team);
+        const right = partnerText(row?.away_team);
+        if (!startsAt || !left || !right || Date.parse(startsAt) < Date.now() - 7 * 86400000) continue;
+        out.fixtures.push({ id: `dartconnect-ukda-${partnerText(row?.id, 80)}`, competition: "UKDA · County Darts",
+          startsAt, date: startsAt.slice(0, 10), round: null,
+          players: [{ name: left }, { name: right }], sourceName: "DartConnect UKDA", sourceUrl: "https://public-api.dartconnect.com/ukda-matches",
+          competitionMeta: { countryCode: "GB", countryName: "Royaume-Uni", level: "amateur", family: "regional" } });
+      }
+    }
+  } catch { out.warnings.push("DartConnect : accès API ou connexion temporairement indisponible."); }
+  return out;
+}
+
+async function extendDartsWithPartners(env: Env, base: { status: number; ttl: number; payload: any }) {
+  const [dartup, dartconnect] = await Promise.all([authorizedDartUpFeed(env), authorizedDartConnectCalendar(env)]);
+  const supplements = [dartup, dartconnect];
+  const live = supplements.flatMap(item => item.live);
+  const fixtures = supplements.flatMap(item => item.fixtures);
+  const results = supplements.flatMap(item => item.results);
+  const events = supplements.flatMap(item => item.events);
+  return {
+    ...base,
+    payload: {
+      ...base.payload,
+      configured: !!base.payload?.configured || !!live.length || !!fixtures.length || !!results.length || !!events.length,
+      automaticData: !!base.payload?.automaticData || !!live.length || !!fixtures.length || !!results.length || !!events.length,
+      liveAvailable: !!base.payload?.liveAvailable || !!live.length,
+      liveReason: live.length ? null : (base.payload?.liveReason ?? null),
+      live: [...live, ...arr(base.payload?.live)],
+      fixtures: [...fixtures, ...arr(base.payload?.fixtures)],
+      results: uniqNormalResults([...results, ...arr(base.payload?.results)]),
+      events: uniqEvents([...events, ...arr(base.payload?.events)]),
+      warnings: [...arr(base.payload?.warnings), ...supplements.flatMap(item => item.warnings)],
     },
   };
 }
@@ -1061,7 +1240,8 @@ async function persistAndMergeCentralArchive(env: Env, sport: string, lang: stri
   const bucket = env?.USER_DATA_BUCKET;
   if (!bucket) return { ...payload, archiveStorage: { enabled:false, persistent:false, reason:"R2 binding unavailable" } };
   const previous = await readCentralLiveArchive(env, sport, lang);
-  const results = mergeCentralResults(arr(payload?.results) as NormalResult[], previous?.results || []);
+  const minimizeDarts = (rows: NormalResult[]) => sport === "darts" ? rows.map(({raw: _raw,...row})=>row) : rows;
+  const results = mergeCentralResults(minimizeDarts(arr(payload?.results) as NormalResult[]), minimizeDarts(previous?.results || []));
   const fixtures = mergeCentralFixtures(arr(payload?.fixtures) as NormalMatch[], previous?.fixtures || []);
   const events = mergeCentralEvents(arr(payload?.events) as NormalEvent[], previous?.events || []);
   const doc: CentralLiveArchive = { version:1, sport, lang, updatedAt:new Date().toISOString(), results, fixtures, events };
@@ -1464,6 +1644,32 @@ function competitionMetaFor(sport: string, competition?: string | null, sourceNa
   if (/women|women's|feminin|feminine|femminile|frauen|dam|wsl|liga f/.test(raw)) meta.gender="women";
   else if (/mixed|mixte/.test(raw)) meta.gender="mixed";
   if (/u(?:1[3-9]|2[0-3])|under[- ]?(?:1[3-9]|2[0-3])|youth|junior|jeunes|juvenil/.test(raw)) { const m=raw.match(/u(?:1[3-9]|2[0-3])|under[- ]?(?:1[3-9]|2[0-3])/); meta.age=m?.[0]?.toUpperCase() || "Jeunes"; meta.family="youth"; }
+  if (sport === "darts") {
+    // Professional and grassroots events must not all be labelled "mixed".
+    if (/dartup|open de comite|championnat departemental|ligue amateur|club tournament/.test(raw)) {
+      meta.countryCode = "FR"; meta.countryName = "France"; meta.continent = "Europe";
+      meta.regionLabel = "France · ligues / clubs"; meta.family = "amateur"; meta.level = "grassroots";
+    } else if (/adc\b|vault|darts atlas/.test(raw)) {
+      meta.family = "amateur"; meta.level = "grassroots"; meta.tier = "ADC / VAULT";
+    } else if (/ukda|county darts|county championship/.test(raw)) {
+      meta.family = "regional"; meta.level = "amateur";
+      meta.regionLabel = "Royaume-Uni · counties";
+    } else if (/pdc asian tour|pdc asia|asian tour/.test(raw)) {
+      meta.family = "continental"; meta.level = "semi_pro"; meta.regionLabel = "Asie";
+    } else if (/pdc nordic|nordic.*baltic|cdc|championship darts corporation/.test(raw)) {
+      meta.family = "regional"; meta.level = "semi_pro";
+    } else if (/challenge tour|development tour|women.?s series|q school|qualif/.test(raw)) {
+      meta.family = "regional"; meta.level = "semi_pro"; meta.tier = "PDC · circuits secondaires";
+    } else if (/modus super series/.test(raw)) {
+      meta.family = "regional"; meta.level = "semi_pro"; meta.tier = "MODUS";
+    } else if (/wdf (silver|bronze)|wdf.*(youth|junior)/.test(raw)) {
+      meta.family = "regional"; meta.level = "amateur";
+    } else if (/wdf (platinum|gold)|players championship|european tour|pdc pro tour|premier league darts/.test(raw)) {
+      meta.family = "continental"; meta.level = "pro";
+    }
+    if (/women|feminine|feminin/.test(raw)) meta.gender = "women";
+    if (/junior|youth|under.?2[13]|\bu(?:18|21|23)\b/.test(raw)) { meta.family = "youth"; meta.age = "Jeunes"; }
+  }
   if (sport === "foot") {
     if (/ligue 1|premier league|laliga|bundesliga|serie a|eredivisie|primeira liga|j1|k league 1|a league/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D1"; }
     else if (/ligue 2|championship|serie b|2 bundesliga|segunda division|j2|k league 2/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D2"; }
@@ -1872,6 +2078,18 @@ DIRECT_EDITORIAL_PAGES.frisbee.push(
 );
 
 
+// Expanded *editorial* discovery for secondary pro, semi-pro and amateur circuits.
+// No automated harvesting of DartUP or Darts Atlas scores: their reuse needs consent.
+DIRECT_EDITORIAL_PAGES.darts.push(
+  { url: "https://www.pdc.tv/tournaments", sourceName: "PDC · secondary tours", scope: "world", scopeLabel: "Challenge / Development / Women / Q School" },
+  { url: "https://www.pdc-asia.tv/", sourceName: "PDC Asian Tour", scope: "regional", scopeLabel: "Asie / qualification / semi-pro" },
+  { url: "https://www.pdc-asia.tv/index.php?a=Index&c=Index&cid=94&m=category&mid=1", sourceName: "PDC Asia Results", scope: "regional", scopeLabel: "Asie / tournois" },
+  { url: "https://dartscircuit.com/", sourceName: "ADC Amateur Darts Circuit", scope: "regional", scopeLabel: "Europe / Amériques / amateur" },
+  { url: "https://dartscircuit.com/vault/", sourceName: "ADC VAULT", scope: "regional", scopeLabel: "Tournois hebdomadaires amateurs" },
+  { url: "https://www.dartsrankings.com/", sourceName: "PDC Live Order of Merit", scope: "world", scopeLabel: "PDC / classements" },
+  { url: "https://www.dartsrankings.com/eurotour", sourceName: "European Tour Rankings", scope: "regional", scopeLabel: "Europe / semi-pro" },
+);
+
 // V243 — dedicated archive and calendar layers. These are intentionally separate
 // from the normal journal feed so historical depth never delays the home screen.
 const DIRECT_ARCHIVE_PAGES: Record<string, Array<{ url:string; sourceName:string; scope:IntelligenceScope; scopeLabel:string }>> = {
@@ -1994,6 +2212,12 @@ DIRECT_ARCHIVE_PAGES.fit = [
   { url:"https://www.if3.fit/championships", sourceName:"iF3 Championships", scope:"world", scopeLabel:"Championnats et archives" },
   { url:"https://federationfitnessfonctionnel.fr/", sourceName:"F3", scope:"local", scopeLabel:"France" },
 ];
+
+DIRECT_ARCHIVE_PAGES.darts.push(
+  { url: "https://www.pdc-asia.tv/", sourceName: "PDC Asian Tour", scope: "regional", scopeLabel: "Asie / archives" },
+  { url: "https://dartscircuit.com/vault/", sourceName: "ADC VAULT", scope: "regional", scopeLabel: "Amateur / classement / archives" },
+  { url: "https://www.dartsrankings.com/", sourceName: "PDC Rankings", scope: "world", scopeLabel: "PDC / historique des classements" },
+);
 
 const DIRECT_CALENDAR_PAGES: Record<string, Array<{ url:string; sourceName:string; scope:IntelligenceScope; scopeLabel:string }>> = {
   darts: [
@@ -3085,9 +3309,15 @@ const CALENDAR_GEOGRAPHY_SWEEPS = [
   "Oceania including Australia, New Zealand and Pacific nations",
 ];
 
+DIRECT_CALENDAR_PAGES.darts.push(
+  { url: "https://www.pdc-asia.tv/", sourceName: "PDC Asian Tour", scope: "regional", scopeLabel: "Asie / calendrier" },
+  { url: "https://dartscircuit.com/vault/", sourceName: "ADC VAULT", scope: "regional", scopeLabel: "Tournois amateurs" },
+  { url: "https://www.dartconnect.com/fans/", sourceName: "DartConnect", scope: "world", scopeLabel: "Tournois / calendrier public" },
+);
+
 async function archiveOverview(env: Env, sport: string, lang: string) {
   const central = await readCentralLiveArchive(env, sport, lang);
-  if (archiveIsFresh(central, CENTRAL_ARCHIVE_FRESH_MS)) {
+  if (archiveIsFresh(central, CENTRAL_ARCHIVE_FRESH_MS) && !!(central?.results?.length || central?.events?.length)) {
     const index = await readCentralCompetitionIndex(env, sport, lang);
     return { status:200, ttl:3600, payload:{
       sport, configured:true, automaticData:true, provider:"official_links", plan:"archive-central",
@@ -3117,7 +3347,19 @@ async function archiveOverview(env: Env, sport: string, lang: string) {
   const direct = directSettled[0]?.status === "fulfilled" ? directSettled[0].value : [];
   const ai = aiRanges.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const rows = uniqNews([...direct, ...ai]);
-  const results = applyCompetitionMeta(sport, uniqNormalResults(rows.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[])).slice(0, 50_000);
+  const editorialResults = rows.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[];
+  // In Darts, use real provider match rows as the primary historical source.
+  // Editorial score extraction only supplements the archive; it never substitutes
+  // for provider-backed complete match records.
+  let providerHistory: NormalResult[] = [];
+  if (sport === "darts" && str(env.DARTS_API_KEY).trim()) {
+    try {
+      const first = await apiFetch(DARTS_BASE,str(env.DARTS_API_KEY).trim(),"/results?limit=200");
+      if (first.ok) providerHistory = (await dartsApiMorePages(str(env.DARTS_API_KEY).trim(),"results",first,8))
+        .map(normalizeDartResult).map(addDartsApiSearchMeta);
+    } catch {}
+  }
+  const results = applyCompetitionMeta(sport, uniqNormalResults([...providerHistory,...editorialResults])).slice(0, 50_000);
   const events = uniqEvents(rows.filter((row) => row.kind === "result").map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[]).slice(0,50_000);
   const logoPayload = await enrichCompetitionLogosInPayload(env, sport, {
     sport, configured: results.length > 0 || events.length > 0, automaticData: true, provider:"official_links", plan:"archive",
@@ -3601,12 +3843,344 @@ async function managedOfficialStandings(env: Env, request: URL, sport: string): 
   } catch { return null; }
 }
 
+/** Export contract for authorised federation, club or data-partner result feeds.
+ * A link in SOURCES is not a feed; MSS never scrapes DartUP or private DCTV pages. */
+async function importAuthorizedDartsResults(env: Env, body: any) {
+  const sourceName = partnerText(body?.sourceName, 90);
+  const sourceUrl = partnerText(body?.sourceUrl, 600);
+  const sourceId = partnerText(body?.sourceId, 64);
+  const items = arr(body?.results);
+  const origin = (() => { try { const u = new URL(sourceUrl); return u.protocol === "https:" && !u.username && !u.password; } catch { return false; } })();
+  if (body?.schemaVersion !== 1 || body?.rightsConfirmed !== true || !sourceId || !/^[a-z0-9_-]{2,64}$/i.test(sourceId) || !sourceName || !origin || !items.length || items.length > 1000)
+    return { error: "invalid_results_feed", message: "schemaVersion=1, rightsConfirmed=true, sourceId, sourceName, HTTPS sourceUrl and 1-1000 authorised results required." };
+  const accepted: NormalResult[] = [];
+  for (const [i, item] of items.entries()) {
+    const competition = partnerText(item?.competition);
+    const playedOn = validDartsPartnerDate(item?.playedOn);
+    const winnerName = partnerText(item?.winner?.name, 100);
+    const loserName = partnerText(item?.loser?.name, 100);
+    const winnerScore = validPartnerScore(item?.winner?.score);
+    const loserScore = validPartnerScore(item?.loser?.score);
+    if (!competition || !playedOn || !winnerName || !loserName || winnerScore === null || loserScore === null || winnerScore <= loserScore || winnerName === loserName) continue;
+    const countryCode = partnerText(item?.countryCode || body.countryCode, 2).toUpperCase();
+    const level = partnerText(item?.level || body.level, 30);
+    const allowedLevels: CompetitionMeta["level"][] = ["elite","pro","semi_pro","amateur","grassroots","mixed"];
+    const meta: CompetitionMeta = {
+      countryCode: /^[A-Z]{2}$/.test(countryCode) ? countryCode : null,
+      countryName: partnerText(item?.countryName || body.countryName, 100) || null,
+      level: allowedLevels.includes(level as CompetitionMeta["level"]) ? (level as CompetitionMeta["level"]) : "mixed",
+      family: level === "grassroots" || level === "amateur" ? "amateur" : "other",
+    };
+    const exactUrl = partnerText(item?.sourceUrl, 600);
+    let finalUrl = sourceUrl;
+    try { if (exactUrl && new URL(exactUrl).protocol === "https:") finalUrl = exactUrl; } catch {}
+    accepted.push({id:`partner-${sourceId}-${partnerText(item?.id,80) || i}-${playedOn}`,playedOn,competition,
+      round:partnerText(item?.round,100) || null,winner:{name:winnerName,score:winnerScore},loser:{name:loserName,score:loserScore},
+      sourceName,sourceUrl:finalUrl,competitionMeta:meta});
+  }
+  if (!accepted.length) return { error:"no_valid_result", message:"No completed match with a valid date, two names and a non-tied score." };
+  // The source-partitioned V2 archive is authoritative for new authorized imports;
+  // legacy V1 is updated for compatibility but its 50k-row cap does not constrain V2.
+  const bucket=env.USER_DATA_BUCKET;
+  if (!bucket) return {error:"archive_storage_unavailable"};
+  let partitions;
+  try { partitions=await appendDartsArchiveBatch(bucket,`partner-${sourceId.toLowerCase()}`.slice(0,64),accepted); }
+  catch(e:any) { return {error:"archive_import_failed",message:str(e?.message || e)}; }
+  const payload = await persistAndMergeCentralArchive(env, "darts", "fr", {results:accepted, fixtures:[],events:[]});
+  return {ok:true,imported:accepted.length,monthlyPartitions:partitions.length,archiveResults:payload.archiveStorage?.results || 0,
+    persistent:true,legacyPersistent:!!payload.archiveStorage?.persistent};
+}
+
+function searchValue(value: unknown) {
+  return str(value).toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu," ").trim();
+}
+function searchResultMatches(row: NormalResult, filters: {q:string;year:string;competition:string;country:string;level:string;source:string}) {
+  if (!row?.winner?.name || !row?.loser?.name || !row?.competition) return false;
+  if (filters.year && !str(row.playedOn).startsWith(filters.year)) return false;
+  if (filters.q && !searchValue(`${row.winner.name} ${row.loser.name} ${row.competition} ${row.round || ""} ${row.sourceName || ""}`).includes(searchValue(filters.q))) return false;
+  if (filters.competition && !searchValue(row.competition).includes(searchValue(filters.competition))) return false;
+  if (filters.country && filters.country !== str(row.competitionMeta?.countryCode).toUpperCase()) return false;
+  if (filters.level && filters.level !== str(row.competitionMeta?.level)) return false;
+  if (filters.source && !searchValue(row.sourceName).includes(searchValue(filters.source))) return false;
+  return true;
+}
+function addDartsApiSearchMeta(row: NormalResult): NormalResult {
+  const raw = row.raw as any;
+  const meta = competitionMetaFor("darts",row.competition,row.sourceName,row.sourceUrl);
+  const country = str(raw?.event?.country_code || raw?.event?.country?.code).toUpperCase();
+  if (/^[A-Z]{2}$/.test(country)) meta.countryCode = country;
+  const tier = str(raw?.event?.tier || raw?.competition?.tier);
+  if (tier) {
+    meta.tier = tier;
+    if (/wdf|challenge|development|youth|county|asian|nordic|vault/i.test(tier)) meta.level = "semi_pro";
+    else if (/major|world|pro|players_championship/i.test(tier)) meta.level = "pro";
+  }
+  return {...row,competitionMeta:meta,raw:undefined};
+}
+
+async function dartsApiSearchResults(key: string, filters: {q:string;year:string;competition:string;country:string;level:string;source:string}, cursor: string) {
+  const out: {results:NormalResult[]; nextCursor:string|null; state:"connected"|"restricted"|"unavailable"; detail:string; warnings:string[]; partial:boolean} = {
+    results:[],nextCursor:null,state:"connected",detail:"API disponible",warnings:[],partial:false,
+  };
+  const dateFilter = filters.year ? `from=${filters.year}-01-01&to=${filters.year}-12-31` : "";
+  const q = filters.q.trim();
+  const competitionQ = (filters.competition || "").trim();
+  // A free-text query is resolved against actual provider player/competition IDs,
+  // never passed as an unsupported /results?q= parameter.
+  const lookup = async (kind:"players"|"competitions", term:string) => {
+    const resp = await apiFetch(DARTS_BASE,key,`/${kind}?q=${encodeURIComponent(term)}&limit=20`);
+    return resp.ok ? payloadRows(resp.body,[kind]) : [];
+  };
+  let targets:Array<{key:"player_id"|"competition_id";value:string}> = [];
+  if (q || competitionQ) {
+    const [players, competitions] = await Promise.all([
+      q && !competitionQ ? lookup("players",q) : Promise.resolve([]),
+      competitionQ || q ? lookup("competitions",competitionQ || q) : Promise.resolve([]),
+    ]);
+    const term = searchValue(competitionQ || q);
+    for (const row of competitions) {
+      const name = searchValue(row?.name || row?.competition?.name);
+      const id = str(row?.competition_id || row?.id);
+      if (id && name.includes(term)) targets.push({key:"competition_id",value:id});
+      if (targets.length >= 3) break;
+    }
+    if (!competitionQ) for (const row of players) {
+      const name = searchValue(row?.name || row?.full_name);
+      const id = str(row?.player_id || row?.id);
+      if (id && name.includes(searchValue(q))) targets.push({key:"player_id",value:id});
+      if (targets.length >= 6) break;
+    }
+    out.partial = true; // only a bounded number of matching IDs are queried
+    if (!targets.length) {
+      out.detail = "Aucun joueur ou tournoi identifié dans DartsAPI pour cette recherche";
+      return out;
+    }
+  } else targets = [{key:"competition_id",value:""}];
+  const requests = targets.map(async (target) => {
+    const query = [dateFilter, target.value ? `${target.key}=${encodeURIComponent(target.value)}` : "", `limit=200`, (cursor && targets.length===1 ? `cursor=${encodeURIComponent(cursor)}` : "")].filter(Boolean).join("&");
+    return apiFetch(DARTS_BASE,key,`/results?${query}`);
+  });
+  const responses = await Promise.allSettled(requests);
+  let hasSuccess = false;
+  let firstError = 0;
+  for (const settled of responses) {
+    if (settled.status !== "fulfilled") { firstError ||= 503;continue; }
+    const response = settled.value;
+    if (!response.ok) { firstError ||= response.status;continue; }
+    hasSuccess = true;
+    out.results.push(...payloadRows(response.body,["results","matches"]).map(normalizeDartResult).map(addDartsApiSearchMeta));
+    if (targets.length === 1) out.nextCursor = str(response.body?.meta?.next_cursor) || null;
+  }
+  out.results = uniqNormalResults(out.results);
+  if (!hasSuccess && firstError) {
+    out.state = firstError === 402 || firstError === 429 ? "restricted" : "unavailable";
+    out.detail = `Accès DartsAPI ${firstError} (${firstError===402 ? "fenêtre du forfait" : firstError===429 ? "quota dépassé" : "erreur fournisseur"})`;
+    out.warnings.push(`DartsAPI : ${out.detail}.`);
+  }
+  return out;
+}
+
+/** Authenticated run invoked by the separate Cron Worker, never from the browser.
+ * Each successful DartsAPI page is persisted before its cursor is advanced.
+ * No supplier is claimed as synced unless it has yielded actual match rows. */
+async function syncDartsArchiveV254(env: Env, payload: any) {
+  const bucket = env.USER_DATA_BUCKET;
+  if (!bucket) return {status:503,payload:{ok:false,error:"R2_USER_DATA_BUCKET_missing"}};
+  const key = str(env.DARTS_API_KEY).trim();
+  const mode:"recent"|"backfill" = payload?.mode === "backfill" ? "backfill" : "recent";
+  const partnerConfigured=!!(env.DARTUP_PARTNER_FEED_URL && env.DARTUP_PARTNER_FEED_TOKEN);
+  if (!key && (mode === "backfill" || !partnerConfigured)) return {status:503,payload:{ok:false,error:"DARTS_API_KEY_missing",message:"Une clé DartsAPI est nécessaire pour ce rattrapage; le flux DartUP, s'il est autorisé, peut fonctionner seul pour les résultats récents."}};
+  const current = new Date().toISOString().slice(0,7);
+  const previous = previousArchiveMonth(current);
+  const saved = await loadDartsSyncJob(bucket,mode);
+  const startPeriod = mode === "recent" ? current : saved?.period || previous;
+  const floorYear = Math.max(1975,Math.min(new Date().getUTCFullYear(),Number(str(env.LIVE_DARTS_BACKFILL_FROM_YEAR) || "1994") || 1994));
+  if (mode === "backfill" && Number(startPeriod.slice(0,4)) < floorYear)
+    return {status:200,payload:{ok:true,mode,done:true,beforeYear:floorYear,message:"Limite de reprise historique atteinte."}};
+  const periods = mode === "recent" ? [current,previous] : [startPeriod];
+  let providerPlan = "unknown";
+  if (key) {
+    try {
+      const usage=await apiFetch(DARTS_BASE,key,"/usage");
+      if (usage.ok) providerPlan=str(usage.body?.data?.plan?.key || usage.body?.meta?.plan || "unknown").toLowerCase();
+    } catch { /* If usage is unavailable the actual result endpoint decides access. */ }
+  }
+  const maxProviderDate = (() => {
+    const now=new Date();
+    if (providerPlan === "free") now.setUTCDate(now.getUTCDate()-7);
+    return now.toISOString().slice(0,10);
+  })();
+  const runs:Array<{period:string;pages:number;received:number;stored:number;completed:boolean;nextCursor:string|null}> = [];
+  let providerError:string|null = null;
+  for (const period of (key ? periods : [])) {
+    const range = monthQueryRange(period);
+    // Never request future results or dates newer than a free-plan delay.
+    range.to = range.to < maxProviderDate ? range.to : maxProviderDate;
+    if (range.to < range.from) {
+      runs.push({period,pages:0,received:0,stored:0,completed:false,nextCursor:null});
+      continue;
+    }
+    let cursor = mode === "backfill" && saved?.period === period ? saved.nextCursor : null;
+    let received = 0;let pages = 0;let stored = 0;let complete = false;
+    const pageLimit = mode === "backfill" ? 3 : 2;
+    for (let page = 0;page < pageLimit;page++) {
+      const qs = new URLSearchParams({from:range.from,to:range.to,limit:"200"});
+      if(cursor) qs.set("cursor",cursor);
+      let response:Awaited<ReturnType<typeof apiFetch>>;
+      try { response = await apiFetch(DARTS_BASE,key,`/results?${qs.toString()}`); }
+      catch(e:any) { providerError = `DartsAPI indisponible : ${str(e?.message || e)}`;break; }
+      if (!response.ok) { providerError = `DartsAPI HTTP ${response.status} (${response.status === 402 ? "fenêtre du forfait incompatible" : response.status === 429 ? "quota atteint" : "erreur fournisseur"})`;break; }
+      const rawRows=payloadRows(response.body,["results","matches"]);
+      const normalized=rawRows.map(normalizeDartResult).map(addDartsApiSearchMeta)
+        .filter(row => !!row.playedOn && !!row.competition && row.winner?.name !== "—" && row.loser?.name !== "—");
+      // Do not advance the cursor on any failed R2 write.
+      try {
+        const result = await appendDartsArchiveMonth(bucket,period,"dartsapi",normalized.map(({raw: _raw,...row})=>row));
+        stored = result.stored;
+      } catch(e:any) { providerError = `R2 indisponible : ${str(e?.message || e)}`;break; }
+      received += normalized.length;pages++;
+      const nextCursor=str(response.body?.meta?.next_cursor) || null;
+      complete = !nextCursor;
+      const checkpoint = {mode,period,nextCursor,completed:complete,totalFetched:(saved?.period===period ? saved.totalFetched : 0)+received,
+        updatedAt:new Date().toISOString(),lastError:null};
+      if (mode === "backfill") await saveDartsSyncJob(bucket,checkpoint);
+      cursor = nextCursor;
+      if (complete) break;
+    }
+    runs.push({period,pages,received,stored,completed:complete,nextCursor:cursor});
+    if (mode === "backfill" && !providerError && complete) {
+      const nextPeriod=previousArchiveMonth(period);
+      await saveDartsSyncJob(bucket,{mode,period:nextPeriod,nextCursor:null,completed:false,totalFetched:0,updatedAt:new Date().toISOString(),lastError:null});
+    }
+    if (providerError) break;
+  }
+  let partnerImported=0;
+  let partnerError:string|null=null;
+  if (mode === "recent" && partnerConfigured) {
+    try {
+      const partner=await authorizedDartUpFeed(env);
+      if (partner?.results?.length) {
+        const parts=await appendDartsArchiveBatch(bucket,"dartup",partner.results.map(({raw: _raw,...row})=>row),24);
+        partnerImported=parts.reduce((sum,part)=>sum+part.accepted,0);
+      }
+    } catch(e:any) { partnerError=`Flux partenaire DartUP inaccessible : ${str(e?.message || e)}`; }
+  }
+  if (!key && !partnerImported) providerError=partnerError || "Flux DartUP partenaire sans résultat valide et DartsAPI non configuré";
+  if (mode === "recent") await saveDartsSyncJob(bucket,{mode,period:current,nextCursor:null,completed:!providerError,totalFetched:runs.reduce((a,b)=>a+b.received,0),updatedAt:new Date().toISOString(),lastError:providerError});
+  else if (providerError) {
+    const latestCheckpoint=await loadDartsSyncJob(bucket,"backfill");
+    await saveDartsSyncJob(bucket,{mode,period:startPeriod,nextCursor:latestCheckpoint?.period===startPeriod ? latestCheckpoint.nextCursor : saved?.nextCursor || null,
+      completed:false,totalFetched:latestCheckpoint?.period===startPeriod ? latestCheckpoint.totalFetched : saved?.totalFetched || 0,
+      updatedAt:new Date().toISOString(),lastError:providerError});
+  }
+  return {status:providerError ? 503 : 200,payload:{ok:!providerError,mode,runs,partnerImported,error:providerError,partnerWarning:partnerError,updatedAt:new Date().toISOString()}};
+}
+
+async function dartsResultsSearch(env: Env, request: URL, waitUntil?: (promise: Promise<unknown>) => void) {
+  const sp = request.searchParams;
+  const filters = {
+    q:partnerText(sp.get("q"),100).trim(),
+    year:partnerText(sp.get("year"),8).trim(),
+    competition:partnerText(sp.get("competition"),100).trim(),
+    country:partnerText(sp.get("country"),8).toUpperCase(),
+    level:partnerText(sp.get("level"),20).trim(),
+    source:partnerText(sp.get("source"),70).trim(),
+  };
+  if (filters.year && !/^(19[7-9]\d|20\d{2})$/.test(filters.year)) return {status:400,ttl:0,payload:{error:"invalid_year"}};
+  if (filters.country && !/^[A-Z]{2}$/.test(filters.country)) return {status:400,ttl:0,payload:{error:"invalid_country"}};
+  if (filters.level && !["elite","pro","semi_pro","amateur","grassroots","mixed"].includes(filters.level)) return {status:400,ttl:0,payload:{error:"invalid_level"}};
+  const offset = Math.min(50_000,Math.max(0,Math.floor(Number(sp.get("offset") || 0) || 0)));
+  const cursor = partnerText(sp.get("cursor"),800);
+  const archiveCursor = partnerText(sp.get("archiveCursor"),40);
+  const skipProviders = sp.get("skipProviders") === "1";
+  const skipLegacy = sp.get("skipLegacy") === "1";
+  const skipV2 = sp.get("skipV2") === "1";
+  const wantDartsApi = !skipProviders && (!filters.source || searchValue(filters.source)==="dartsapi");
+  const wantDartUp = !skipProviders && (!filters.source || searchValue(filters.source)==="dartup");
+  const warnings:string[] = [];
+  const key = str(env.DARTS_API_KEY).trim();
+  const dartUpConfigured = !!(env.DARTUP_PARTNER_FEED_URL && env.DARTUP_PARTNER_FEED_TOKEN);
+  const [stored, apiResult, dartUpFeed, v2, recentJob, backfillJob] = await Promise.all([
+    readCentralLiveArchive(env,"darts","fr"),
+    key && wantDartsApi ? dartsApiSearchResults(key,filters,cursor).catch(()=>({results:[] as NormalResult[],nextCursor:null,state:"unavailable" as const,detail:"Fournisseur momentanément inaccessible",warnings:["DartsAPI inaccessible"],partial:true})) : Promise.resolve(null),
+    wantDartUp && dartUpConfigured ? authorizedDartUpFeed(env) : Promise.resolve(null),
+    searchDartsV2Archive(skipV2 ? null : env.USER_DATA_BUCKET,filters,archiveCursor).catch(()=>({
+      results:[] as NormalResult[],nextCursor:null,archivePartitions:0,partitionsScanned:0,archivePartial:true,
+      latestPartition:null,earliestPartition:null,
+    })),
+    env.USER_DATA_BUCKET ? loadDartsSyncJob(env.USER_DATA_BUCKET,"recent").catch(()=>null) : Promise.resolve(null),
+    env.USER_DATA_BUCKET ? loadDartsSyncJob(env.USER_DATA_BUCKET,"backfill").catch(()=>null) : Promise.resolve(null),
+  ]);
+  const archived = (stored?.results || []).filter((row)=>searchResultMatches(row,filters)).sort((a,b)=>str(b.playedOn).localeCompare(str(a.playedOn)));
+  const archiveResults = skipLegacy ? [] : archived.slice(offset,offset+80);
+  const rawDartApi = apiResult?.results || [];
+  // Provider results are filtered by the same conditions used for R2 data.
+  const apiRows = rawDartApi.filter((row)=>searchResultMatches(row,filters));
+  const partnerResults = (dartUpFeed?.results || []).filter((row)=>searchResultMatches(row,filters));
+  // Persist real supplier responses even when found through a specific player or year search.
+  // This grows the shared searchable archive without publishing the private API key.
+  const collected = [...apiRows,...partnerResults];
+  if (collected.length && env.USER_DATA_BUCKET && waitUntil) {
+    waitUntil(persistAndMergeCentralArchive(env,"darts","fr",{results:collected.map(({raw: _raw,...row})=>row),fixtures:[],events:[]}).then(()=>undefined).catch(()=>undefined));
+  }
+  const rows = mergeCentralResults([...apiRows,...partnerResults,...(v2.results as NormalResult[]),...archiveResults],[]).slice(0,350).sort((a,b)=>str(b.playedOn).localeCompare(str(a.playedOn)));
+  const nextArchiveOffset = !skipLegacy && offset+80 < archived.length ? offset+80 : null;
+  warnings.push(...(apiResult?.warnings || []),...(dartUpFeed?.warnings || []));
+  if (!stored && !v2.archivePartitions && !key && !dartUpConfigured) warnings.push("Aucune archive serveur ni clé DartsAPI / flux DartUP partenaire connecté : seuls les résultats déjà collectés par MSS sont visibles dans l’application.");
+  return {status:200,ttl:180,payload:{results:rows,returned:rows.length,archiveMatches:archiveResults.length+v2.results.length,archivePersistent:!!stored || v2.archivePartitions>0,
+    archiveMatchesExact:false,archivePartitions:v2.archivePartitions,archiveScanned:v2.partitionsScanned,archivePartial:v2.archivePartial,
+    nextArchiveCursor:v2.nextCursor,nextArchiveOffset,nextProviderCursor:apiResult?.nextCursor || null,
+    syncStatus:{recent:recentJob,backfill:backfillJob},updatedAt:recentJob?.updatedAt || stored?.updatedAt || new Date().toISOString(),
+    partial:!!apiResult?.partial || !!warnings.length || !key || !dartUpConfigured || v2.archivePartial,
+    providers:[
+      {id:"r2",label:"Archives MSS",state:(stored || v2.archivePartitions>0) ? "connected" : "unconfigured",count:v2.results.length+archiveResults.length,detail:v2.archivePartitions ? `${v2.archivePartitions} partitions mensuelles indexées; ${v2.partitionsScanned} consultées sur cette page` : stored ? `Ancienne archive R2 du ${stored.updatedAt}` : "Stockage R2 non alimenté ou indisponible"},
+      {id:"dartsapi",label:"DartsAPI",state:!key ? "unconfigured" : (apiResult?.state || "directory"),count:apiRows.length,detail:!key ? "Clé DARTS_API_KEY absente" : (apiResult?.detail || "Pas de nouvel appel fournisseur sur cette page")},
+      {id:"dartup",label:"DartUP",state:!dartUpConfigured ? "unconfigured" : !dartUpFeed ? "directory" : dartUpFeed.warnings.length ? "unavailable" : "connected",count:partnerResults.length,detail:dartUpConfigured ? "Export partenaire autorisé" : "Accord et export partenaire requis ; extraction automatisée interdite"},
+      {id:"dartconnect",label:"DartConnect",state:"directory",count:0,detail:"API actuelle utilisée pour le calendrier UKDA, pas pour les scores individuels"},
+      {id:"other",label:"Autres fédérations",state:stored ? "connected" : "directory",count:archiveResults.filter(row=>!(/dartsapi|dartup/i.test(str(row.sourceName)))).length,detail:"Seuls les scores effectivement collectés ou importés sont recherchables"},
+    ],warnings}};
+}
+
+/** Searchable match archive for other supported sports. A directory entry is
+ * never treated as a score. Actual coverage depends on the connected provider. */
+async function genericSportsResultsSearch(env: Env, sport: string, request: URL) {
+  if (!/^[a-z][a-z0-9]{1,24}$/.test(sport)) return {status:400,ttl:0,payload:{error:"invalid_sport"}};
+  const sp = request.searchParams;
+  const filters = {
+    q:partnerText(sp.get("q"),100).trim(),
+    year:partnerText(sp.get("year"),8).trim(),
+    competition:partnerText(sp.get("competition"),100).trim(),
+    country:partnerText(sp.get("country"),8).toUpperCase(),
+    level:partnerText(sp.get("level"),20).trim(),
+    source:partnerText(sp.get("source"),70).trim(),
+  };
+  if (filters.year && !/^(19[7-9]\d|20\d{2})$/.test(filters.year)) return {status:400,ttl:0,payload:{error:"invalid_year"}};
+  if (filters.country && !/^[A-Z]{2}$/.test(filters.country)) return {status:400,ttl:0,payload:{error:"invalid_country"}};
+  if (filters.level && !["elite","pro","semi_pro","amateur","grassroots","mixed"].includes(filters.level)) return {status:400,ttl:0,payload:{error:"invalid_level"}};
+  const offset = Math.min(50_000, Math.max(0, Math.floor(Number(sp.get("offset") || 0) || 0)));
+  const lang = partnerText(sp.get("lang"),8).toLowerCase();
+  const archiveLanguage = /^[a-z]{2}(-[a-z]{2})?$/.test(lang) ? lang : "fr";
+  const stored = await readCentralLiveArchive(env,sport,archiveLanguage) || (archiveLanguage !== "fr" ? await readCentralLiveArchive(env,sport,"fr") : null);
+  const archived = (stored?.results || []).filter((row)=>searchResultMatches(row,filters))
+    .sort((a,b)=>str(b.playedOn).localeCompare(str(a.playedOn)));
+  const results = archived.slice(offset,offset+80);
+  const sources = Array.from(new Set((stored?.results || []).map(row=>str(row.sourceName).trim()).filter(Boolean))).slice(0,100);
+  return {status:200,ttl:120,payload:{results,returned:results.length,archiveMatches:archived.length,
+    archivePersistent:!!stored,nextArchiveOffset:offset+80<archived.length?offset+80:null,nextProviderCursor:null,
+    partial:true,updatedAt:stored?.updatedAt || new Date().toISOString(),
+    providers:[
+      {id:"r2",label:"Archives MSS",state:stored ? "connected" : "unconfigured",count:results.length,detail:stored ? `Archive ${sport} sauvegardée ${stored.updatedAt}` : "Aucune archive persistante pour ce sport"},
+      {id:"sources",label:"Sources indexées",state:sources.length ? "connected" : "directory",count:sources.length,detail:sources.length ? sources.join(", ") : "Les annuaires ne garantissent pas des scores directement interrogeables"},
+    ],warnings:stored ? [] : ["Aucune archive de matchs constituée pour ce sport. Seuls les scores déjà reçus par MSS restent consultables dans cette page."]}};
+}
+
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const raw = context.params?.path;
   const path = Array.isArray(raw) ? raw : String(raw || "").split("/").filter(Boolean);
   const sport = str(path[0]).toLowerCase();
   const action = str(path[1]).toLowerCase();
-  if (action !== "official") return json({error:"not_found"},404,0);
+  if (action !== "official" && !(sport === "darts" && (action === "results-import" || action === "results-sync"))) return json({error:"not_found"},404,0);
   const token = str(context.env?.LIVE_OFFICIAL_INGEST_TOKEN).trim();
   const submitted = str(context.request.headers.get("Authorization"));
   if (!token || submitted !== `Bearer ${token}`) return json({error:"unauthorized"},401,0);
@@ -3618,6 +4192,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   if (bodyText.length > 512_000) return json({error:"payload_too_large"},413,0);
   let body: unknown;
   try { body = JSON.parse(bodyText); } catch { return json({error:"invalid_json"},400,0); }
+  if (sport === "darts" && action === "results-sync") {
+    const result = await syncDartsArchiveV254(context.env,body);
+    return json(result.payload,result.status,0);
+  }
+  if (sport === "darts" && action === "results-import") {
+    const result = await importAuthorizedDartsResults(context.env,body);
+    return json(result,result.ok ? 200 : (result.error === "archive_storage_unavailable" ? 503 : 422),0);
+  }
   const parsed = parseManagedCompetitionFeed(body, sport);
   if (!parsed) return json({error:"invalid_official_feed",message:"Competition, country, season, HTTPS source and bounded standings/bracket are required."},422,0);
   const key = managedCompetitionKey(sport, parsed.country, parsed.competition, parsed.season || "current");
@@ -4068,10 +4650,11 @@ async function fastOverview(env: Env, sport: string, lang: string) {
             live: [], fixtures: [], results: [], events: [], news: [], warnings: [],
           },
         });
-    const [base, direct] = await Promise.all([
+    const [rawBase, direct] = await Promise.all([
       basePromise,
       directDartsResults(lang, "fast").catch(() => ({ results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] })),
     ]);
+    const base = await extendDartsWithPartners(env, rawBase);
     return {
       ...base,
       ttl: 120,
@@ -4140,6 +4723,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const requestUrl = new URL(context.request.url);
   const lang = str(requestUrl.searchParams.get("lang") || "fr").toLowerCase();
   const phase = str(requestUrl.searchParams.get("phase") || "full").toLowerCase();
+  if (action === "results-search") return cachedResponse(context,async () => sport === "darts" ? dartsResultsSearch(context.env,requestUrl,context.waitUntil.bind(context)) : genericSportsResultsSearch(context.env,sport,requestUrl));
   if (action === "matches") {
     const managed = await managedOfficialStandings(context.env,requestUrl,sport);
     if (managed?.matches?.length) {
@@ -4230,6 +4814,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 
   if (phase === "fast") {
+    if (sport === "darts") return cachedResponse(context,async () => {
+      const page = await fastOverview(context.env,sport,lang);
+      if (arr(page.payload?.results).length) context.waitUntil(persistAndMergeCentralArchive(context.env,"darts","fr",page.payload).then(()=>undefined).catch(()=>undefined));
+      return page;
+    });
     return cachedResponse(context, async () => fastOverview(context.env, sport, lang));
   }
 
@@ -4263,10 +4852,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   if (sport === "darts") {
     const key = str(context.env?.DARTS_API_KEY).trim();
     return cachedResponse(context, async () => {
-      const base = key
-        ? await dartsOverview(key)
+      const original = key
+        ? await dartsOverview(key, "deep")
         : await officialDartsFallbackOverview("DARTS_API_KEY absente : collecteurs publics PDC/MODUS/WDF/DartConnect utilisés ; le score LIVE chiffré nécessite un provider compatible LIVE.");
-      return enrichWithLiveIntelligence(context.env, sport, lang, base, "deep");
+      const base = await extendDartsWithPartners(context.env, original);
+      const enriched = await enrichWithLiveIntelligence(context.env, sport, lang, base, "deep");
+      if (arr(enriched.payload?.results).length) context.waitUntil(persistAndMergeCentralArchive(context.env,"darts","fr",enriched.payload).then(()=>undefined).catch(()=>undefined));
+      return enriched;
     });
   }
 

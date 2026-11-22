@@ -64,6 +64,7 @@ export const PERSISTENT_LOCAL_STORAGE_RULES: readonly PersistentLocalStorageRule
   // Import idempotent (remplacement JSON, jamais addition des compteurs).
   { key: "mss.training.finish-do.precision.v1", domain: "training", scope: "account", portable: true, maxBytes: 750_000, notes: "Agrégats de précision DO par profil, non dérivés de History V4." },
   { key: "mss.training.finish-do.cycles.v1", domain: "training", scope: "account", portable: true, maxBytes: 180_000, notes: "Cycle guidé courant et archivage des cycles terminés." },
+  { key: "mss.training.finish-do.attempts.v1", domain: "training", scope: "account", portable: true, maxBytes: 2_000_000, notes: "Journal des tentatives DO validées avec identifiants stables pour déduplication inter-appareils." },
 
   // FIT PERF — données utilisateur.
   { key: "mss-fit-perf-sessions-v1", domain: "fit", scope: "account", portable: true, maxBytes: 2_500_000 },

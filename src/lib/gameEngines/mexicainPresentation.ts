@@ -4,7 +4,7 @@
  */
 export function mexicainVariantName(modeOptions: Record<string, any> | null | undefined): string {
   if (modeOptions?.mariachiEnabled === 'yes') {
-    return modeOptions?.mariachiMode === 'fiesta' ? 'FIESTA' : 'MARIACHI';
+    return (modeOptions?.mariachiMode === 'fiesta' || modeOptions?.mariachiRotation === 'families') ? 'FIESTA' : 'MARIACHI';
   }
   return modeOptions?.targetMode === 'mexico' ? 'MEXICO' : 'LE MEXICAIN';
 }

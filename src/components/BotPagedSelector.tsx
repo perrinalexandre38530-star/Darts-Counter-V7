@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import MssSelectorIconButton from "./MssSelectorIconButton";
 import ProfileStarRing from "./ProfileStarRing";
 import { resolveBotStars as resolveLevel } from "../lib/botSkillLevel";
 import { getCountryFlagSrc } from "../lib/geoAssets";
@@ -126,6 +127,9 @@ export default function BotPagedSelector({
   modalTitle = "Choisir des BOTS IA",
   showSelectedSummary = true,
   showChooser = true,
+  hideToolbar = false,
+  controlledOpen,
+  onControlledOpenChange,
 }: {
   bots: BotPagedSelectorItem[];
   selectedIds: string[];
@@ -138,9 +142,17 @@ export default function BotPagedSelector({
   showSelectedSummary?: boolean;
   /** Hide only the chooser, never an already-selected bot avatar. */
   showChooser?: boolean;
+  hideToolbar?: boolean;
+  controlledOpen?: boolean;
+  onControlledOpenChange?: (next: boolean) => void;
 }) {
   const [enabled, setEnabled] = React.useState(() => !showCheckbox);
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen === undefined ? internalOpen : controlledOpen;
+  const setOpen = (value: boolean) => {
+    setInternalOpen(value);
+    onControlledOpenChange?.(value);
+  };
   const [page, setPage] = React.useState(0);
 
   const sorted = React.useMemo(() => {
@@ -176,33 +188,14 @@ export default function BotPagedSelector({
 
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {!hideToolbar ? <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
         {showCheckbox ? (
-          <button
-            type="button"
-            aria-pressed={enabled}
-            title={enabled ? `Masquer ${label}` : `Afficher ${label}`}
-            onClick={() => setEnabled((v) => !v)}
-            style={{
-              ...pillBtn(accent, enabled),
-              minWidth: 54,
-              justifyContent: "center",
-              paddingInline: 12,
-            }}
-          >
-            {enabled ? "☑ ON" : "☐ OFF"}
-          </button>
+          <MssSelectorIconButton icon="bots" label={enabled ? `Désactiver ${label}` : `Activer ${label}`} onClick={() => setEnabled((v) => !v)} accent={accent} active={enabled} />
         ) : null}
         {enabled && showChooser ? (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            style={pillBtn(accent, true)}
-          >
-            Choisir {label.toLowerCase()} {selectedCount ? `(${selectedCount})` : ""}
-          </button>
+          <MssSelectorIconButton icon={showCheckbox ? "profiles" : "bots"} label={`Choisir ${label} (${selectedCount})`} onClick={() => setOpen(true)} accent={accent} active={open} />
         ) : null}
-      </div>
+      </div> : null}
 
       {selectedCount > 0 && showSelectedSummary ? (
         <div style={{ marginTop: 10, borderRadius: 16, border: `1px solid ${accent}33`, background: "rgba(255,255,255,.035)", padding: 10 }}>

@@ -29,8 +29,10 @@ import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
+import MssIntegratedAvatarPicker from "../components/MssIntegratedAvatarPicker";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
+import MssSelectorIconButton from "../components/MssSelectorIconButton";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BackDot from "../components/BackDot";
@@ -41,7 +43,7 @@ import InfoDot from "../components/InfoDot";
 import KillerAwenaRulesVideo from "../components/KillerAwenaRulesVideo";
 import killerAwenaRulesPosterFr from "../assets/videos/killer_awena_rules_poster.webp";
 import killerAwenaRulesPosterEn from "../assets/videos/killer_awena_rules_poster_en.webp";
-import { loadStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
+import { loadStoredBots, saveStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 
 import { DARTS_KILLER_BOTS } from "../lib/dartsKillerBots";
 
@@ -110,6 +112,7 @@ export type KillerConfig = {
 
 type Props = {
   store: Store;
+  update?: (mut: (s: Store) => Store) => void;
   go?: (tab: any, params?: any) => void;
   onBack?: () => void;
   onStart?: (cfg: KillerConfig) => void;
@@ -393,6 +396,50 @@ function isVariantDisabled(k: VariantKey, state: Record<VariantKey, boolean> & R
   return !!getConflictReason(k, state);
 }
 
+// KILLER — préférences légères : aucune image ni donnée de partie en cours.
+// Séparation classique / progressif ; une entrée n'est enregistrée qu'au lancement.
+type KillerLaunchPreference = {
+  config: Partial<KillerConfig>;
+  selectedIds: string[];
+  numberById: Record<string, number>;
+};
+type KillerLaunchPreferenceStats = { signature: string; count: number; lastPlayed: number; value: KillerLaunchPreference };
+type KillerLaunchPreferenceStore = { version: 1; last: KillerLaunchPreference | null; entries: KillerLaunchPreferenceStats[] };
+const killerPreferenceKey = (progressive: boolean) => `mss_killer_launch_prefs_v1_${progressive ? "progressive" : "classic"}`;
+function readKillerLaunchPreferences(progressive: boolean): KillerLaunchPreferenceStore {
+  const empty: KillerLaunchPreferenceStore = { version: 1, last: null, entries: [] };
+  try {
+    const raw = localStorage.getItem(killerPreferenceKey(progressive));
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw);
+    if (parsed?.version !== 1) return empty;
+    const valid = (v: any) => v && typeof v === "object" && Array.isArray(v.selectedIds) && v.config && typeof v.config === "object";
+    return {
+      version: 1,
+      last: valid(parsed.last) ? parsed.last : null,
+      entries: Array.isArray(parsed.entries) ? parsed.entries.filter((e: any) => valid(e?.value) && typeof e.signature === "string").slice(0, 12) : [],
+    };
+  } catch { return empty; }
+}
+function saveKillerLaunchPreference(progressive: boolean, preference: KillerLaunchPreference) {
+  try {
+    const data = readKillerLaunchPreferences(progressive);
+    // Une configuration favorite est une configuration réellement jouée plusieurs fois.
+    // Les identifiants et numéros choisis manuellement font partie du groupe mémorisé.
+    const signature = JSON.stringify({ config: preference.config, selectedIds: preference.selectedIds, numberById: preference.numberById });
+    const old = data.entries.find((e) => e.signature === signature);
+    const updated: KillerLaunchPreferenceStats = { signature, count: (old?.count || 0) + 1, lastPlayed: Date.now(), value: preference };
+    const entries = [updated, ...data.entries.filter((e) => e.signature !== signature)]
+      .sort((a, b) => b.count - a.count || b.lastPlayed - a.lastPlayed).slice(0, 12);
+    localStorage.setItem(killerPreferenceKey(progressive), JSON.stringify({ version: 1, last: preference, entries }));
+  } catch { /* stockage indisponible : lancer la partie normalement */ }
+}
+function getMostPlayedKillerPreference(progressive: boolean): KillerLaunchPreference | null {
+  const data = readKillerLaunchPreferences(progressive);
+  const best = [...data.entries].sort((a, b) => b.count - a.count || b.lastPlayed - a.lastPlayed)[0];
+  return best && best.count >= 2 ? best.value : null;
+}
+
 export default function KillerConfigPage(props: Props) {
   const { store, go, onBack } = props;
 
@@ -410,6 +457,11 @@ export default function KillerConfigPage(props: Props) {
 
   const { theme } = useTheme();
   const { t, lang } = useLang();
+  const savedLaunch = React.useMemo(() => readKillerLaunchPreferences(isProgressive).last, [isProgressive]);
+  const savedCfg = savedLaunch?.config;
+  const [hasLastPreference, setHasLastPreference] = React.useState(() => !!savedLaunch);
+  const [hasFrequentPreference, setHasFrequentPreference] = React.useState(() => !!getMostPlayedKillerPreference(isProgressive));
+
 
   React.useLayoutEffect(() => {
     try {
@@ -418,6 +470,54 @@ export default function KillerConfigPage(props: Props) {
       document.body.scrollTop = 0;
     } catch {}
   }, []);
+
+  // Création rapide dans une modale : ne jamais quitter le configurateur.
+  const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
+  const [quickCreateKind, setQuickCreateKind] = React.useState<"profile" | "bot">("profile");
+  const [quickCreateName, setQuickCreateName] = React.useState("");
+  const [quickCreateLevel, setQuickCreateLevel] = React.useState<"easy" | "medium" | "strong" | "pro" | "legend">("medium");
+  const [quickCreateAvatar, setQuickCreateAvatar] = React.useState<string | null>(null);
+  const [quickAvatarPickerOpen, setQuickAvatarPickerOpen] = React.useState(false);
+  const [quickCreateCountry, setQuickCreateCountry] = React.useState("");
+  const [quickCreateBusy, setQuickCreateBusy] = React.useState(false);
+  const [quickCreateError, setQuickCreateError] = React.useState("");
+  const [participantMode, setParticipantMode] = React.useState<"players" | "teams">("players");
+  const openQuickCreate = (kind: "profile" | "bot") => {
+    setQuickCreateKind(kind); setQuickCreateName(""); setQuickCreateAvatar(null); setQuickCreateCountry("");
+    setQuickCreateLevel("medium"); setQuickCreateError(""); setQuickCreateOpen(true);
+  };
+  const readQuickAvatar = (file?: File | null): Promise<void> => new Promise((resolve, reject) => {
+    if (!file) { setQuickCreateAvatar(null); resolve(); return; }
+    if (!file.type.startsWith("image/")) { setQuickCreateError("Sélectionne une image."); reject(new Error("Invalid image")); return; }
+    if (file.size > 2 * 1024 * 1024) { setQuickCreateError("Image trop volumineuse (2 Mo maximum)."); reject(new Error("Image too large")); return; }
+    const reader = new FileReader();
+    reader.onload = () => { setQuickCreateAvatar(typeof reader.result === "string" ? reader.result : null); resolve(); };
+    reader.onerror = () => { setQuickCreateError("Impossible de lire cet avatar."); reject(new Error("Cannot read avatar")); };
+    reader.readAsDataURL(file);
+  });
+  const createQuickParticipant = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = quickCreateName.trim();
+    if (!name || quickCreateBusy) return;
+    setQuickCreateBusy(true); setQuickCreateError("");
+    try {
+      const id = `mss-${quickCreateKind}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      if (quickCreateKind === "bot") {
+        const now = new Date().toISOString();
+        const record = { id, name, level: quickCreateLevel, botLevel: quickCreateLevel,
+          avatarSeed: Math.random().toString(36).slice(2, 10), avatarDataUrl: quickCreateAvatar, country: quickCreateCountry.trim() || undefined,
+          createdAt: now, updatedAt: now, isBot: true, type: "bot", kind: "bot", bot: true, cpu: true };
+        if (!saveStoredBots([...loadStoredBots(), record])) throw new Error("Impossible de sauvegarder le bot CPU.");
+      } else {
+        if (!props.update) throw new Error("La création locale est indisponible dans cette configuration.");
+        const profile = { id, name, avatarDataUrl: quickCreateAvatar, avatarUpdatedAt: Date.now(), privateInfo: quickCreateCountry.trim() ? { country: quickCreateCountry.trim() } : undefined } as Profile;
+        props.update((current) => ({ ...current, profiles: [...(Array.isArray(current.profiles) ? current.profiles : []), profile] }));
+      }
+      setSelectedIds((prev) => prev.includes(id) ? prev : [...prev, id].slice(0, 20));
+      setQuickCreateOpen(false); setQuickCreateName(""); setQuickCreateAvatar(null);
+    } catch (error) { setQuickCreateError(error instanceof Error ? error.message : "Création impossible."); }
+    finally { setQuickCreateBusy(false); }
+  };
 
   const primary = theme?.primary ?? "#f7c85c";
   const primarySoft = theme?.primarySoft ?? "rgba(247,200,92,0.16)";
@@ -438,6 +538,7 @@ export default function KillerConfigPage(props: Props) {
   );
 
   const [botsFromLS, setBotsFromLS] = React.useState<BotLite[]>([]);
+  const [botsLoaded, setBotsLoaded] = React.useState(false);
   React.useEffect(() => {
     const syncBots = () => {
       try {
@@ -461,10 +562,12 @@ export default function KillerConfigPage(props: Props) {
           isUserBot: true,
         }));
         setBotsFromLS(mapped);
+        setBotsLoaded(true);
       } catch {
         // Ne jamais relire l'ancienne clé globale dc_bots_v1 : sur un appareil
         // multi-comptes elle pourrait appartenir à un autre utilisateur.
         setBotsFromLS([]);
+        setBotsLoaded(true);
       }
     };
 
@@ -511,37 +614,37 @@ export default function KillerConfigPage(props: Props) {
   }, [userBots]);
 
   // ------------------ state config ------------------
-  const [lives, setLives] = React.useState<number>(isProgressive ? 5 : 3);
-  const [becomeRule, setBecomeRule] = React.useState<KillerBecomeRule>("single");
-  const [damageRule, setDamageRule] = React.useState<KillerDamageRule>(isProgressive ? "multiplier" : "one");
+  const [lives, setLives] = React.useState<number>(isProgressive ? 5 : clampInt(savedCfg?.lives, 1, 9, 3));
+  const [becomeRule, setBecomeRule] = React.useState<KillerBecomeRule>(savedCfg?.becomeRule === "double" ? "double" : "single");
+  const [damageRule, setDamageRule] = React.useState<KillerDamageRule>(isProgressive ? "multiplier" : savedCfg?.damageRule === "multiplier" ? "multiplier" : "one");
 
-  const [numberAssignMode, setNumberAssignMode] = React.useState<KillerNumberAssignMode>(isProgressive ? "throw" : "random");
+  const [numberAssignMode, setNumberAssignMode] = React.useState<KillerNumberAssignMode>(isProgressive ? "throw" : (["none", "random", "throw"].includes(String(savedCfg?.numberAssignMode)) ? savedCfg?.numberAssignMode! : "random"));
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(false);
-  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
+  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">((["random", "alternate", "manual", "bull"].includes(String(savedCfg?.startOrderMode)) ? savedCfg?.startOrderMode! : "alternate"));
 
   // ✅ variantes
-  const [selfHitWhileKiller, setSelfHitWhileKiller] = React.useState<boolean>(false);
-  const [selfHitUsesMultiplier, setSelfHitUsesMultiplier] = React.useState<boolean>(false);
-  const [lifeSteal, setLifeSteal] = React.useState<boolean>(false);
-  const [blindKiller, setBlindKiller] = React.useState<boolean>(false);
+  const [selfHitWhileKiller, setSelfHitWhileKiller] = React.useState<boolean>(!isProgressive && savedCfg?.selfHitWhileKiller === true);
+  const [selfHitUsesMultiplier, setSelfHitUsesMultiplier] = React.useState<boolean>(!isProgressive && savedCfg?.selfHitUsesMultiplier === true);
+  const [lifeSteal, setLifeSteal] = React.useState<boolean>(!isProgressive && savedCfg?.lifeSteal === true);
+  const [blindKiller, setBlindKiller] = React.useState<boolean>(!isProgressive && savedCfg?.blindKiller === true);
 
   // ✅ Bull variants
-  const [bullSplash, setBullSplash] = React.useState<boolean>(false);
-  const [bullHeal, setBullHeal] = React.useState<boolean>(false);
-  const [bullHealLives, setBullHealLives] = React.useState<number>(1);
-  const [bullRotate, setBullRotate] = React.useState<boolean>(false);
+  const [bullSplash, setBullSplash] = React.useState<boolean>(!isProgressive && savedCfg?.bullSplash === true);
+  const [bullHeal, setBullHeal] = React.useState<boolean>(!isProgressive && savedCfg?.bullHeal === true);
+  const [bullHealLives, setBullHealLives] = React.useState<number>(isProgressive ? 1 : clampInt(savedCfg?.bullHealLives, 1, 3, 1));
+  const [bullRotate, setBullRotate] = React.useState<boolean>(!isProgressive && savedCfg?.bullRotate === true);
 
   // ✅ Bouclier / variantes avancées
-  const [shieldOnDBull, setShieldOnDBull] = React.useState<boolean>(false);
-  const [disarmOnDBull, setDisarmOnDBull] = React.useState<boolean>(false);
-  const [dbullRotate, setDbullRotate] = React.useState<boolean>(false);
-  const [shieldTurns, setShieldTurns] = React.useState<number>(1);
-  const [selectBonusShield, setSelectBonusShield] = React.useState<boolean>(false);
-  const [missAutoHit, setMissAutoHit] = React.useState<boolean>(false);
+  const [shieldOnDBull, setShieldOnDBull] = React.useState<boolean>(!isProgressive && savedCfg?.shieldOnDBull === true);
+  const [disarmOnDBull, setDisarmOnDBull] = React.useState<boolean>(!isProgressive && savedCfg?.disarmOnDBull === true);
+  const [dbullRotate, setDbullRotate] = React.useState<boolean>(!isProgressive && savedCfg?.dbullRotate === true);
+  const [shieldTurns, setShieldTurns] = React.useState<number>(isProgressive ? 1 : clampInt(savedCfg?.shieldTurns, 1, 5, 1));
+  const [selectBonusShield, setSelectBonusShield] = React.useState<boolean>(!isProgressive && savedCfg?.selectBonusShield === true);
+  const [missAutoHit, setMissAutoHit] = React.useState<boolean>(!isProgressive && savedCfg?.missAutoHit === true);
 
   // ✅ Résurrection
-  const [resurrectionMode, setResurrectionMode] = React.useState<KillerResurrectionMode>("off");
-  const [resurrectionLives, setResurrectionLives] = React.useState<number>(1);
+  const [resurrectionMode, setResurrectionMode] = React.useState<KillerResurrectionMode>(!isProgressive && ["off", "one_player_once", "all_once", "all"].includes(String(savedCfg?.resurrectionMode)) ? savedCfg?.resurrectionMode! : "off");
+  const [resurrectionLives, setResurrectionLives] = React.useState<number>(isProgressive ? 1 : clampInt(savedCfg?.resurrectionLives, 1, 6, 1));
 
   // Le mode progressif possède des règles fixes et isolées.
   // On neutralise les variantes du Killer classique même en cas de navigation réutilisant le composant.
@@ -710,10 +813,50 @@ export default function KillerConfigPage(props: Props) {
     if (numberAssignMode === "throw" && blindKiller) setBlindKiller(false);
   }, [numberAssignMode, blindKiller]);
 
-  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
-  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(false);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
+    Array.isArray(savedLaunch?.selectedIds) ? [...new Set(savedLaunch.selectedIds.map(String))].slice(0, 20) : []
+  );
+  const [botsPickerOpen, setBotsPickerOpen] = React.useState<boolean>(false);
+  const selectedBotProfiles = React.useMemo(() => {
+    const selected = new Set(selectedIds);
+    return botProfiles.filter((b) => selected.has(b.id));
+  }, [botProfiles, selectedIds]);
 
-  const [killerNumberById, setKillerNumberById] = React.useState<Record<string, number>>({});
+  const [killerNumberById, setKillerNumberById] = React.useState<Record<string, number>>(() =>
+    savedLaunch?.numberById && typeof savedLaunch.numberById === "object" ? { ...savedLaunch.numberById } : {}
+  );
+
+  function restoreLaunchPreference(pref: KillerLaunchPreference | null) {
+    if (!pref) return;
+    const c = pref.config || {};
+    if (!isProgressive) {
+      setLives(clampInt(c.lives, 1, 9, 3));
+      setBecomeRule(c.becomeRule === "double" ? "double" : "single");
+      setDamageRule(c.damageRule === "multiplier" ? "multiplier" : "one");
+      setNumberAssignMode(["none", "random", "throw"].includes(String(c.numberAssignMode)) ? c.numberAssignMode! : "random");
+      setSelfHitWhileKiller(c.selfHitWhileKiller === true);
+      setSelfHitUsesMultiplier(c.selfHitWhileKiller === true && c.selfHitUsesMultiplier === true);
+      setLifeSteal(c.lifeSteal === true);
+      setBlindKiller(c.numberAssignMode !== "throw" && c.blindKiller === true);
+      setBullSplash(c.bullSplash === true);
+      setBullHeal(c.bullHeal === true);
+      setBullHealLives(clampInt(c.bullHealLives, 1, 3, 1));
+      setBullRotate(c.bullRotate === true);
+      setShieldOnDBull(c.shieldOnDBull === true);
+      setDisarmOnDBull(c.disarmOnDBull === true);
+      setDbullRotate(c.dbullRotate === true);
+      setShieldTurns(clampInt(c.shieldTurns, 1, 5, 1));
+      setSelectBonusShield(c.selectBonusShield === true);
+      setMissAutoHit(c.missAutoHit === true);
+      setResurrectionMode(["off", "one_player_once", "all_once", "all"].includes(String(c.resurrectionMode)) ? c.resurrectionMode! : "off");
+      setResurrectionLives(clampInt(c.resurrectionLives, 1, 6, 1));
+    }
+    setStartOrderMode(["random", "alternate", "manual", "bull"].includes(String(c.startOrderMode)) ? c.startOrderMode! : "alternate");
+    // Les profils disparus sont ignorés, jamais recréés ; on conserve l'ordre de sélection.
+    const ids = [...new Set((pref.selectedIds || []).map(String))].filter((id) => selectableIdSet.has(id)).slice(0, 20);
+    if (ids.length) setSelectedIds(ids);
+    if (pref.numberById && typeof pref.numberById === "object") setKillerNumberById({ ...pref.numberById });
+  }
 
   const selectableIdSet = React.useMemo(() => {
     return new Set<string>([
@@ -723,16 +866,16 @@ export default function KillerConfigPage(props: Props) {
   }, [humanProfiles, botProfiles]);
 
   React.useEffect(() => {
+    // Attendre le chargement des bots ET celui des profils avant de supprimer une sélection restaurée.
+    if (!botsLoaded || (!profiles.length && selectedIds.length > 0)) return;
     setSelectedIds((prev) => {
       const validPrev = prev.filter((id) => selectableIdSet.has(String(id || "")));
-      if (validPrev.length > 0) {
-        return sameStringArray(prev, validPrev) ? prev : validPrev;
-      }
-      if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];
-      if (humanProfiles.length === 1) return [humanProfiles[0].id];
+      if (validPrev.length > 0) return sameStringArray(prev, validPrev) ? prev : validPrev;
+      if (humanProfiles.length >= 2) return [String(humanProfiles[0].id), String(humanProfiles[1].id)];
+      if (humanProfiles.length === 1) return [String(humanProfiles[0].id)];
       return prev.length === 0 ? prev : [];
     });
-  }, [humanProfiles, selectableIdSet]);
+  }, [humanProfiles, profiles.length, selectableIdSet, botsLoaded]);
 
   React.useEffect(() => {
     setKillerNumberById((prev) => {
@@ -785,7 +928,7 @@ export default function KillerConfigPage(props: Props) {
     cursor: "pointer",
   };
 
-  const canStart = selectedIds.length >= 2 && selectedIds.length <= 20;
+  const canStart = participantMode === "players" && selectedIds.length >= 2 && selectedIds.length <= 20;
 
   function resolvePlayer(id: string) {
     const human = profiles.find((p) => p.id === id);
@@ -812,6 +955,7 @@ export default function KillerConfigPage(props: Props) {
   }
 
   function handleStart() {
+    if (participantMode === "teams") { alert("Le mode KILLER en équipes nécessite encore son moteur de jeu. Aucune partie individuelle ne sera lancée à sa place."); return; }
     if (selectedIds.length < 2) {
       alert("Ajoute au moins 2 joueurs (profils locaux ou bots).");
       return;
@@ -894,6 +1038,20 @@ export default function KillerConfigPage(props: Props) {
 
       players: finalPlayers,
     };
+
+    // Enregistrer seulement lors d'un vrai lancement, sans avatar ni ID de partie.
+    // Le numéro aléatoire n'est pas mémorisé comme choix : il sera recalculé à la prochaine partie.
+    const { players: _participantDetails, id: _matchId, createdAt: _createdAt, ...persistentConfig } = cfg;
+    const launchPreference: KillerLaunchPreference = {
+      config: persistentConfig,
+      selectedIds: [...selectedIds],
+      numberById: effectiveNumberAssignMode === "none" ? { ...killerNumberById } : {},
+    };
+    if (startCb || typeof go === "function") {
+      saveKillerLaunchPreference(isProgressive, launchPreference);
+      setHasLastPreference(true);
+      setHasFrequentPreference(!!getMostPlayedKillerPreference(isProgressive));
+    }
 
     try { recordProfileUsageForMode(cfg.gameId || cfg.variantId || "killer", finalPlayers.map((p: any) => p.id)); } catch {}
 
@@ -979,6 +1137,24 @@ export default function KillerConfigPage(props: Props) {
       <DartsRelatedModesPanel gameId={isProgressive ? "killer_progressive" : "killer"} accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
       {/* CONTENT */}
       <div ref={contentRef as any} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+        {(hasLastPreference || hasFrequentPreference) && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            {hasLastPreference && (
+              <button type="button" onClick={() => restoreLaunchPreference(readKillerLaunchPreferences(isProgressive).last)}
+                title="Restaurer les paramètres et participants de la dernière partie lancée"
+                style={{ borderRadius: 12, padding: "7px 11px", background: "rgba(255,198,58,.10)", border: `1px solid ${primary}66`, color: primary, fontWeight: 800, fontSize: 11, cursor: "pointer" }}>
+                ↶ Dernière partie
+              </button>
+            )}
+            {hasFrequentPreference && (
+              <button type="button" onClick={() => restoreLaunchPreference(getMostPlayedKillerPreference(isProgressive))}
+                title="Restaurer la configuration la plus souvent utilisée"
+                style={{ borderRadius: 12, padding: "7px 11px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.16)", color: textMain, fontWeight: 800, fontSize: 11, cursor: "pointer" }}>
+                ★ Configuration favorite
+              </button>
+            )}
+          </div>
+        )}
         {!isProgressive && (
           <section
             className="killer-config-overview"
@@ -1150,39 +1326,119 @@ export default function KillerConfigPage(props: Props) {
           </div>
         )}
 
-        {/* JOUEURS LOCAUX */}
+        {quickCreateOpen && (
+          <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setQuickCreateOpen(false); }}
+            style={{ position: "fixed", inset: 0, zIndex: 10020, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.79)" }}>
+            <form onSubmit={createQuickParticipant} role="dialog" aria-modal="true" aria-label="Créer un participant"
+              style={{ width: "min(460px, 100%)", maxHeight: "88dvh", overflowY: "auto", borderRadius: 18, padding: 14,
+                background: "#0c0e19", border: `1px solid ${primary}88`, display: "grid", gap: 12, boxShadow: "0 16px 60px #000" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: primary, fontWeight: 900 }}>
+                <span>CRÉER UN PARTICIPANT</span>
+                <button type="button" onClick={() => setQuickCreateOpen(false)} aria-label="Fermer" style={{ color: primary, background: "none", border: 0, fontSize: 24, cursor: "pointer" }}>×</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {(["profile", "bot"] as const).map((kind) => <button key={kind} type="button" onClick={() => setQuickCreateKind(kind)}
+                  style={{ padding: 10, borderRadius: 12, border: `1px solid ${primary}${quickCreateKind === kind ? "" : "55"}`,
+                    background: quickCreateKind === kind ? `${primary}22` : "transparent", color: primary, fontWeight: 850, cursor: "pointer" }}>
+                  {kind === "profile" ? "PROFIL LOCAL" : "BOT CPU"}
+                </button>)}
+              </div>
+              <div style={{ border: `1px solid ${primary}44`, borderRadius: 14, padding: 10, background: "rgba(0,0,0,.22)" }}>
+                <div style={{ color: primary, fontSize: 11, letterSpacing: 1, marginBottom: 10, textTransform: "uppercase" }}>
+                  {quickCreateKind === "profile" ? "Créer un profil local" : "Créer un bot CPU"}
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <button type="button" aria-label="Choisir un avatar" title="Choisir un avatar MSS ou importer une image"
+                    onClick={() => setQuickAvatarPickerOpen(true)}
+                    style={{ width: 62, height: 62, flex: "0 0 62px", borderRadius: "50%", overflow: "hidden", padding: 0,
+                      border: `1px solid ${primary}77`, background: "#161827", color: "#d8def0", cursor: "pointer" }}>
+                    {quickCreateAvatar ? <img src={quickCreateAvatar} alt="Avatar choisi" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "Avatar"}
+                  </button>
+                  <div style={{ display: "grid", gap: 6, flex: 1, minWidth: 0 }}>
+                    <input autoFocus required maxLength={32} value={quickCreateName} onChange={(e) => setQuickCreateName(e.target.value)}
+                      aria-label="Nom du participant" placeholder={quickCreateKind === "bot" ? "Nom du bot" : "Nom du profil"}
+                      style={{ width: "100%", boxSizing: "border-box", borderRadius: 11, padding: 11, background: "#101119", border: "1px solid rgba(255,255,255,.12)", color: "white" }} />
+                    <input maxLength={48} value={quickCreateCountry} onChange={(e) => setQuickCreateCountry(e.target.value)}
+                      aria-label="Pays" placeholder="Pays"
+                      style={{ width: "100%", boxSizing: "border-box", borderRadius: 11, padding: 11, background: "#101119", border: "1px solid rgba(255,255,255,.12)", color: "white" }} />
+                  </div>
+                  <button type="submit" disabled={!quickCreateName.trim() || quickCreateBusy} title="Créer et ajouter"
+                    aria-label="Créer et ajouter le participant"
+                    style={{ width: 54, height: 54, flex: "0 0 54px", borderRadius: 14, border: `1px solid ${primary}`,
+                      color: "#fff", fontSize: 35, fontWeight: 300, background: `${primary}33`, cursor: "pointer",
+                      boxShadow: `0 0 18px ${primary}88`, opacity: !quickCreateName.trim() || quickCreateBusy ? .55 : 1 }}>+</button>
+                </div>
+              </div>
+              {quickCreateKind === "bot" && <label style={{ display: "grid", gap: 5, fontSize: 12, color: "#ddd" }}>Niveau de performance
+                <select value={quickCreateLevel} onChange={(e) => setQuickCreateLevel(e.target.value as any)}
+                  style={{ padding: 11, borderRadius: 10, background: "#161827", color: "white", border: `1px solid ${primary}66` }}>
+                  <option value="easy">Débutant</option><option value="medium">Intermédiaire</option><option value="strong">Confirmé</option>
+                  <option value="pro">Expert</option><option value="legend">Légende</option>
+                </select>
+              </label>}
+              {quickCreateError && <div role="alert" style={{ color: "#ff9b8b", fontSize: 12 }}>{quickCreateError}</div>}
+              <div style={{ color: "#aeb6cc", fontSize: 11 }}>Appuie sur l’avatar pour choisir parmi les avatars MSS ou importer une image.</div>
+            </form>
+            <MssIntegratedAvatarPicker open={quickAvatarPickerOpen} onClose={() => setQuickAvatarPickerOpen(false)}
+              onChooseFile={(file) => readQuickAvatar(file)} />
+          </div>
+        )}
+
+        {/* SÉLECTEUR UNIFIÉ MSS : une bande d’icônes et une zone de sélection commune. */}
         <section
           data-mss-guide-section="killer-players"
-          data-mss-guide-label="Joueurs"
+          data-mss-guide-label="Participants"
           style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: "18px 12px 14px",
-            marginBottom: 14,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+            background: cardBg, borderRadius: 18, padding: "14px 12px",
+            marginBottom: 14, boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
             border: "1px solid rgba(255,255,255,0.05)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>
-              Joueurs
-            </div>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Participants</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 14 }} role="group" aria-label="Type de partie">
+            <button type="button" onClick={() => setParticipantMode("players")}
+              aria-pressed={participantMode === "players"}
+              style={{ borderRadius: 14, padding: "11px 8px", color: primary, fontWeight: 900, cursor: "pointer", background: participantMode === "players" ? `${primary}24` : "rgba(255,255,255,.03)", border: `1px solid ${participantMode === "players" ? primary : `${primary}55`}` }}>JOUEURS</button>
+            <button type="button" onClick={() => setParticipantMode("teams")}
+              aria-pressed={participantMode === "teams"}
+              style={{ borderRadius: 14, padding: "11px 8px", color: primary, fontWeight: 900, cursor: "pointer", background: participantMode === "teams" ? `${primary}24` : "rgba(255,255,255,.03)", border: `1px solid ${participantMode === "teams" ? primary : `${primary}55`}` }}>ÉQUIPES</button>
           </div>
+          {participantMode === "teams" ? (
+            <div style={{ border: `1px solid ${primary}55`, borderRadius: 14, padding: 14, color: "#e4e4f4", fontSize: 12, lineHeight: 1.5 }}>
+              Le moteur KILLER actuel ne prend pas encore en charge les équipes. Ce mode sera jouable après intégration des vies, éliminations et statistiques collectives. Reviens sur JOUEURS pour lancer une partie individuelle.
+            </div>
+          ) : (<>
 
           {humanProfiles.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
-              Aucun profil local. Crée des joueurs (et des bots) dans <b>Profils</b>.
-            </p>
-          ) : (
-            <>
-              <div style={{ opacity: numberAssignMode === "throw" ? 0.78 : 1 }}>
-                <PlayerPagedSelector
+            <p style={{ fontSize: 12, color: "#b3b8d0", margin: "6px 0 12px" }}>Aucun profil local. Crée des joueurs dans Profils.</p>
+          ) : null}
+          <PlayerPagedSelector
+
                   usageMode={String(props?.params?.variantId || props?.params?.gameId || "killer")}
                   profiles={humanProfiles}
                   selectedIds={selectedIds}
                   onToggle={togglePlayer}
                   accent={primary}
                   pageSize={9}
+                  toolbarExtra={<>
+                    <MssSelectorIconButton icon="bots" label="Choisir les bots IA" accent={primary} active={botsPickerOpen} onClick={() => setBotsPickerOpen(true)} />
+                    <MssSelectorIconButton icon="manage" label="Créer un profil local ou un bot CPU" accent={primary} onClick={() => openQuickCreate("profile")} />
+                  </>}
+                  summaryExtra={selectedBotProfiles.length > 0 ? (
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.09)" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(94px, 1fr))", gap: 10 }}>
+                        {selectedBotProfiles.map((bot) => (
+                          <div key={bot.id} style={{ display: "grid", justifyItems: "center", gap: 5, minWidth: 0 }}>
+                            <div style={{ width: 64, height: 64, position: "relative", borderRadius: "50%", border: `2px solid ${primary}88`, background: "rgba(0,0,0,.4)" }}>
+                              {bot.avatarDataUrl ? <img src={bot.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ display: "grid", placeItems: "center", height: "100%", color: primary, fontWeight: 900 }}>BOT</div>}
+                              <button type="button" onClick={() => togglePlayer(bot.id)} aria-label={`Retirer ${bot.name}`} title={`Retirer ${bot.name}`} style={{ position: "absolute", right: -5, top: -5, width: 23, height: 23, borderRadius: "50%", background: "#08090e", color: primary, border: `1px solid ${primary}`, fontWeight: 900, cursor: "pointer" }}>×</button>
+                            </div>
+                            <div style={{ fontSize: 11, fontWeight: 800, textAlign: "center", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   modalTitle="Choisir des joueurs"
                   renderActions={numberAssignMode === "none" ? ((p: any) => {
                     const num = killerNumberById[p.id] ?? 20;
@@ -1199,88 +1455,21 @@ export default function KillerConfigPage(props: Props) {
                     );
                   }) : undefined}
                 />
-              </div>
-              <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
-                Il faut au moins <b>2 joueurs</b> pour démarrer.
-              </p>
-            </>
-          )}
+          <BotPagedSelector
+            bots={botProfiles}
+            selectedIds={selectedIds}
+            onToggle={togglePlayer}
+            accent={primary}
+            label="BOTS IA"
+            showCheckbox={false}
+            showSelectedSummary={false}
+            hideToolbar
+            controlledOpen={botsPickerOpen}
+            onControlledOpenChange={setBotsPickerOpen}
+          />
+          <p style={{ fontSize: 11, color: "#7c80a0", margin: "9px 0 0" }}>Au moins 2 participants pour démarrer · 20 maximum.</p>
+          </>)}
         </section>
-
-      {/* BOTS */}
-        <section
-          data-mss-guide-section="killer-bots"
-          data-mss-guide-label="Bots IA"
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 14,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.04)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>
-              Bots IA
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                aria-pressed={botsPanelEnabled}
-                onClick={() => setBotsPanelEnabled((v) => !v)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${primary}`,
-                  background: botsPanelEnabled ? `${primary}22` : "rgba(255,255,255,0.04)",
-                  color: primary,
-                  fontWeight: 900,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.7,
-                  boxShadow: botsPanelEnabled ? `0 0 14px ${primary}44` : "none",
-                }}
-              >
-                {botsPanelEnabled ? "☑ ON" : "☐ OFF"}
-              </button>
-              <button
-                type="button"
-                onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${primary}`,
-                  background: "rgba(255,255,255,0.04)",
-                  color: primary,
-                  fontWeight: 800,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.7,
-                }}
-              >
-                Gérer mes BOTS CPU
-              </button>
-            </div>
-          </div>
-
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            Ajoute les 14 BOTS IA officiels de KILLER ou tes BOTS CPU créés dans Profils.
-          </p>
-
-          {botsPanelEnabled ? (
-            <BotPagedSelector
-              bots={botProfiles}
-              selectedIds={selectedIds}
-              onToggle={togglePlayer}
-              accent={primary}
-              label="BOTS IA"
-              showCheckbox={false}
-            />
-          ) : null}
-        </section>
-
-
 
         {/* OPTIONS */}
         <section

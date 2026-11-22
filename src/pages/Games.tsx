@@ -576,6 +576,12 @@ export default function Games({ setTab, params }: Props) {
   const [counts, setCounts] = React.useState<PlayCountMap>({});
   const [lastPlayed, setLastPlayed] = React.useState<LastPlayedMap>({});
 
+  // TV Viewer shares exactly the same card actions/graphics as the handset.
+  // Render the hub cards in its visible content lane: the older portrait/landscape
+  // secondary-column contract may be hidden or empty on Tizen.
+  const isSamsungSharedTv = typeof document !== "undefined" &&
+    document.documentElement.dataset.mssSamsungTvSharedApp === "1";
+
   const PAGE_BG = theme.pageBackground || theme.bg;
   const CARD_BG = theme.card;
 
@@ -1778,7 +1784,7 @@ export default function Games({ setTab, params }: Props) {
 
   return (
     <div
-      className="msc-landscape-page-shell msc-games-layout"
+      className={`msc-landscape-page-shell msc-games-layout${isSamsungSharedTv && gamesView === "hub" ? " mss-tv-games-hub-mode" : ""}`}
       style={{
         minHeight: "100vh",
         padding: 16,
@@ -1930,7 +1936,36 @@ export default function Games({ setTab, params }: Props) {
         />
       ) : null}
 
-      {gamesView === "hub" ? (
+      {gamesView === "hub" && isSamsungSharedTv ? (
+        <div className="mss-tv-games-hub-cards" aria-label="Choisir une rubrique de jeux">
+          {renderHubCard({
+            title: HUB_COPY.favorites.title,
+            infoTitle: HUB_COPY.favorites.infoTitle,
+            infoBody: HUB_COPY.favorites.infoBody,
+            tickerId: "favorites",
+            tint: TINT_CLASSIC,
+            onClick: () => openGamesView("favorites"),
+          })}
+          {renderHubCard({
+            title: HUB_COPY.all.title,
+            infoTitle: HUB_COPY.all.infoTitle,
+            infoBody: HUB_COPY.all.infoBody,
+            tickerId: "all_games",
+            tint: TINT_CHALLENGE,
+            onClick: () => openGamesView("all"),
+          })}
+          {renderHubCard({
+            title: HUB_COPY.training.title,
+            infoTitle: HUB_COPY.training.infoTitle,
+            infoBody: HUB_COPY.training.infoBody,
+            tickerId: "training",
+            tint: TINT_TRAINING,
+            onClick: () => navigate("training"),
+          })}
+        </div>
+      ) : null}
+
+      {gamesView === "hub" && !isSamsungSharedTv ? (
         <div className="msc-games-hub-favorite-landscape">
           {renderHubCard({
             title: HUB_COPY.favorites.title,
@@ -1953,7 +1988,7 @@ export default function Games({ setTab, params }: Props) {
       {/* ============================================================
           HUB JEUX : NEW GAME + 3 cartes + lancement rapide défilant
          ============================================================ */}
-      {gamesView === "hub" && (
+      {gamesView === "hub" && !isSamsungSharedTv && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div className="msc-games-hub-favorite-portrait">
@@ -2061,7 +2096,7 @@ export default function Games({ setTab, params }: Props) {
             </div>
           )}
           {/* Cartes de jeux (liste) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="msc-games-mode-groups" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {(() => {
               // En filtrage global, conserver la catégorie dans la clé pour éviter
               // de mélanger deux sous-catégories portant le même identifiant.
@@ -2091,7 +2126,7 @@ export default function Games({ setTab, params }: Props) {
               };
 
               return keys.map((k) => (
-                <div key={k} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div key={k} className="msc-games-mode-group" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div
                     style={{
                       marginTop: 6,

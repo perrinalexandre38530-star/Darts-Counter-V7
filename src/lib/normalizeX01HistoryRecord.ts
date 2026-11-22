@@ -6,6 +6,7 @@ export type X01TelemetryQuality = "exact" | "partial" | "summary_only" | "unknow
 
 export type NormalizedX01Participant = X01ResolvedIdentity & {
   name: string;
+  teamId?: string | null;
   darts: number | null;
   points: number | null;
   avg3d: number | null;
@@ -218,6 +219,7 @@ function normalizeParticipant(record: any, participant: any, options: X01Identit
   return {
     ...identity,
     name: text(participant?.name ?? participant?.displayName ?? stats?.name ?? "Joueur"),
+    teamId: text(participant?.teamId ?? stats?.teamId) || null,
     darts,
     points,
     avg3d,
