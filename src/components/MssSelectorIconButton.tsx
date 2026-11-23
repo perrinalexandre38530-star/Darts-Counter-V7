@@ -1,6 +1,8 @@
 import React from "react";
+import cricketDartSvg from "../ui_assets/cricket-dart.svg";
+import reviveOffSkullPng from "../ui_assets/killer-revive-off-skull.png";
 
-export type MssSelectorIcon = "players" | "profiles" | "bots" | "teams" | "manage" | "manual-team" | "saved-teams" | "shuffle" | "bot-teams" | "add-team" | "plus" | "random-order" | "alternate-order" | "manual-order" | "bull-order";
+export type MssSelectorIcon = "players" | "profiles" | "bots" | "teams" | "manage" | "manual-team" | "saved-teams" | "shuffle" | "bot-teams" | "add-team" | "plus" | "random-order" | "alternate-order" | "manual-order" | "bull-order" | "manual-pick" | "dart-throw" | "damage-one" | "damage-multiplier" | "toggle-on" | "toggle-off" | "revive-off" | "revive-once" | "revive-all-once" | "revive-unlimited";
 
 /** Barre de sélection MSS : iconographie sobre type BottomNav, sans texte visible. */
 export default function MssSelectorIconButton({
@@ -29,6 +31,15 @@ export default function MssSelectorIconButton({
     "alternate-order": <><path d="M6 8h12"/><path d="M14 5l4 3-4 3"/><path d="M18 16H6"/><path d="M10 13l-4 3 4 3"/></>,
     "manual-order": <><path d="M5 18h14"/><path d="M12 6v9"/><path d="M8.5 9.5 12 6l3.5 3.5"/></>,
     "bull-order": <><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.5"/><path d="M12 4v2M20 12h-2M12 20v-2M4 12h2"/></>,
+    "manual-pick": <><path d="M5 20v-8a2 2 0 0 1 4 0V6a2 2 0 0 1 4 0v4a2 2 0 0 1 4 0v2a2 2 0 0 1 4 0v3c0 4-2.5 6-6 6H10c-2.3 0-3.7-.8-5-2"/><path d="M9 10v3M13 10v3M17 12v2"/></>,
+    "damage-one": <><circle cx="12" cy="12" r="7.5"/><path d="M9 12h6"/><path d="M17 7l3-3"/><path d="M18.5 5.5l1 1"/></>,
+    "damage-multiplier": <><path d="M6 6h4M6 12h6M6 18h8"/><circle cx="16.5" cy="6" r="1.5"/><circle cx="18" cy="12" r="1.7"/><circle cx="19.5" cy="18" r="1.9"/></>,
+    "toggle-on": <><rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="16" cy="12" r="3"/></>,
+    "toggle-off": <><rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="3"/></>,    "revive-off": null,
+    "revive-once": <><circle cx="12" cy="6.7" r="2.7"/><path d="M7.2 20v-2.1a4.8 4.8 0 0 1 9.6 0V20"/><path d="M12 10.2v6"/></>,
+    "revive-all-once": <><circle cx="6.5" cy="7.4" r="2.1"/><circle cx="12" cy="5.8" r="2.4"/><circle cx="17.5" cy="7.4" r="2.1"/><path d="M3.2 19.5v-1.1A3.7 3.7 0 0 1 6.9 14.7"/><path d="M8.1 20v-1.7A4.2 4.2 0 0 1 12.3 14h.1a4.2 4.2 0 0 1 4.2 4.2V20"/><path d="M17.1 14.7a3.7 3.7 0 0 1 3.7 3.7v1.1"/></>,
+    "revive-unlimited": <><path d="M3.5 12.6c1.1-2 2.3-3 3.8-3 1.6 0 2.7 1 4.7 3.5 2-2.5 3.1-3.5 4.7-3.5 2.3 0 4 1.6 4 3.8 0 2.1-1.7 3.8-4 3.8-1.6 0-2.7-1-4.7-3.5-2 2.5-3.1 3.5-4.7 3.5-2.3 0-4-1.6-4-3.8 0-.2 0-.5.2-.8Z"/></>,
+    "dart-throw": null,
   };
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-label={label}
@@ -40,7 +51,21 @@ export default function MssSelectorIconButton({
         boxShadow: active ? `0 0 12px ${accent}33` : "none",
         cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .4 : 1,
         padding: 0, flex: "0 0 auto", WebkitTapHighlightColor: "transparent" }}>
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[icon]}</svg>
+      {icon === "dart-throw" ? (
+        <span aria-hidden="true" style={{ width: 29, height: 24, backgroundColor: "currentColor", display: "block",
+          WebkitMaskImage: `url(${cricketDartSvg})`, maskImage: `url(${cricketDartSvg})`,
+          WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+          WebkitMaskSize: "contain", maskSize: "contain",
+          WebkitMaskPosition: "center", maskPosition: "center" }} />
+      ) : icon === "revive-off" ? (
+        <span aria-hidden="true" style={{ width: 24, height: 24, backgroundColor: "currentColor", display: "block",
+          WebkitMaskImage: `url(${reviveOffSkullPng})`, maskImage: `url(${reviveOffSkullPng})`,
+          WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+          WebkitMaskSize: "contain", maskSize: "contain",
+          WebkitMaskPosition: "center", maskPosition: "center" }} />
+      ) : (
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[icon]}</svg>
+      )}
     </button>
   );
 }

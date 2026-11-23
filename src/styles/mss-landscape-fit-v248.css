@@ -189,3 +189,17 @@ html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route :is(
     min-height: 0;
   }
 }
+
+/* V7(42) — adaptive landscape room allocation, opt-in from measured panels.
+ * Only complete grid/flex column items are distributed; cards, text, avatars,
+ * keypads and media keep their original sizes. No synthetic advertising. */
+@media (orientation: landscape) and (min-width: 840px) and (min-height: 650px) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-mss-landscape-spacious="1"]
+    [data-mss-landscape-distribute="grid"] {
+    align-content: space-evenly !important;
+  }
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-mss-landscape-spacious="1"]
+    [data-mss-landscape-distribute="flex"] {
+    justify-content: space-evenly !important;
+  }
+}

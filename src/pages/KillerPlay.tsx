@@ -40,6 +40,9 @@ import type {
   KillerBecomeRule,
 } from "./KillerConfig";
 import ScoreInputHub from "../components/ScoreInputHub";
+import CameraAssistedOverlay from "../components/CameraAssistedOverlay";
+import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
+import { normalizeKillerInputMethod, readKillerExternalBridge, parseKillerExternalHits } from "../lib/scoreInput/killerInput";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
@@ -175,6 +178,13 @@ type PendingChoiceNumber = {
   playerId: string;
   shieldTurns: number;
   label?: string;
+};
+
+type TeamMemberDerivedStats = {
+  throws: number;
+  damage: number;
+  kills: number;
+  autoHits: number;
 };
 
 type Snapshot = {
@@ -809,6 +819,7 @@ function rulesText(config: KillerConfig) {
   const bullSplash = truthy((config as any)?.bullSplash ?? (config as any)?.rules?.bullSplash);
   const bullHeal = truthy((config as any)?.bullHeal ?? (config as any)?.rules?.bullHeal);
   const bullHealLives = clampInt((config as any)?.bullHealLives ?? (config as any)?.rules?.bullHealLives ?? (config as any)?.bull_heal_lives ?? 1, 1, 3, 1);
+  const bullHealFull = truthy((config as any)?.bullHealFull ?? (config as any)?.rules?.bullHealFull ?? (config as any)?.bull_heal_full);
   const bullRotate = truthy((config as any)?.bullRotate ?? (config as any)?.rules?.bullRotate);
 
   const shieldOnDBull = truthy((config as any)?.shieldOnDBull ?? (config as any)?.rules?.shieldOnDBull ?? (config as any)?.shield_on_dbull);
@@ -827,6 +838,7 @@ function rulesText(config: KillerConfig) {
 
   const dbullLines: string[] = [];
   if (shieldOnDBull) dbullLines.push("DBULL = Bouclier.");
+  if (bullHealFull) dbullLines.push("DBULL = Soins max : le tireur récupère toutes ses vies.");
   if (disarmOnDBull) dbullLines.push("DBULL = Désarmement : tous les autres KILLER sont désarmés, sauf le tireur.");
   if (dbullRotate) dbullLines.push("Rotation DBULL : si plusieurs fonctions DBULL sont actives, la fonction alterne tour après tour.");
   if (!dbullLines.length) dbullLines.push("DBULL : aucune fonction spéciale active.");
@@ -2694,6 +2706,7 @@ export default function KillerPlay({ store, go, config, onFinish }: Props) {
   // sinon assignDone reste faux et KillerPlay peut se comporter comme si une assignation
   // était encore en cours.
   const inNumberAssignRound = numberAssignMode === "throw";
+  const killerInputMethod = normalizeKillerInputMethod((config as any)?.inputMode);
 
   // ✅ AutoKill ON/OFF (ROBUSTE : supporte plusieurs structures de config)
 const autoKillOn = truthy(
@@ -2881,7 +2894,7 @@ React.useEffect(() => {
   const initialPlayers: KillerPlayerState[] = React.useMemo(() => {
     const lives = progressiveMode ? 0 : clampInt(config?.lives, 1, 9, 3);
 
-    const base = (config?.players || []).map((p) => {
+    const base = (Array.isArray(config?.players) ? config.players : []).filter(Boolean).map((p) => {
       const waitsForHumanThrow = inNumberAssignRound && !p.isBot;
       const phase: KillerPhase = waitsForHumanThrow ? "SELECT" : "ARMING";
       return {
@@ -3072,6 +3085,61 @@ React.useEffect(() => {
 
     return hydrated as KillerPlayerState[];
   });
+
+  // Les statistiques sont dérivées des joueurs déjà initialisés. Ce useMemo doit
+  // impérativement rester APRÈS useState(players) : sinon React lit `players`
+  // dans sa temporal dead zone dès le premier rendu et KillerPlay plante.
+  const teamMemberStatsByPlayer = React.useMemo<Record<string, Record<string, TeamMemberDerivedStats>>>(() => {
+    const makeStats = (): TeamMemberDerivedStats => ({ throws: 0, damage: 0, kills: 0, autoHits: 0 });
+    const out: Record<string, Record<string, TeamMemberDerivedStats>> = {};
+
+    (Array.isArray(players) ? players : []).forEach((player) => {
+      if (!Array.isArray(player?.teamMembers) || player.teamMembers.length === 0) return;
+      out[player.id] = out[player.id] || {};
+      player.teamMembers.forEach((member) => {
+        out[player.id][member.id] = out[player.id][member.id] || makeStats();
+      });
+    });
+
+    const seenThrows = new Set<string>();
+    (Array.isArray(events) ? events : []).forEach((event) => {
+      const playerId = String(event?.actorId || event?.playerId || "");
+      const memberId = String(event?.teamMemberId || "");
+      if (!playerId || !memberId) return;
+      out[playerId] = out[playerId] || {};
+      const stats = out[playerId][memberId] || (out[playerId][memberId] = makeStats());
+
+      if (event?.throw) {
+        const throwKey = `${playerId}|${memberId}|${event?.visitIndex ?? "na"}|${event?.dartIndex ?? event?.t ?? Math.random()}`;
+        if (!seenThrows.has(throwKey)) {
+          seenThrows.add(throwKey);
+          stats.throws += 1;
+        }
+      }
+
+      switch (String(event?.type || "")) {
+        case "HIT_VICTIM":
+        case "PROGRESSIVE_HIT":
+          stats.damage += Math.max(0, Number(event?.actualLoss ?? event?.dmg ?? 0) || 0);
+          break;
+        case "BULL_SPLASH":
+          stats.damage += Math.max(0, Number(event?.totalLoss ?? 0) || 0);
+          break;
+        case "KILL":
+        case "PROGRESSIVE_KILL":
+          stats.kills += 1;
+          break;
+        case "MISS_AUTO_HIT":
+          stats.autoHits += 1;
+          break;
+        default:
+          break;
+      }
+    });
+
+    return out;
+  }, [events, players]);
+
 
   const humanAssignIndices = players
     .map((p, idx) => ({ p, idx }))
@@ -3416,6 +3484,9 @@ React.useEffect(() => {
   const [finished, setFinished] = React.useState<boolean>(false);
   const [multiplier, setMultiplier] = React.useState<Mult>(1);
   const [showRules, setShowRules] = React.useState(false);
+  const [cameraOpen, setCameraOpen] = React.useState(false);
+  const [externalConnection, setExternalConnection] = React.useState("déconnecté");
+  const externalInjectRef = React.useRef<(hit: { target: number; mult: Mult }) => void>(() => {});
 
   React.useEffect(() => {
     if (!resumeState || !Array.isArray(resumeState?.events)) return;
@@ -3639,6 +3710,63 @@ React.useEffect(() => {
 
   const inputDisabledBase =
     finished || !!w || !current || current.eliminated || showEnd;
+
+  // Les modes de saisie sont de vrais flux connectés au moteur KILLER.
+  // Les callbacks externes et vocaux utilisent applyThrow (même validation que le clavier).
+  externalInjectRef.current = (hit) => {
+    if (assignActive || inputDisabledBase || isBotTurn || dartsLeft <= 0) return;
+    applyThrow(hit);
+  };
+  const voiceInput = useVoiceScoreInput({
+    enabled: killerInputMethod === "voice" && !assignActive && !inputDisabledBase && !isBotTurn,
+    lang: String(lang || "fr").startsWith("fr") ? "fr-FR" : "en-US",
+    announcePlayer: false,
+    playerName: current?.name || "",
+    onDart: (dart: any) => {
+      const kind = String(dart?.kind || "S").toUpperCase();
+      const target = kind === "MISS" ? 0 : (kind === "BULL" || kind === "DBULL") ? 25 : Number(dart?.base);
+      const mult = kind === "DBULL" || kind === "D" ? 2 : kind === "T" ? 3 : 1;
+      if (Number.isInteger(target) && (target === 0 || target === 25 || (target >= 1 && target <= 20))) {
+        externalInjectRef.current({ target, mult: mult as Mult });
+      }
+    },
+  });
+  React.useEffect(() => {
+    voiceInput.resetTurn();
+    // Réinitialiser le micro après chaque passage de joueur, sans validation forcée.
+  }, [turnIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // WebSocket AutoDarts : une seule connexion, pas de scoring simulé.
+  React.useEffect(() => {
+    if (killerInputMethod !== "autodarts") return;
+    const bridge = readKillerExternalBridge();
+    if (!/^wss?:\/\//i.test(bridge.bridgeUrl)) {
+      setExternalConnection("bridge non configuré"); return;
+    }
+    let socket: WebSocket | null = null;
+    let disposed = false;
+    const pending: number[] = [];
+    try {
+      setExternalConnection("connexion…");
+      socket = new WebSocket(bridge.bridgeUrl);
+      socket.onopen = () => { if (!disposed) setExternalConnection("connecté"); };
+      socket.onerror = () => { if (!disposed) setExternalConnection("erreur de connexion"); };
+      socket.onclose = () => { if (!disposed) setExternalConnection("déconnecté"); };
+      socket.onmessage = (event) => {
+        if (disposed) return;
+        const hits = parseKillerExternalHits(event.data);
+        hits.forEach((hit, idx) => {
+          const handle = window.setTimeout(() => externalInjectRef.current(hit), idx * 180);
+          pending.push(handle);
+        });
+      };
+    } catch { setExternalConnection("bridge indisponible"); }
+    return () => {
+      disposed = true;
+      pending.forEach((id) => clearTimeout(id));
+      try { socket?.close(); } catch {}
+    };
+  }, [killerInputMethod]);
 
   const waitingValidate =
     !inputDisabledBase && !isBotTurn && dartsLeft === 0;
@@ -3972,6 +4100,7 @@ React.useEffect(() => {
         damageRule: config.damageRule,
         bullSplash: !!bullSplashOn,
         bullHeal: !!bullHealOn,
+        bullHealFull: !!bullHealFullOn,
         shieldOnDBull: !!shieldOnDBull,
         disarmOnDBull: !!disarmOnDBull,
         shieldTurns: Number(shieldTurns || 0),
@@ -4128,6 +4257,13 @@ const bullHealOn = truthy(
     (config as any)?.variants?.bull_heal ??
     (config as any)?.options?.bullHeal ??
     (config as any)?.rules?.bullHeal
+);
+const bullHealFullOn = truthy(
+  (config as any)?.bullHealFull ??
+    (config as any)?.bull_heal_full ??
+    (config as any)?.variants?.bullHealFull ??
+    (config as any)?.options?.bullHealFull ??
+    (config as any)?.rules?.bullHealFull
 );
 const bullHealLives = clampInt(
   (config as any)?.bullHealLives ??
@@ -4594,12 +4730,14 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   const activeDBullFn = pickRotatingFunction([
     bullSplashOn ? "splash" : "",
     bullSplashOn ? "splash" : "",
+    bullHealFullOn ? "healmax" : "",
     shieldOnDBull ? "shield" : "",
     disarmOnDBull ? "disarm" : "",
   ], dbullRotateOn, dbullRotateStep);
 
   const splashEnabled = (isDBull ? activeDBullFn === "splash" : activeBullFn === "splash");
   const healEnabled = activeBullFn === "heal" && !(isDBull && !!activeDBullFn);
+  const healMaxEnabled = isDBull && activeDBullFn === "healmax";
   const shieldEnabled = isDBull && activeDBullFn === "shield";
   const disarmEnabled = isDBull && activeDBullFn === "disarm";
 
@@ -4698,7 +4836,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     });
   }
 
-  // 2) Heal: récupère 1 (BULL) / 2 (DBULL)
+  // 2) Heal: récupère des vies sur 1/2 BULL
   if (killerCanUseBullVariants && healEnabled) {
     const heal = bullHealLives;
     const before = me.lives;
@@ -4712,6 +4850,17 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
 
     pushLog(`💚 ${me.name} fait ${fmtThrow(thr)} → +${gained} vie(s)`);
     pushEvent({ t: Date.now(), type: "BULL_HEAL", actorId: me.id, heal: gained, throw: thr });
+  }
+
+  if (killerCanUseBullVariants && healMaxEnabled) {
+    const maxLives = clampInt((config as any)?.lives, 1, 9, 3);
+    const before = me.lives;
+    me.lives = Math.max(before, maxLives);
+    const gained = Math.max(0, me.lives - before);
+    if (gained > 0) didSomething = true;
+    if (gained > 0) me.livesHealed = (me.livesHealed ?? 0) + gained;
+    pushLog(`💚 ${me.name} fait ${fmtThrow(thr)} → soins max (+${gained})`);
+    pushEvent({ t: Date.now(), type: "BULL_HEAL_MAX", actorId: me.id, heal: gained, throw: thr });
   }
 
   if (!didSomething) {
@@ -5436,11 +5585,13 @@ React.useEffect(() => {
         const activeDBullFn = pickRotatingFunction([
           bullSplashOn ? "splash" : "",
           bullSplashOn ? "splash" : "",
+          bullHealFullOn ? "healmax" : "",
           shieldOnDBull ? "shield" : "",
           disarmOnDBull ? "disarm" : "",
         ], dbullRotateOn, dbullRotateStep);
         const splashEnabled = (isDBull ? activeDBullFn === "splash" : activeBullFn === "splash");
         const healEnabled = activeBullFn === "heal" && !(isDBull && !!activeDBullFn);
+        const healMaxEnabled = isDBull && activeDBullFn === "healmax";
         const shieldEnabled = isDBull && activeDBullFn === "shield";
         const disarmEnabled = isDBull && activeDBullFn === "disarm";
 
@@ -5562,7 +5713,7 @@ React.useEffect(() => {
           });
         }
 
-        // 2) Heal: +1 (BULL) / +2 (DBULL)
+        // 2) Heal: 1/2 BULL
         if (killerCanUseBullVariants2 && healEnabled) {
           const heal = bullHealLives;
           const before = me2.lives;
@@ -5578,6 +5729,24 @@ React.useEffect(() => {
           pushEvent({
             t: Date.now(),
             type: "BULL_HEAL",
+            actorId: me2.id,
+            heal: gained,
+            throw: thrSafe,
+            bot: true,
+          });
+        }
+
+        if (killerCanUseBullVariants2 && healMaxEnabled) {
+          const maxLives = clampInt((config as any)?.lives, 1, 9, 3);
+          const before = me2.lives;
+          me2.lives = Math.max(before, maxLives);
+          const gained = Math.max(0, me2.lives - before);
+          if (gained > 0) didSomething = true;
+          if (gained > 0) me2.livesHealed = (me2.livesHealed ?? 0) + gained;
+          pushLog(`💚 ${me2.name} fait ${fmtThrow(thrSafe)} → soins max (+${gained})`);
+          pushEvent({
+            t: Date.now(),
+            type: "BULL_HEAL_MAX",
             actorId: me2.id,
             heal: gained,
             throw: thrSafe,
@@ -7246,6 +7415,44 @@ return (
                 <span style={chipStyleMini(lastDarts[2])}>{fmtChip(lastDarts[2])}</span>
               </div>
             </div>
+
+            {Array.isArray(p.teamMembers) && p.teamMembers.length > 0 && (
+              <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
+                {p.teamMembers.map((member, memberIndex) => {
+                  const memberStats = teamMemberStatsByPlayer[p.id]?.[member.id] || { throws: 0, damage: 0, kills: 0, autoHits: 0 };
+                  const isCurrentShooter = memberIndex === Math.max(0, Number(p.teamCurrentMemberIndex || 0)) % p.teamMembers.length;
+                  return (
+                    <div
+                      key={`${p.id}-${member.id}-modal`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "auto minmax(0,1fr)",
+                        alignItems: "center",
+                        gap: 7,
+                        borderRadius: 10,
+                        padding: "5px 7px",
+                        background: isCurrentShooter ? "rgba(38,196,255,.10)" : "rgba(255,255,255,.035)",
+                        border: isCurrentShooter ? "1px solid rgba(64,212,255,.34)" : "1px solid rgba(255,255,255,.05)",
+                      }}
+                    >
+                      <AvatarMedallion size={26} src={member.avatarDataUrl} name={member.name} compactShield />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 900, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{member.name}</span>
+                          {isCurrentShooter && <span style={{ fontSize: 9.5, fontWeight: 900, color: "#7fe9ff", whiteSpace: "nowrap" }}>🎯</span>}
+                          {member.isBot && <span style={{ fontSize: 9.5, color: "#d7dbeb" }}>🤖</span>}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2, fontSize: 10, color: "#cfd6eb" }}>
+                          <span>Darts <b style={{ color: gold }}>{memberStats.throws}</b></span>
+                          <span>Dégâts <b style={{ color: gold }}>{memberStats.damage}</b></span>
+                          <span>Kills <b style={{ color: gold }}>{memberStats.kills}</b></span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div
@@ -7333,6 +7540,16 @@ return (
   >
     
 
+    {(killerInputMethod === "camera" || killerInputMethod === "autodarts") && (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 5, fontSize: 11, color: "#dce7fb" }}>
+        {killerInputMethod === "camera" ? (
+          <button type="button" onClick={() => setCameraOpen(true)}
+            style={{ border: "1px solid #57cbdf88", borderRadius: 13, color: "#9ce8ff", padding: "7px 15px", fontWeight: 900, background: "rgba(21,79,98,.3)" }}>
+            📷 OUVRIR LA CAMÉRA ASSISTÉE
+          </button>
+        ) : <span role="status">AUTODARTS · {externalConnection} · Saisie manuelle de secours disponible</span>}
+      </div>
+    )}
     <div
       style={{
         marginTop: 8,
@@ -7342,6 +7559,22 @@ return (
       className="dc-killer-keypad"
     >
       <ScoreInputHub
+        preferredMethod={killerInputMethod === "dartboard" ? "dartboard" : killerInputMethod === "voice" ? "voice" : "keypad"}
+        voiceControl={killerInputMethod === "voice" ? {
+          enabled: !assignActive && !inputDisabledBase && !isBotTurn,
+          supported: voiceInput.supported,
+          phase: voiceInput.phase,
+          activity: voiceInput.activity,
+          lastHeard: voiceInput.lastHeard,
+          dartsLabel: voiceInput.dartsLabel,
+          dartsTotal: voiceInput.dartsTotal,
+          permissionHint: voiceInput.permissionHint,
+          expectedIndex: voiceInput.expectedIndex,
+          awaitingConfirm: voiceInput.awaitingConfirm,
+          onStart: voiceInput.beginTurn,
+          onStop: voiceInput.stop,
+          onReset: voiceInput.resetTurn,
+        } : undefined}
         currentThrow={currentThrow}
         multiplier={multiplier}
         onSimple={() => setMultiplier(1)}
@@ -7388,6 +7621,8 @@ return (
         }
       />
     </div>
+    {killerInputMethod === "camera" && <CameraAssistedOverlay open={cameraOpen} onClose={() => setCameraOpen(false)}
+      onDart={(hit) => externalInjectRef.current({ target: hit.segment, mult: (hit.multiplier === 2 ? 2 : hit.multiplier === 3 ? 3 : 1) as Mult })} />}
   </div>
 )}
   </div>

@@ -17,6 +17,7 @@ import TacticalMatchPanels from "../components/TacticalMatchPanels";
 import MssCombatActiveCard from "../components/MssCombatActiveCard";
 import tickerWarfare from "../assets/tickers/ticker_warfare.png";
 import "./mssBattleLayouts.css";
+import "./mssCombatFinish.css";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import type { WarfareConfig, WarfareZoneRule } from "./WarfareConfig";

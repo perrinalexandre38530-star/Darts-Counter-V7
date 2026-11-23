@@ -6405,7 +6405,7 @@ export function TeamsSection({
     const baseId = String(team?.id || "");
     const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
     const used = usedStoredPlayersByBase[baseId] || new Set<string>();
-    const available = ids.filter((id: string) => !used.has(id));
+    const available = ids.filter((id: string) => !used.has(id) && teamByPlayer.has(id));
     if (available.length <= 0) return;
     setSavedMembersPage(0);
     setTeamPicker(team);
@@ -6418,11 +6418,12 @@ export function TeamsSection({
     const instanceId = String(item?.instanceId || "");
     if (!team || !instanceId) return;
     const chosen = Array.isArray(item?.chosen) ? item.chosen.map(String).filter(Boolean) : [];
-    const fallback = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+    const fallback = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter((id: string) => !!id && teamByPlayer.has(id));
     setSavedMembersPage(0);
     setTeamPicker(team);
     setTeamPickerInstanceId(instanceId);
-    setTeamPickerPlayerIds(chosen.length ? chosen : (configuredTeamSize > 0 ? fallback.slice(0, configuredTeamSize) : fallback));
+    const validChosen = chosen.filter((id: string) => teamByPlayer.has(id));
+    setTeamPickerPlayerIds(validChosen.length ? validChosen : (configuredTeamSize > 0 ? fallback.slice(0, configuredTeamSize) : fallback));
   };
 
   React.useEffect(() => {
@@ -6800,15 +6801,15 @@ export function TeamsSection({
                   const baseId = String(team?.id || "");
                   const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
                   const used = usedStoredPlayersByBase[baseId] || new Set<string>();
-                  const remaining = ids.filter((id: string) => !used.has(id)).length;
+                  const remaining = ids.filter((id: string) => !used.has(id) && teamByPlayer.has(id)).length;
                   const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || undefined;
                   return (
-                    <button key={baseId} type="button" disabled={remaining <= 0} onClick={() => openStoredTeamPicker(team)} style={{ textAlign: "center", borderRadius: 20, padding: "14px 12px 12px", border: remaining > 0 ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.06)", background: remaining > 0 ? "rgba(8,10,20,0.90)" : "rgba(255,255,255,0.025)", color: remaining > 0 ? "#f5f7ff" : "#656a82", cursor: remaining > 0 ? "pointer" : "not-allowed", width: "100%", minWidth: 0, minHeight: 118 }}>
+                    <button key={baseId} type="button" disabled={remaining <= 0} title={remaining <= 0 ? "Aucun membre de cette équipe disponible parmi les profils locaux" : "Choisir les membres de cette équipe"} onClick={() => openStoredTeamPicker(team)} style={{ textAlign: "center", borderRadius: 20, padding: "14px 12px 12px", border: remaining > 0 ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.06)", background: remaining > 0 ? "rgba(8,10,20,0.90)" : "rgba(255,255,255,0.025)", color: remaining > 0 ? "#f5f7ff" : "#656a82", cursor: remaining > 0 ? "pointer" : "not-allowed", width: "100%", minWidth: 0, minHeight: 118 }}>
                       <div style={{ display: "grid", justifyItems: "center", gap: 5, minWidth: 0 }}>
                         <ProfileAvatar name={team?.name || "Équipe"} dataUrl={logo} size={48} />
                         <div style={{ width: "100%", minWidth: 0 }}>
                           <div style={{ fontWeight: 950, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team?.name || "Équipe"}</div>
-                          <div style={{ color: "#9da3c0", fontSize: 11, marginTop: 2 }}>{remaining} joueur{remaining > 1 ? "s" : ""} disponible{remaining > 1 ? "s" : ""}</div>
+                          <div style={{ color: "#9da3c0", fontSize: 11, marginTop: 2 }}>{ids.length} membre{ids.length > 1 ? "s" : ""} · {remaining} disponible{remaining > 1 ? "s" : ""}</div>
                         </div>
                       </div>
                     </button>

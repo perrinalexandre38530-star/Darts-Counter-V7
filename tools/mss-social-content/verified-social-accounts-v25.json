@@ -1,0 +1,77 @@
+{
+  "schema": "mss.social.verified.v25",
+  "last_checked": "2026-11-22",
+  "reference_zip": "Darts-Counter-V7(25).zip",
+  "brand": {
+    "public_name": "MULTISPORTS SCORING",
+    "site": "https://multisports-scoring.pages.dev/",
+    "public_contact": "multisports.scoring@gmail.com"
+  },
+  "accounts": [
+    {
+      "network": "x",
+      "url": "https://x.com/multisportsscor",
+      "handle": "@multisportsscor",
+      "status": "verified_owned",
+      "branding": "logo_and_banner_confirmed",
+      "metricool_connected": false
+    },
+    {
+      "network": "youtube",
+      "url": "https://www.youtube.com/@MultisportsScoring",
+      "handle": "@MultisportsScoring",
+      "status": "verified_owned",
+      "branding": "logo_banner_description_confirmed",
+      "metricool_connected": true
+    },
+    {
+      "network": "instagram",
+      "url": null,
+      "preferred_handle": "@multisportsscoring",
+      "status": "not_confirmed",
+      "blocker": "Registration needs password, actual birthday and possible verification; no public handle ownership confirmed"
+    },
+    {
+      "network": "threads",
+      "url": null,
+      "preferred_handle": "@multisportsscoring",
+      "status": "not_confirmed",
+      "blocker": "Public profile availability not verified; Meta registration/authentication required"
+    },
+    {
+      "network": "facebook",
+      "url": null,
+      "status": "not_confirmed",
+      "blocker": "Create brand Page only from a real authenticated administrator profile"
+    },
+    {
+      "network": "tiktok",
+      "url": null,
+      "status": "not_confirmed",
+      "blocker": "Real birthday required to proceed from signup age gate"
+    },
+    {
+      "network": "linkedin",
+      "url": null,
+      "status": "not_confirmed",
+      "blocker": "Real personal administrator account required for company Page"
+    },
+    {
+      "network": "pinterest",
+      "url": null,
+      "status": "not_confirmed",
+      "blocker": "Prior browser attempt timed out; no successful signup verified"
+    }
+  ],
+  "rules": {
+    "publish_without_owner_approval": false,
+    "register_unverified_profile_links": false,
+    "ask_secret_in_chat": false,
+    "invent_personal_data": false,
+    "charge_without_owner_approval": false
+  },
+  "assets_existing_in_v25": [
+    "tools/mss-social-x/extension-chrome/assets/MSS_LOGO_OFFICIEL.jpg",
+    "tools/mss-social-x/extension-chrome/assets/MSS_COUVERTURE_OFFICIELLE.jpg"
+  ]
+}

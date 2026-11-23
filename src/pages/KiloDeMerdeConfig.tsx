@@ -54,10 +54,10 @@ function Rules({ color }: { color: string }) {
     <div><b style={{color}}>KILO DE MERDE — JEU DE CARTES</b><div>Gagne celui qui a le moins de kilos à la fin de la partie.</div></div>
     <div>Chaque joueur reçoit quatre cartes. Les 7 sont écartés de la distribution et restent dans le tas des kilos.</div>
     <div>Chacun choisit une carte et la passe simultanément à son voisin de gauche. Il faut rassembler quatre cartes de même valeur.</div>
-    <div>Le premier à obtenir quatre identiques tape sur le tas ; le dernier à taper récupère la première carte du tas et sa pénalité.</div>
+    <div>Dès qu’un carré est constitué, défi BULL : chaque joueur lance trois fléchettes. Le plus faible score tire la carte de pénalité. En cas d’égalité, barrage entre les derniers.</div>
     <div>2 à 10 : valeur nominale ; Valet 11, Dame 12, Roi 13, As 100 kilos.</div>
     <div><b style={{color}}>CHASSE D'EAU :</b> un 7 tiré dans le tas annule tous les kilos de ce joueur et remet ses cartes de pénalité au tas.</div>
-    <div style={{opacity:.7}}>Arbitrage MSS : le dernier à taper est indiqué manuellement. Ne pas confondre avec le Président et ses points de position.</div>
+    <div style={{opacity:.7}}>Adaptation MSS aux fléchettes : BULL25 = 25 pts, DBULL50 = 50 pts, tout autre impact = MISS. Aucun joueur ne tape sur un tas.</div>
   </div>;
 }
 
@@ -169,18 +169,18 @@ export default function KiloDeMerdeConfig(props: any) {
   const chaos = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>RÈGLE SPÉCIALE</div>
     <div style={rowHelp}><b>CHASSE D’EAU</b> : un 7 tiré du tas annule tous les kilos du joueur pénalisé.</div>
 
-    <div style={rowHelp}>KILO DE MERDE : quatre cartes, échange vers la gauche, quatre identiques, dernier à taper pénalisé. Le 7 du tas déclenche la chasse d’eau intégrale.</div>
-    <div style={rowHelp}>Le dernier joueur à taper sur le tas est indiqué manuellement sur l’appareil partagé.</div>
+    <div style={rowHelp}>KILO DE MERDE : quatre cartes, échange vers la gauche, quatre identiques, défi BULL aux fléchettes : plus faible score pénalisé. Le 7 du tas déclenche la chasse d’eau intégrale.</div>
+    <div style={rowHelp}>Chaque joueur vise le BULL avec trois fléchettes. Le plus faible score reçoit la pénalité ; égalité = barrage.</div>
   </section>;
 
   const input = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 7 }}>GESTION DES CARTES</div>
-    <div style={rowHelp}>Les cartes sont choisies à l’écran ; pas de keypad ni de tirs. Le perdant de la course au tas est indiqué manuellement.</div>
+    <div style={rowHelp}>Les cartes sont choisies à l’écran. Dès qu’un carré apparaît, saisissez les trois impacts sur le keypad BULL : MISS / BULL25 / DBULL50.</div>
 
   </section>;
 
   const summary = <section style={card}><div style={{ color: primary, fontWeight: 1000, fontSize: 12, letterSpacing: 1, marginBottom: 9 }}>RÉSUMÉ</div>
     <div style={{ display: "grid", gap: 7, fontSize: 11.5 }}>
-      {[["Participants", `${selectedIds.length} joueurs`],["Tours", `${rounds} pénalités`],["Main", `${actualHandSize} cartes/joueur${deckWarning ? ` (au lieu de ${handSize})` : ""}`],["Paquet", "52 cartes · 7 dans le tas"],["Mode", "KILO DE MERDE"],["Saisie", "Cartes et tas"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
+      {[["Participants", `${selectedIds.length} joueurs`],["Tours", `${rounds} pénalités`],["Main", `${actualHandSize} cartes/joueur${deckWarning ? ` (au lieu de ${handSize})` : ""}`],["Paquet", "52 cartes · 7 dans le tas"],["Mode", "KILO DE MERDE"],["Saisie", "Cartes + fléchettes BULL"]].map(([a,b]) => <div key={a as string} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: muted }}>{a}</span><b>{b}</b></div>)}
     </div>
   </section>;
 
@@ -189,7 +189,7 @@ export default function KiloDeMerdeConfig(props: any) {
   return <div style={{ minHeight: "100dvh", paddingBottom: 90, overflowX: "hidden" }}>
     <PageHeader difficultyGameId="kilo_de_merde" tickerSrc={tickerKilo} tickerAlt="KILO DE MERDE" tickerFit="contain" tickerHeight={90} tickerEdgeFade="strong" tickerBottomGap={8} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour" />} right={<InfoDot title="Règles de Kilo de merde" color={primary} glow={`${primary}77`} content={<Rules color={primary}/>} />} />
     <div style={{ padding: "8px 8px 0", maxWidth: 920, margin: "0 auto" }}>
-      <section style={{ ...card, border: `1px solid ${primary}68` }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>CONFIGURATION KILO DE MERDE</div><div style={{ color: muted, fontSize: 10.5, marginTop: 4 }}>Quatre cartes · échanges à gauche · tas des kilos · chasse d’eau</div></div><div style={{ display: "flex", gap: 7 }}><PillButton label="Guidée" active={view === "guided"} onClick={() => { setView("guided"); try { localStorage.setItem("dc_kilo_de_merde_config_view", "guided"); } catch {} }} primary={primary} primarySoft={soft} /><PillButton label="Complète" active={view === "complete"} onClick={() => { setView("complete"); try { localStorage.setItem("dc_kilo_de_merde_config_view", "complete"); } catch {} }} primary={primary} primarySoft={soft} /></div></div></section>
+      <section style={{ ...card, border: `1px solid ${primary}68` }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>CONFIGURATION KILO DE MERDE</div><div style={{ color: muted, fontSize: 10.5, marginTop: 4 }}>Quatre cartes · échanges à gauche · défi BULL · chasse d’eau</div></div><div style={{ display: "flex", gap: 7 }}><PillButton label="Guidée" active={view === "guided"} onClick={() => { setView("guided"); try { localStorage.setItem("dc_kilo_de_merde_config_view", "guided"); } catch {} }} primary={primary} primarySoft={soft} /><PillButton label="Complète" active={view === "complete"} onClick={() => { setView("complete"); try { localStorage.setItem("dc_kilo_de_merde_config_view", "complete"); } catch {} }} primary={primary} primarySoft={soft} /></div></div></section>
 
       {view === "guided" ? <><section style={card}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><b style={{ color: primary }}>Étape {step + 1}/{steps.length}</b><div style={{ color: muted, fontSize: 10.5 }}>{steps[step]}</div></div><div style={{ display: "flex", gap: 4 }}>{steps.map((s,i) => <button key={s} onClick={() => setStep(i)} style={{ width: 26, height: 26, borderRadius: 999, border: `1px solid ${i === step ? primary : "rgba(255,255,255,.1)"}`, background: i === step ? soft : "rgba(255,255,255,.03)", color: i === step ? primary : muted, fontWeight: 950 }}>{i+1}</button>)}</div></div><div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden", marginTop: 10 }}><div style={{ height: "100%", width: `${((step+1)/steps.length)*100}%`, background: `linear-gradient(90deg,${primary},#fff0b2)` }} /></div></section>{blockByStep[step]}<div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button disabled={step===0} onClick={() => setStep((s)=>Math.max(0,s-1))} style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: step===0?"#555a72":"#fff", fontWeight: 950 }}>← Précédent</button><button disabled={step===steps.length-1} onClick={() => setStep((s)=>Math.min(steps.length-1,s+1))} style={{ flex: 1, height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: soft, color: step===steps.length-1?"#555a72":primary, fontWeight: 950 }}>Suivant →</button></div></> : <>{participants}{reign}{chaos}{input}{summary}</>}
 

@@ -23,6 +23,7 @@
 // =============================================================
 
 import React from "react";
+import "../styles/mss-scoring-palette.css";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
 import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import type { Store, Profile } from "../lib/types";
@@ -42,6 +43,8 @@ import { groupKillerTeamMembers } from "../lib/killerTeams";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
+import killerStatusIcon from "../assets/icons/killer-list.png";
+import awenaConseils from "../assets/president/awena_conseils.webp";
 import tickerKillerProgressiveFr from "../assets/tickers/ticker_killer_progressive_fr.webp";
 import tickerKillerProgressiveEn from "../assets/tickers/ticker_killer_progressive_en.webp";
 import teamGoldLogo from "../ui_assets/teams/team_gold.png";
@@ -55,6 +58,9 @@ import killerAwenaRulesPosterEn from "../assets/videos/killer_awena_rules_poster
 import { loadStoredBots, saveStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 
 import { DARTS_KILLER_BOTS } from "../lib/dartsKillerBots";
+import { KILLER_INPUT_METHODS, normalizeKillerInputMethod, isKillerVoiceAvailable, hasKillerAutoDartsBridge, type KillerInputMethod } from "../lib/scoreInput/killerInput";
+import { MssConfigCaption, MssConfigFact, MssInputMethodChoice } from "../components/config/MssPremiumConfig";
+import { loadCameraCalibration } from "../lib/cameraCalibrationStore";
 
 // --------------------------------------------------
 // Types exportés (utilisés par KillerPlay.tsx)
@@ -89,6 +95,7 @@ export type KillerConfig = {
   teamCount?: number;
   teamSize?: number;
   playerFormat?: "duel" | "multi";
+  inputMode?: KillerInputMethod; // Méthode active transmise et mémorisée par KillerPlay
   teamAssignments?: Record<string, number>;
   teamNames?: string[];
   teamsSourceMode?: "manual" | "saved" | "auto";
@@ -112,9 +119,12 @@ export type KillerConfig = {
 
   // ✅ Variantes BULL
   bullSplash: boolean; // SBULL => -1 à tous les adversaires ; DBULL => -2 à tous
-  bullHeal: boolean; // toucher BULL/DBULL permet de regagner des vies (selon implémentation KillerPlay)
-  bullHealLives?: number; // 1..3 vies récupérées pour la variante soin
+  bullHeal: boolean; // toucher 1/2 BULL permet de regagner des vies
+  bullHealLives?: number; // 1..3 vies récupérées pour la variante soin 1/2 BULL
+  bullHealFull?: boolean; // toucher BULL50 restaure toutes les vies du joueur actif
   bullRotate?: boolean; // alterne les fonctions BULL sélectionnées tour après tour
+  bullRotationMode?: "random" | "defined"; // rotation aléatoire ou ordre défini
+  bullRotationTurns?: number; // nombre de tours par fonction en rotation définie
 
   // ✅ Résurrection
   resurrectionMode?: KillerResurrectionMode; // off | one_player_once | all_once | all
@@ -195,7 +205,7 @@ type StartOrderMode = "random" | "alternate" | "manual" | "bull";
 const KILLER_START_ORDER_OPTIONS: Array<{ id: StartOrderMode; icon: any; label: string; detail: string }> = [
   { id: "random", icon: "random-order", label: "Aléatoire", detail: "Les participants sont mélangés automatiquement au lancement de la partie." },
   { id: "alternate", icon: "alternate-order", label: "Alterné", detail: "Le premier départ respecte l'ordre actuel de sélection des participants." },
-  { id: "manual", icon: "manual-order", label: "Manuel", detail: "Tu choisis l'ordre exact des participants avant le début de la partie." },
+  { id: "manual", icon: "manual-pick", label: "Manuel", detail: "Tu choisis l'ordre exact des participants avant le début de la partie." },
   { id: "bull", icon: "bull-order", label: "Bull", detail: "Après le lancer physique à la bull, classe les participants selon le résultat obtenu." },
 ];
 
@@ -280,6 +290,158 @@ function PillButton({ label, active, onClick, primary, primarySoft, compact, dis
       }}
     >
       {label}
+    </button>
+  );
+}
+
+
+function RoundChoiceButton({ value, active, onClick, primary }: { value: number | string; active: boolean; onClick: () => void; primary: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      style={{
+        width: 38,
+        height: 38,
+        borderRadius: 999,
+        border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)",
+        background: active ? "rgba(255,198,58,0.16)" : "rgba(9,11,20,0.9)",
+        color: active ? "#fff1bf" : "#d0d3ea",
+        fontSize: 12.5,
+        fontWeight: 900,
+        boxShadow: active ? "0 0 14px rgba(255,198,58,.18)" : "none",
+        cursor: "pointer",
+      }}
+    >
+      {value}
+    </button>
+  );
+}
+
+function KeypadBullBadge({ kind }: { kind: "sbull" | "dbull" }) {
+  const isSBull = kind === "sbull";
+  const bg = isSBull ? "linear-gradient(180deg,#0a4330,#0b2e20)" : "linear-gradient(180deg,#5a0f18,#34070e)";
+  const border = isSBull ? "1px solid rgba(73,232,161,.8)" : "1px solid rgba(255,118,132,.85)";
+  const color = isSBull ? "#7af7b6" : "#ffd0d4";
+  return (
+    <div style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: isSBull ? 84 : 58,
+      height: 28,
+      padding: "0 10px",
+      borderRadius: 12,
+      background: bg,
+      border,
+      boxShadow: isSBull ? "0 0 12px rgba(74,232,161,.12)" : "0 0 12px rgba(255,118,132,.10)",
+      color,
+      fontSize: 11.5,
+      fontWeight: 1000,
+      letterSpacing: .35,
+      whiteSpace: "nowrap",
+      flex: "0 0 auto",
+    }}>
+      {isSBull ? "1/2 BULL" : "BULL"}
+    </div>
+  );
+}
+
+/** Affichage homogène et compact du récapitulatif, sans dépendance nouvelle. */
+function KillerRecapAvatar({ name, src, size = 36, color = "#f7c85c" }: {
+  name: string; src?: string | null; size?: number; color?: string;
+}) {
+  const initial = String(name || "?").trim().slice(0, 2).toUpperCase();
+  return (
+    <span title={name} style={{ flex: `0 0 ${size}px`, width: size, height: size, borderRadius: "50%", border: `1px solid ${color}99`, padding: 2, background: "rgba(8,10,21,.85)", overflow: "hidden", display: "inline-grid", placeItems: "center", boxSizing: "border-box" }}>
+      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> :
+        <span style={{ display: "grid", placeItems: "center", width: "100%", height: "100%", borderRadius: "50%", background: `${color}22`, color, fontWeight: 900, fontSize: Math.max(10, size * .33) }}>{initial}</span>}
+    </span>
+  );
+}
+
+function KillerRecapField({ title, value, accent = "#f7c85c" }: { title: string; value: React.ReactNode; accent?: string }) {
+  return (
+    <div style={{ minWidth: 0, padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,.027)", border: "1px solid rgba(255,255,255,.06)" }}>
+      <div style={{ textTransform: "uppercase", color: "#a9afc4", fontSize: 10, letterSpacing: .65, fontWeight: 850 }}>{title}</div>
+      <div style={{ color: "#f9f8ff", fontSize: 12, fontWeight: 850, lineHeight: 1.35, marginTop: 3, overflowWrap: "anywhere" }}>{value}</div>
+    </div>
+  );
+}
+
+function KillerRecapHeading({ children, accent = "#f7c85c" }: { children: React.ReactNode; accent?: string }) {
+  return <div style={{ color: accent, fontSize: 11, letterSpacing: .7, fontWeight: 950, textTransform: "uppercase", marginBottom: 7 }}>{children}</div>;
+}
+
+/** Sélecteur de vies : chiffre DANS le cœur, + dans un médaillon superposé en bas à droite.
+ * L'ensemble est un seul bouton (pas de signe + isolé entre les choix).
+ */
+function HeartLivesButton({ value, active, onClick, primary }: { value: number; active: boolean; onClick: () => void; primary: string }) {
+  const stroke = active ? primary : `${primary}99`;
+  return (
+    <button
+      type="button"
+      aria-label={`Ajouter ${value} vie${value > 1 ? "s" : ""}`}
+      aria-pressed={active}
+      title={`+${value} vie${value > 1 ? "s" : ""}`}
+      onClick={onClick}
+      style={{
+        flex: "0 0 auto",
+        width: 53,
+        height: 47,
+        padding: 0,
+        border: "none",
+        borderRadius: 10,
+        background: "transparent",
+        display: "grid",
+        placeItems: "center",
+        cursor: "pointer",
+        filter: active ? `drop-shadow(0 0 5px ${primary}55)` : "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <svg aria-hidden="true" viewBox="0 0 60 52" width="53" height="47" fill="none">
+        <path
+          d="M26 45.4 22 41.8C12.4 33.3 5.5 27.1 5.5 18.4c0-6.7 5.2-11.8 11.6-11.8 3.7 0 7.2 1.8 9.4 4.7 2.2-2.9 5.7-4.7 9.4-4.7 6.4 0 11.6 5.1 11.6 11.8 0 8.7-6.9 14.9-16.5 23.4L26 45.4Z"
+          fill={active ? primary : "#0c111f"}
+          stroke={stroke}
+          strokeWidth={active ? 2.2 : 1.8}
+          strokeLinejoin="round"
+        />
+        <text x="26.4" y="28.7" fontSize="18" textAnchor="middle" fontWeight="900" fill={active ? "#201609" : "#f5f0e7"}>{value}</text>
+        <circle cx="45.5" cy="36.8" r="10.1" fill={active ? "#f9eac3" : "#0c111f"} stroke={stroke} strokeWidth="2" />
+        <path d="M45.5 31.5v10.6M40.2 36.8h10.6" stroke={active ? "#271606" : primary} strokeWidth="2.7" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+function RotationModeButton({ icon, label, active, onClick, primary, primarySoft }: { icon: "random-order" | "manual-order"; label: string; active: boolean; onClick: () => void; primary: string; primarySoft: string }) {
+  const path = icon === "random-order"
+    ? <><path d="M4 7h3c4 0 5 10 10 10h3"/><path d="M17 14l3 3-3 3"/><path d="M4 17h3c2.5 0 3.8-3.5 5.5-5.5"/><path d="M15 7h5"/><path d="M17 4l3 3-3 3"/></>
+    : <><path d="M5 18h14"/><path d="M12 6v9"/><path d="M8.5 9.5 12 6l3.5 3.5"/></>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={label}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        height: 32,
+        padding: active ? "0 12px 0 10px" : "0 10px",
+        borderRadius: 999,
+        border: active ? `1px solid ${primary}` : `1px solid ${primary}55`,
+        background: active ? primarySoft : "rgba(9,11,20,0.9)",
+        color: active ? "#fff1c5" : "#dbe6ff",
+        cursor: "pointer",
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{path}</svg>
+      {active && <span style={{ fontSize: 11.5, fontWeight: 900, letterSpacing: .2, whiteSpace: "nowrap" }}>{label}</span>}
     </button>
   );
 }
@@ -528,6 +690,24 @@ function KillerParticipantModeButton({
   );
 }
 
+function KillerLivesHeartButton({ value, active, accent, onClick }: {
+  value: number;
+  active: boolean;
+  accent: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} aria-label={`${value} vie${value > 1 ? "s" : ""}`} aria-pressed={active}
+      style={{ position: "relative", width: 45, height: 45, padding: 0, border: 0, background: "transparent", color: active ? "#fff" : "#d0d3e2", cursor: "pointer", WebkitTapHighlightColor: "transparent", flex: "0 0 45px" }}>
+      <svg viewBox="0 0 24 24" aria-hidden="true" width="45" height="45" style={{ position: "absolute", inset: 0, overflow: "visible", filter: active ? `drop-shadow(0 0 6px ${accent}80)` : "none" }}>
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"
+          fill={active ? `${accent}44` : "rgba(255,255,255,.025)"} stroke={active ? accent : `${accent}88`} strokeWidth={active ? 1.65 : 1.15} strokeLinejoin="round" />
+      </svg>
+      <span style={{ position: "relative", display: "grid", placeItems: "center", height: "100%", paddingTop: 1, boxSizing: "border-box", fontSize: 14, fontWeight: 950, textShadow: active ? `0 0 5px ${accent}90` : "none" }}>{value}</span>
+    </button>
+  );
+}
+
 export default function KillerConfigPage(props: Props) {
   const { store, go, onBack } = props;
 
@@ -590,21 +770,44 @@ export default function KillerConfigPage(props: Props) {
   const [botMemberPage, setBotMemberPage] = React.useState(0);
   const [botMemberError, setBotMemberError] = React.useState("");
   const teamPickerScrollRef = React.useRef<HTMLDivElement>(null);
-  const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>(() => Array.isArray(savedCfg?.selectedBotTeamIds) ? savedCfg.selectedBotTeamIds.map(String) : []);
+  const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>(() => {
+    const size = clampInt(savedCfg?.teamSize, 2, 5, 2);
+    const count = clampInt(savedCfg?.teamCount, 2, KILLER_TEAM_LIMITS.max, 2);
+    const selections = savedCfg?.savedTeamMemberSelections || {};
+    return (Array.isArray(savedCfg?.selectedBotTeamIds) ? savedCfg.selectedBotTeamIds.map(String) : [])
+      .filter((id) => Array.isArray(selections[id]) && new Set(selections[id].map(String)).size === size).slice(0, count);
+  });
   // KILLER: 2 à 4 équipes, 2 à 5 membres chacune (20 participants au maximum).
   // Les contraintes sont choisies AVANT les profils et vérifiées au lancement.
   const [teamCount, setTeamCount] = React.useState<number>(clampInt(savedCfg?.teamCount, 2, KILLER_TEAM_LIMITS.max, 2));
   const [teamSize, setTeamSize] = React.useState<number>(clampInt(savedCfg?.teamSize, 2, 5, 2));
   const [playerFormat, setPlayerFormat] = React.useState<"duel" | "multi">(savedCfg?.playerFormat === "multi" ? "multi" : "duel");
+  const [inputMode, setInputMode] = React.useState<KillerInputMethod>(() => normalizeKillerInputMethod(savedCfg?.inputMode));
+  const cameraReady = React.useMemo(() => {
+    try { return !!(typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia && loadCameraCalibration()); }
+    catch { return false; }
+  }, []);
+  const voiceReady = React.useMemo(() => isKillerVoiceAvailable(), []);
+  const autodartsReady = React.useMemo(() => hasKillerAutoDartsBridge(), []);
+  const inputMethodsAvailability: Record<KillerInputMethod, boolean> = {
+    keypad: true, dartboard: true, voice: voiceReady, camera: cameraReady, autodarts: autodartsReady,
+  };
+  const inputModeReady = inputMethodsAvailability[inputMode];
+  const effectiveInputMode: KillerInputMethod = inputModeReady ? inputMode : "keypad";
+
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, number>>(() => ({ ...(savedCfg?.teamAssignments || {}) }));
   const [teamNames, setTeamNames] = React.useState<string[]>(() => Array.isArray(savedCfg?.teamNames) ? savedCfg.teamNames : ["Équipe A", "Équipe B", "Équipe C", "Équipe D"]);
   // Le mode Teams utilise le même composant et les mêmes sources que X01.
   const [teamsSourceMode, setTeamsSourceMode] = React.useState<"manual" | "saved" | "auto">(
     savedCfg?.teamsSourceMode === "saved" || savedCfg?.teamsSourceMode === "auto" ? savedCfg.teamsSourceMode : "manual"
   );
-  const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>(
-    () => Array.isArray(savedCfg?.savedTeamIds) ? savedCfg.savedTeamIds.map(String) : []
-  );
+  const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>(() => {
+    const size = clampInt(savedCfg?.teamSize, 2, 5, 2);
+    const count = clampInt(savedCfg?.teamCount, 2, KILLER_TEAM_LIMITS.max, 2);
+    const selections = savedCfg?.savedTeamMemberSelections || {};
+    return (Array.isArray(savedCfg?.savedTeamIds) ? savedCfg.savedTeamIds.map(String) : [])
+      .filter((id) => Array.isArray(selections[id]) && new Set(selections[id].map(String)).size === size).slice(0, count);
+  });
   const [savedTeamMemberSelections, setSavedTeamMemberSelections] = React.useState<Record<string, string[]>>(
     () => savedCfg?.savedTeamMemberSelections && typeof savedCfg.savedTeamMemberSelections === "object" ? { ...savedCfg.savedTeamMemberSelections } : {}
   );
@@ -779,7 +982,10 @@ export default function KillerConfigPage(props: Props) {
   const [bullSplash, setBullSplash] = React.useState<boolean>(!isProgressive && savedCfg?.bullSplash === true);
   const [bullHeal, setBullHeal] = React.useState<boolean>(!isProgressive && savedCfg?.bullHeal === true);
   const [bullHealLives, setBullHealLives] = React.useState<number>(isProgressive ? 1 : clampInt(savedCfg?.bullHealLives, 1, 3, 1));
+  const [bullHealFull, setBullHealFull] = React.useState<boolean>(!isProgressive && savedCfg?.bullHealFull === true);
   const [bullRotate, setBullRotate] = React.useState<boolean>(!isProgressive && savedCfg?.bullRotate === true);
+  const [bullRotationMode, setBullRotationMode] = React.useState<"random" | "defined">(!isProgressive && savedCfg?.bullRotationMode === "defined" ? "defined" : "random");
+  const [bullRotationTurns, setBullRotationTurns] = React.useState<number>(isProgressive ? 1 : clampInt(savedCfg?.bullRotationTurns, 1, 5, 1));
 
   // ✅ Bouclier / variantes avancées
   const [shieldOnDBull, setShieldOnDBull] = React.useState<boolean>(!isProgressive && savedCfg?.shieldOnDBull === true);
@@ -807,6 +1013,7 @@ export default function KillerConfigPage(props: Props) {
     setBlindKiller(false);
     setBullSplash(false);
     setBullHeal(false);
+    setBullHealFull(false);
     setBullRotate(false);
     setShieldOnDBull(false);
     setDisarmOnDBull(false);
@@ -822,9 +1029,37 @@ export default function KillerConfigPage(props: Props) {
   const killerRulesVideoIsFrench = String(lang || "fr").toLowerCase() === "fr";
   const killerAwenaRulesPoster = killerRulesVideoIsFrench ? killerAwenaRulesPosterFr : killerAwenaRulesPosterEn;
   const killerRulesVideoDuration = killerRulesVideoIsFrench ? "1:20" : "1:11";
-  const [resInfo, setResInfo] = React.useState<{ title: string; text: string } | null>(null);
+  const [resInfo, setResInfo] = React.useState<{ title: React.ReactNode; text: string } | null>(null);
 
   const contentRef = React.useRef<HTMLDivElement | null>(null);
+
+  const awenaTips = React.useMemo(() => ([
+    "Certaines variantes sont incompatibles : dégâts BULL et soins BULL.",
+    "Auto-pénalité + multiplicateur = une erreur sur ton propre numéro peut coûter très cher.",
+    "Le vol de vies renforce le leader : active-le seulement si tu veux une partie très agressive.",
+    "Blind Killer masque les numéros à l’écran : idéal pour corser les parties entre habitués.",
+    "BULL25 et BULL50 ne servent pas forcément à la même chose : garde des intitulés clairs pour éviter les erreurs.",
+    "La résurrection peut totalement changer le rythme d’une partie : pense à régler aussi le nombre de vies rendues.",
+  ]), []);
+  const awenaTipsBySection = React.useMemo<Record<string, string>>(() => ({
+    "killer-start-order": "L’ordre de départ peut avantager un joueur : en duel, alterner ou tirer au bull est souvent le plus équilibré.",
+    "killer-number-assignment": "Le 1er lancer rend l’attribution des numéros plus fun, mais l’aléatoire est plus rapide à mettre en place.",
+    "killer-lives": "Peu de vies = partie rapide. Beaucoup de vies = plus de suspense et de retournements.",
+    "killer-become": "Choisir DOUBLE pour devenir KILLER rend l’accès au statut plus difficile et plus tactique.",
+    "killer-damage": "Le mode multiplicateur rend les triples beaucoup plus dangereux que le simple −1 par impact.",
+    "killer-variants": "Active seulement les variantes utiles : trop d’options en même temps rendent la lecture du match plus difficile.",
+    "killer-bull-rotation": "Active la rotation seulement si tu veux faire alterner plusieurs fonctions sur le même segment BULL.",
+    "killer-bull": "Règle d’abord les fonctions du 1/2 BULL, puis celles du BULL50 : c’est beaucoup plus clair en partie.",
+    "killer-dbull": "Le BULL50 peut devenir une arme de chaos : dégâts de zone, bouclier ou désarmement selon le réglage choisi.",
+    "killer-bonus": "Le bonus bouclier au choix du secteur est surtout intéressant si l’attribution se fait au 1er lancer.",
+    "killer-resurrection": "Une résurrection unique relance une partie sans la rendre interminable ; l’illimité change complètement l’équilibre.",
+    "killer-input-mode": "Le keypad et la cible fonctionnent directement ; la voix nécessite un navigateur compatible, la caméra une calibration, et AutoDarts une connexion bridge.",
+    "killer-recap": "Vérifie ici le récapitulatif complet avant de lancer : participants, règles, variantes et options BULL.",
+    "awena-intro": "Utilise la vue guidée pour aller à l’essentiel, et la vue complète pour tout personnaliser sur une seule page.",
+  }), []);
+  const [awenaVisibleMode, setAwenaVisibleMode] = React.useState<"guided" | "complete">("complete");
+  const [awenaVisibleSection, setAwenaVisibleSection] = React.useState<string>("awena-intro");
+  const [awenaTipIndex, setAwenaTipIndex] = React.useState(0);
 
   React.useEffect(() => {
     try {
@@ -842,6 +1077,56 @@ export default function KillerConfigPage(props: Props) {
     return () => window.cancelAnimationFrame(raf);
   }, []);
 
+  React.useEffect(() => {
+    const host = contentRef.current;
+    if (!host) return;
+
+    const updateAwenaContext = () => {
+      try {
+        const sectionNodes = Array.from(host.querySelectorAll('[data-mss-guide-section]')) as HTMLElement[];
+        const hostRect = host.getBoundingClientRect();
+        const visible = sectionNodes
+          .map((node) => {
+            const rect = node.getBoundingClientRect();
+            const overlap = Math.min(rect.bottom, hostRect.bottom) - Math.max(rect.top, hostRect.top);
+            return { node, rect, overlap };
+          })
+          .filter(({ rect, overlap }) => rect.height > 0 && overlap > Math.max(24, rect.height * 0.18))
+          .sort((a, b) => a.rect.top - b.rect.top);
+
+        const inferredMode = visible.length <= 3 ? 'guided' : 'complete';
+        setAwenaVisibleMode((prev) => prev === inferredMode ? prev : inferredMode);
+
+        const focus = visible.find(({ node }) => node.dataset.mssGuideSection !== 'awena-intro')?.node || visible[0]?.node || null;
+        const nextSection = focus?.dataset.mssGuideSection || 'awena-intro';
+        setAwenaVisibleSection((prev) => prev === nextSection ? prev : nextSection);
+      } catch {}
+    };
+
+    updateAwenaContext();
+    host.addEventListener('scroll', updateAwenaContext, { passive: true });
+    window.addEventListener('resize', updateAwenaContext);
+    const observer = new MutationObserver(updateAwenaContext);
+    observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden', 'data-mss-guide-section'] });
+    return () => {
+      host.removeEventListener('scroll', updateAwenaContext);
+      window.removeEventListener('resize', updateAwenaContext);
+      observer.disconnect();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (awenaVisibleMode !== 'complete') return;
+    const interval = window.setInterval(() => {
+      setAwenaTipIndex((current) => (current + 1) % awenaTips.length);
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [awenaVisibleMode, awenaTips]);
+
+  const currentAwenaTip = awenaVisibleMode === 'complete'
+    ? awenaTips[awenaTipIndex % awenaTips.length]
+    : (awenaTipsBySection[awenaVisibleSection] || awenaTips[0]);
+
 
   const variantState = React.useMemo(
     () =>
@@ -852,6 +1137,7 @@ export default function KillerConfigPage(props: Props) {
         blindKiller,
         bullSplash,
         bullHeal,
+        bullHealFull,
         shieldOnDBull,
         disarmOnDBull,
         bullRotate,
@@ -866,6 +1152,7 @@ export default function KillerConfigPage(props: Props) {
       blindKiller,
       bullSplash,
       bullHeal,
+      bullHealFull,
       shieldOnDBull,
       disarmOnDBull,
       bullRotate,
@@ -948,12 +1235,18 @@ export default function KillerConfigPage(props: Props) {
   }, [selfHitWhileKiller]);
 
   React.useEffect(() => {
-    if (!bullRotate && bullSplash && bullHeal) setBullHeal(false);
+    if (bullRotate) return;
+    if (bullSplash && bullHeal) setBullHeal(false);
   }, [bullRotate, bullSplash, bullHeal]);
 
   React.useEffect(() => {
-    if (!dbullRotate && shieldOnDBull && disarmOnDBull) setDisarmOnDBull(false);
-  }, [dbullRotate, shieldOnDBull, disarmOnDBull]);
+    if (dbullRotate) return;
+    const active = [bullSplash, bullHealFull, shieldOnDBull, disarmOnDBull].filter(Boolean).length;
+    if (active <= 1) return;
+    if (disarmOnDBull) setDisarmOnDBull(false);
+    else if (shieldOnDBull) setShieldOnDBull(false);
+    else if (bullHealFull) setBullHealFull(false);
+  }, [dbullRotate, bullSplash, bullHealFull, shieldOnDBull, disarmOnDBull]);
 
   // ✅ FIX BLIND: si l'utilisateur passe en "1er lancer", on coupe Blind Killer.
   React.useEffect(() => {
@@ -988,7 +1281,10 @@ export default function KillerConfigPage(props: Props) {
       setBullSplash(c.bullSplash === true);
       setBullHeal(c.bullHeal === true);
       setBullHealLives(clampInt(c.bullHealLives, 1, 3, 1));
+      setBullHealFull(c.bullHealFull === true);
       setBullRotate(c.bullRotate === true);
+      setBullRotationMode(c.bullRotationMode === "defined" ? "defined" : "random");
+      setBullRotationTurns(clampInt(c.bullRotationTurns, 1, 5, 1));
       setShieldOnDBull(c.shieldOnDBull === true);
       setDisarmOnDBull(c.disarmOnDBull === true);
       setDbullRotate(c.dbullRotate === true);
@@ -1001,8 +1297,14 @@ export default function KillerConfigPage(props: Props) {
       setTeamAssignments({ ...(c.teamAssignments || {}) });
       setTeamNames(Array.isArray(c.teamNames) ? [...c.teamNames] : ["Équipe A", "Équipe B", "Équipe C", "Équipe D"]);
       setTeamsSourceMode(c.teamsSourceMode === "saved" || c.teamsSourceMode === "auto" ? c.teamsSourceMode : "manual");
-      setSelectedBotTeamIds(Array.isArray(c.selectedBotTeamIds) ? c.selectedBotTeamIds.map(String) : []);
-      setSelectedStoredTeamIds(Array.isArray(c.savedTeamIds) ? c.savedTeamIds.map(String) : []);
+      const restoredTeamSize = clampInt(c.teamSize, 2, 5, 2);
+      const restoredTeamCount = clampInt(c.teamCount, 2, KILLER_TEAM_LIMITS.max, 2);
+      const restoredSelections = c.savedTeamMemberSelections || {};
+      const validRestoredSelection = (id: string) => Array.isArray(restoredSelections[id]) && new Set(restoredSelections[id].map(String)).size === restoredTeamSize;
+      const restoredStored = (Array.isArray(c.savedTeamIds) ? c.savedTeamIds.map(String) : []).filter(validRestoredSelection).slice(0, restoredTeamCount);
+      const restoredBots = (Array.isArray(c.selectedBotTeamIds) ? c.selectedBotTeamIds.map(String) : []).filter(validRestoredSelection).slice(0, Math.max(0, restoredTeamCount - restoredStored.length));
+      setSelectedBotTeamIds(restoredBots);
+      setSelectedStoredTeamIds(restoredStored);
       setSavedTeamMemberSelections(c.savedTeamMemberSelections && typeof c.savedTeamMemberSelections === "object" ? { ...c.savedTeamMemberSelections } : {});
       setMissAutoHit(c.missAutoHit === true);
       setResurrectionMode(["off", "one_player_once", "all_once", "all"].includes(String(c.resurrectionMode)) ? c.resurrectionMode! : "off");
@@ -1086,6 +1388,37 @@ export default function KillerConfigPage(props: Props) {
     cursor: "pointer",
   };
 
+  // Sélections distinctes : MANUEL n'accepte que des profils locaux humains ;
+  // les bots restent disponibles dans le sélecteur TEAMS BOTS dédié.
+  const humanIds = React.useMemo(() => new Set(humanProfiles.map((p: any) => String(p.id))), [humanProfiles]);
+  const manualSelectedIds = React.useMemo(() => selectedIds.filter((id) => humanIds.has(id)), [selectedIds, humanIds]);
+  function toggleManualTeamPlayer(id: string) {
+    if (!humanIds.has(String(id))) return;
+    setSelectedIds((prev) => {
+      const humans = prev.filter((pid) => humanIds.has(pid));
+      if (humans.includes(id)) return humans.filter((pid) => pid !== id);
+      if (humans.length >= teamCount * teamSize) return humans;
+      return [...humans, id];
+    });
+  }
+  function changeTeamFormat(nextCount: number, nextSize: number) {
+    if (nextCount === teamCount && nextSize === teamSize) {
+      const remembered = [...selectedStoredTeamIds, ...selectedBotTeamIds];
+      const stillCompatible = remembered.length <= nextCount && remembered.every((id) =>
+        Array.isArray(savedTeamMemberSelections[id]) && new Set(savedTeamMemberSelections[id].map(String)).size === nextSize
+      );
+      if (stillCompatible) return;
+    }
+    // Le format choisi a priorité sur un ancien snapshot "Dernière partie".
+    setTeamCount(nextCount);
+    setTeamSize(nextSize);
+    setTeamAssignments({});
+    setSelectedStoredTeamIds([]);
+    setSelectedBotTeamIds([]);
+    setSavedTeamMemberSelections({});
+    setTeamsSourceMode("manual");
+  }
+
   // L'ossature collective KILLER ne change pas : nous adaptons uniquement
   // les sélections X01 à la liste d'équipes transmise au lancement.
   // Un joueur nouvellement sélectionné n'ouvre pas une nouvelle équipe.
@@ -1095,18 +1428,22 @@ export default function KillerConfigPage(props: Props) {
   const manualTeamAssignments = React.useMemo(() => {
     const counts = Array.from({ length: teamCount }, () => 0);
     const assignment: Record<string, number> = {};
-    for (const id of selectedIds) {
+    for (const [position, id] of manualSelectedIds.entries()) {
       const proposed = Number(teamAssignments[id]);
       let team = Number.isInteger(proposed) && proposed >= 0 && proposed < teamCount && counts[proposed] < teamSize ? proposed : -1;
-      if (team < 0) team = counts.findIndex((count) => count < teamSize);
-      // En surnombre : ne pas inventer une équipe supplémentaire.
+      // Répartition Gold / Pink / ... équilibrée, pas un remplissage
+      // aveugle d'une équipe après l'autre.
+      if (team < 0) {
+        const preferred = position % teamCount;
+        team = counts[preferred] < teamSize ? preferred : counts.findIndex((count) => count < teamSize);
+      }
       if (team < 0) continue;
       assignment[id] = team;
       counts[team]++;
     }
     return assignment;
-  }, [selectedIds, teamAssignments, teamCount, teamSize]);
-  const teamMembersByIndex = groupKillerTeamMembers(selectedIds.filter((id) => manualTeamAssignments[id] !== undefined), manualTeamAssignments, teamCount);
+  }, [manualSelectedIds, teamAssignments, teamCount, teamSize]);
+  const teamMembersByIndex = groupKillerTeamMembers(manualSelectedIds.filter((id) => manualTeamAssignments[id] !== undefined), manualTeamAssignments, teamCount);
   const botTeamsCatalog = React.useMemo(() => [
     ...buildX01DartsBotTeams(X01_PRO_BOTS),
     ...storedDartsTeams.filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length >= 2 &&
@@ -1115,11 +1452,17 @@ export default function KillerConfigPage(props: Props) {
       members: (team.playerIds || []).map((id: string) => allAvailableBots.find((bot: any) => String(bot.id) === String(id))).filter(Boolean),
     })),
   ], [storedDartsTeams, allAvailableBots]);
-  const humanStoredDartsTeams = React.useMemo(() => storedDartsTeams.filter((team: any) =>
-    (team.playerIds || []).every((id: string) =>
-      humanProfiles.some((profile: any) => String(profile.id) === String(id))
-    )
-  ), [storedDartsTeams, humanProfiles]);
+  // L'onglet des équipes enregistrées est une bibliothèque, pas la sélection du match.
+  // Une équipe doit rester visible même si un ancien membre n'est pas chargé dans
+  // les profils locaux de cet appareil. Seules les équipes *confirmées 100 % bots*
+  // doivent être rangées dans le sélecteur Teams Bots.
+  const humanStoredDartsTeams = React.useMemo(() => {
+    const botIds = new Set(allAvailableBots.map((bot: any) => String(bot.id)));
+    return storedDartsTeams.filter((team: any) => {
+      const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map(String).filter(Boolean);
+      return ids.length > 0 && !ids.some((id: string) => botIds.has(id));
+    });
+  }, [storedDartsTeams, allAvailableBots]);
   const teamProfiles = React.useMemo(() => {
     const byId = new Map<string, any>();
     for (const p of [...humanProfiles, ...allAvailableBots]) {
@@ -1161,11 +1504,18 @@ export default function KillerConfigPage(props: Props) {
   const validTeams = activeTeamGroups.length === teamCount && activeTeamGroups.every((g) =>
     g.ids.length === teamSize && g.ids.every((id) => !!teamProfiles.find((p: any) => String(p.id) === id))
   ) && new Set(activeTeamGroups.flatMap((g) => g.ids)).size === activeTeamGroups.reduce((sum, g) => sum + g.ids.length, 0)
-    && (teamsSourceMode !== "manual" || selectedIds.length === teamCount * teamSize);
+    && (teamsSourceMode !== "manual" || manualSelectedIds.length === teamCount * teamSize)
+    && (teamsSourceMode !== "manual" || activeTeamGroups.every((g) => g.ids.every((id) => humanIds.has(id))));
   const validPlayers = playerFormat === "duel" ? selectedIds.length === 2 : selectedIds.length >= 2 && selectedIds.length <= 20;
   const canStart = participantMode === "teams" ? validTeams : validPlayers;
   const selectedParticipantIds = participantMode === "teams"
     ? [...new Set(activeTeamGroups.flatMap((g) => g.ids))] : selectedIds;
+
+  const startOrderLabel = ({ random: "Aléatoire", alternate: "Alterné", manual: "Manuel", bull: "Bull" } as Record<string, string>)[startOrderMode] || "Alterné";
+  const numberAssignLabel = ({ none: "Manuel", random: "Aléatoire", throw: "1er lancer" } as Record<string, string>)[numberAssignMode] || "Aléatoire";
+  const resurrectionLabel = ({ off: "OFF", one_player_once: "1 joueur (1 fois)", all_once: "Tous (1 fois)", all: "Tous (illimité)" } as Record<string, string>)[resurrectionMode] || "OFF";
+  const bullFunctionLabels = [bullSplash ? "Dégâts à tous (-1)" : null, bullHeal ? `Soins (+${bullHealLives})` : null].filter(Boolean) as string[];
+  const dbullFunctionLabels = [bullSplash ? "Dégâts à tous (-2)" : null, bullHealFull ? "Soins max" : null, shieldOnDBull ? `Bouclier (${shieldTurns})` : null, disarmOnDBull ? "Désarmement" : null].filter(Boolean) as string[];
   const teamCreateEligibleMembers = teamCreateKind === "bots" ? allAvailableBots : humanProfiles;
   const teamCreatePageSize = 9;
   const teamCreatePages = Math.max(1, Math.ceil(teamCreateEligibleMembers.length / teamCreatePageSize));
@@ -1176,13 +1526,14 @@ export default function KillerConfigPage(props: Props) {
   function setX01ManualTeam(id: string, x01Team: string) {
     const index = x01ManualTeamKeys.findIndex((key) => key === String(x01Team).toLowerCase());
     if (index < 0 || index >= teamCount) return;
+    if (!humanIds.has(String(id))) return;
     const occupied = Object.entries(manualTeamAssignments).filter(([playerId, team]) => playerId !== id && team === index).length;
     if (occupied >= teamSize) return;
     setTeamAssignments((prev) => ({ ...prev, [id]: index }));
   }
   function addStoredTeamSelection(teamId: string, playerIds: string[]) {
     const baseId = String(teamId || "").split("__slot_")[0];
-    const ids = [...new Set(playerIds.map(String))].filter((id) => teamProfiles.some((p: any) => p.id === id));
+    const ids = [...new Set(playerIds.map(String))].filter((id) => humanIds.has(id));
     if (!baseId) return;
     if (ids.length !== teamSize) { alert(`Sélectionne exactement ${teamSize} membres pour cette équipe.`); return; }
     if (selectedStoredTeamIds.length + selectedBotTeamIds.length >= teamCount) { alert(`Maximum ${teamCount} équipes pour ce format.`); return; }
@@ -1456,6 +1807,7 @@ export default function KillerConfigPage(props: Props) {
       teamCount: participantMode === "teams" ? activeTeamGroups.length : undefined,
       teamSize: participantMode === "teams" ? teamSize : undefined,
       playerFormat: participantMode === "players" ? playerFormat : undefined,
+      inputMode: effectiveInputMode,
       teamAssignments: participantMode === "teams" ? { ...manualTeamAssignments } : undefined,
       teamNames: participantMode === "teams" ? [...teamNames] : undefined,
       teamsSourceMode: participantMode === "teams" ? teamsSourceMode : undefined,
@@ -1479,7 +1831,10 @@ export default function KillerConfigPage(props: Props) {
       bullSplash: isProgressive ? false : bullSplash,
       bullHeal: isProgressive ? false : bullHeal,
       bullHealLives: isProgressive ? 1 : clampInt(bullHealLives, 1, 3, 1),
+      bullHealFull: isProgressive ? false : bullHealFull,
       bullRotate: isProgressive ? false : bullRotate,
+      bullRotationMode: isProgressive ? "random" : bullRotationMode,
+      bullRotationTurns: isProgressive ? 1 : clampInt(bullRotationTurns, 1, 5, 1),
 
       shieldOnDBull: isProgressive ? false : shieldOnDBull,
       disarmOnDBull: isProgressive ? false : disarmOnDBull,
@@ -1915,14 +2270,14 @@ export default function KillerConfigPage(props: Props) {
               <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ color: "#e5e7f1", fontSize: 12 }}>Nombre d'équipes</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
-                  {[2,3,4].map((n) => <button key={n} type="button" aria-pressed={teamCount === n} onClick={() => setTeamCount(n)}
+                  {[2,3,4].map((n) => <button key={n} type="button" aria-pressed={teamCount === n} onClick={() => changeTeamFormat(n, teamSize)}
                     style={{ padding: 11, borderRadius: 12, border: `1px solid ${teamCount === n ? primary : `${primary}55`}`, background: teamCount === n ? `${primary}28` : "rgba(255,255,255,.03)", color: teamCount === n ? primary : "#fff", fontWeight: 900, cursor: "pointer" }}>{n}</button>)}
                 </div>
               </div>
               <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ color: "#e5e7f1", fontSize: 12 }}>Joueurs / bots par équipe</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>
-                  {[2,3,4,5].map((n) => <button key={n} type="button" aria-pressed={teamSize === n} onClick={() => setTeamSize(n)}
+                  {[2,3,4,5].map((n) => <button key={n} type="button" aria-pressed={teamSize === n} onClick={() => changeTeamFormat(teamCount, n)}
                     style={{ padding: 11, borderRadius: 12, border: `1px solid ${teamSize === n ? primary : `${primary}55`}`, background: teamSize === n ? `${primary}28` : "rgba(255,255,255,.03)", color: teamSize === n ? primary : "#fff", fontWeight: 900, cursor: "pointer" }}>{n}</button>)}
                 </div>
               </div>
@@ -2116,9 +2471,9 @@ export default function KillerConfigPage(props: Props) {
                       </div>
                     ) : (
                       <TeamsSection
-                        profiles={teamProfiles} selectableProfiles={humanProfiles} allProfiles={teamProfiles} selectedIds={selectedIds}
+                        profiles={humanProfiles} selectableProfiles={humanProfiles} allProfiles={humanProfiles} selectedIds={manualSelectedIds}
                         teamAssignments={Object.fromEntries(Object.entries(manualTeamAssignments).map(([pid, index]) => [pid, x01ManualTeamKeys[Math.max(0, Math.min(3, Number(index)||0))]]))}
-                        setPlayerTeam={setX01ManualTeam} togglePlayer={togglePlayer} sourceMode={teamsSourceMode} setSourceMode={setTeamsSourceMode}
+                        setPlayerTeam={setX01ManualTeam} togglePlayer={toggleManualTeamPlayer} sourceMode={teamsSourceMode} setSourceMode={setTeamsSourceMode}
                         storedTeams={humanStoredDartsTeams} selectedStoredTeamIds={selectedStoredTeamIds} toggleStoredTeam={toggleStoredTeam}
                         addStoredTeamSelection={addStoredTeamSelection} removeStoredTeamSelection={removeStoredTeamSelection}
                         savedTeamMemberSelections={savedTeamMemberSelections} toggleSavedTeamMember={toggleSavedTeamMember}
@@ -2207,12 +2562,10 @@ export default function KillerConfigPage(props: Props) {
             border: "1px solid rgba(255,255,255,0.04)",
           }}
         >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Ordre de départ
-          </div>
-
+          {/* Chaque étape du guide possède son propre titre, jamais celui de l'étape précédente. */}
           {/* ✅ ORDRE DE DÉPART */}
           <div data-mss-guide-section="killer-start-order" data-mss-guide-label="Ordre de départ" style={{ marginTop: 2, marginBottom: 14 }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Ordre de départ</div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 6, flexWrap: "nowrap" }}>
               {KILLER_START_ORDER_OPTIONS.map((option) => (
                 <MssSelectorIconButton
@@ -2259,361 +2612,315 @@ export default function KillerConfigPage(props: Props) {
             </div>
           ) : (
           <div>
-          {/* attribution numéros */}
-          <div data-mss-guide-section="killer-number-assignment" data-mss-guide-label="Attribution des numéros" style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Attribution des numéros</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label="✋ Choix manuel"
-                active={numberAssignMode === "none"}
-                onClick={() => setNumberAssignMode("none")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="🎲 Numéros aléatoires"
-                active={numberAssignMode === "random"}
-                onClick={() => setNumberAssignMode("random")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="🎯 1er lancer = choisir son numéro"
-                active={numberAssignMode === "throw"}
-                onClick={() => {
-                  // si l’utilisateur force "1er lancer" => BLIND OFF
-                  if (blindKiller) setBlindKiller(false);
-                  setNumberAssignMode("throw");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={blindLocksThrow}
-                title={blindLocksThrow ? "Incompatible avec Blind Killer." : undefined}
-              />
+          {/* attribution des secteurs : trois icônes MSS dont la fléchette Cricket d'origine */}
+          <div data-mss-guide-section="killer-number-assignment" data-mss-guide-label="Attribution des secteurs" style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Attribution des secteurs</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+              <MssSelectorIconButton icon="manual-pick" label="Manuel" accent={primary} active={numberAssignMode === "none"} onClick={() => setNumberAssignMode("none")} />
+              <MssSelectorIconButton icon="random-order" label="Aléatoire" accent={primary} active={numberAssignMode === "random"} onClick={() => setNumberAssignMode("random")} />
+              <MssSelectorIconButton icon="dart-throw" label="Fléchette" accent={primary} active={numberAssignMode === "throw"} disabled={blindLocksThrow}
+                onClick={() => { if (blindKiller) setBlindKiller(false); setNumberAssignMode("throw"); }} />
             </div>
-
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              Les sélecteurs de numéros sous les joueurs s’affichent uniquement en “Choix manuel”. En “Numéros aléatoires” ou “1er lancer”, aucun numéro manuel n’est affiché.
-            </div>
-
-            {blindLocksThrow && (
-              <div style={{ marginTop: 6, fontSize: 10.5, color: "#ffb3b3", fontWeight: 800, lineHeight: 1.2 }}>
-                Blind Killer est incompatible avec “1er lancer = choisir son numéro”.
-              </div>
-            )}
+            {(() => {
+              const selectedOption = numberAssignMode === "none"
+                ? { title: "MANUEL", detail: "Attribue manuellement un secteur libre à chaque participant avant de jouer." }
+                : numberAssignMode === "random"
+                  ? { title: "ALÉATOIRE", detail: "Les secteurs sont attribués automatiquement et sans doublons au lancement de la partie." }
+                  : { title: "FLÉCHETTE", detail: "Chaque participant lance une fléchette : le secteur touché devient son numéro de départ." };
+              return <div style={{ marginTop: 10, display: "grid", gap: 4, justifyItems: "center", textAlign: "center" }}>
+                <div style={{ color: primary, fontWeight: 950, letterSpacing: .9, fontSize: 13 }}>{selectedOption.title}</div>
+                <div style={{ color: "#9da5b9", fontSize: 11, lineHeight: 1.45, maxWidth: 425 }}>{selectedOption.detail}</div>
+              </div>;
+            })()}
+            {blindLocksThrow && <div style={{ marginTop: 7, textAlign: "center", fontSize: 11, color: "#ffb3b3" }}>Fléchette indisponible lorsque Blind Killer est activé.</div>}
           </div>
 
-          {/* vies */}
-          <div data-mss-guide-section="killer-lives" data-mss-guide-label="Vies de départ" style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Vies de départ</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {/* vies : boutons en forme de cœur, charte thème MSS */}
+          <div data-mss-guide-section="killer-lives" data-mss-guide-label="Nombre de vies" style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Nombre de vies</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
               {[1, 2, 3, 4, 5, 6].map((n) => (
-                <PillButton
-                  key={n}
-                  label={String(n)}
-                  active={lives === n}
-                  onClick={() => setLives(n)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  compact
-                />
+                <KillerLivesHeartButton key={n} value={n} active={lives === n} onClick={() => setLives(n)} accent={primary} />
               ))}
             </div>
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>Vies identiques pour tous les joueurs.</div>
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8, textAlign: "center" }}>Vies communes aux membres d'une équipe ; identiques pour tous les participants.</div>
           </div>
 
-          {/* become rule */}
-          <div data-mss-guide-section="killer-become" data-mss-guide-label="Devenir KILLER" style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Règle pour devenir KILLER</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label="Toucher son numéro (simple)"
-                active={becomeRule === "single"}
-                onClick={() => setBecomeRule("single")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="Double sur son numéro"
-                active={becomeRule === "double"}
-                onClick={() => setBecomeRule("double")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
+          {/* Devenir KILLER : titre à gauche + logo entre les deux touches, avec les vraies couleurs du keypad MSS (S = gris, D = cyan). */}
+          <div data-mss-guide-section="killer-become" data-mss-guide-label="Devenir KILLER" style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Devenir KILLER</div>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "center", gap: 12, maxWidth: 500, margin: "0 auto" }}>
+              <button type="button" className="mss-hit-s" onClick={() => setBecomeRule("single")} aria-pressed={becomeRule === "single"} style={buildKeypadModeButtonStyle("single", becomeRule === "single")}>
+                SIMPLE
+              </button>
+              <div style={{ display: "grid", placeItems: "center", padding: "0 2px" }}>
+                <img src={killerStatusIcon} alt="KILLER" style={{ width: 42, height: 42, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(247,200,92,.35))" }} />
+              </div>
+              <button type="button" className="mss-hit-d" onClick={() => setBecomeRule("double")} aria-pressed={becomeRule === "double"} style={buildKeypadModeButtonStyle("double", becomeRule === "double")}>
+                DOUBLE
+              </button>
             </div>
           </div>
 
-          {/* damage rule */}
+          {/* Dégâts : deux boutons icônes/texte simples, puis intitulé + détail sous la sélection active. */}
           <div data-mss-guide-section="killer-damage" data-mss-guide-label="Dégâts KILLER" style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Dégâts quand on est KILLER</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label="-1 par hit"
-                active={damageRule === "one"}
-                onClick={() => setDamageRule("one")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="Multiplicateur (S/D/T)"
-                active={damageRule === "multiplier"}
-                onClick={() => setDamageRule("multiplier")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Dégâts</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+              <button type="button" aria-pressed={damageRule === "one"} title="-1 par impact" onClick={() => setDamageRule("one")} style={buildMiniChoiceButtonStyle(damageRule === "one", primary)}>
+                <span style={{ fontSize: 18, fontWeight: 1000, lineHeight: 1 }}>−1</span>
+              </button>
+              <button type="button" aria-pressed={damageRule === "multiplier"} title="Multiplicateur S/D/T" onClick={() => setDamageRule("multiplier")} style={buildMiniChoiceButtonStyle(damageRule === "multiplier", primary)}>
+                <span style={{ fontSize: 20, fontWeight: 1000, lineHeight: 1 }}>X</span>
+              </button>
             </div>
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>Quand tu touches le numéro d’un adversaire vivant.</div>
+            <div style={{ marginTop: 10, display: "grid", gap: 4, textAlign: "center", justifyItems: "center" }}>
+              <strong style={{ color: primary, letterSpacing: .7, fontSize: 12 }}>{damageRule === "one" ? "−1 PAR IMPACT" : "MULTIPLICATEUR (S / D / T)"}</strong>
+              <span style={{ color: "#9da5b9", fontSize: 11, lineHeight: 1.45, maxWidth: 390 }}>{damageRule === "one" ? "Chaque impact valide sur un adversaire retire une vie, quel que soit le multiplicateur." : "Un simple retire 1 vie, un double 2 vies et un triple 3 vies à l'adversaire."}</span>
+            </div>
           </div>
 
           {/* variantes */}
           <div data-mss-guide-container="killer-variants-container" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#9fa4c0", textTransform: "uppercase", letterSpacing: 0.9 }}>
-              Variantes
+            <div style={{ fontSize: 12, fontWeight: 900, color: primary, textTransform: "uppercase", letterSpacing: 0.9 }}>
+              {(awenaVisibleMode === "guided" && ["killer-bull-rotation", "killer-bull", "killer-dbull"].includes(awenaVisibleSection)) ? "Fonctions BULL" : "Variantes avancées"}
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div data-mss-guide-section="killer-variants" data-mss-guide-label="Variantes avancées" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <VariantRow
-                title="Auto-pénalité (toucher son numéro quand KILLER)"
-                desc="Si ON, quand tu es KILLER et que tu touches ton numéro, tu perds des vies (pas mort instant)."
-                value={selfHitWhileKiller}
-                onChange={(v) => setVariant("selfHitWhileKiller", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("selfHitWhileKiller", variantState) && !selfHitWhileKiller}
-                disabledReason={getConflictReason("selfHitWhileKiller", variantState)}
-              />
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div data-mss-guide-section="killer-variants" data-mss-guide-label="Variantes avancées" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <CompactVariantLine
+                  title="Auto-pénalité"
+                  infoTitle="AUTO-PÉNALITÉ"
+                  infoText="Quand un KILLER touche son propre numéro, il perd 1 vie au lieu d'être éliminé instantanément. Si le multiplicateur est activé, la pénalité dépend du simple, double ou triple."
+                  active={selfHitWhileKiller}
+                  onToggle={() => setVariant("selfHitWhileKiller", !selfHitWhileKiller)}
+                  primary={primary}
+                  disabled={isVariantDisabled("selfHitWhileKiller", variantState) && !selfHitWhileKiller}
+                  setResInfo={setResInfo}
+                />
 
-              <VariantRow
-                title="Auto-pénalité = multiplicateur (S/D/T)"
-                desc="Si ON, la pénalité vaut 1/2/3 selon S/D/T (sinon c'est toujours -1)."
-                value={selfHitUsesMultiplier}
-                onChange={(v) => setVariant("selfHitUsesMultiplier", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("selfHitUsesMultiplier", variantState) && !selfHitUsesMultiplier}
-                disabledReason={getConflictReason("selfHitUsesMultiplier", variantState)}
-              />
+                {selfHitWhileKiller && <CompactVariantLine
+                  title="Multiplicateur"
+                  infoTitle="MULTIPLICATEUR AUTO-PÉNALITÉ"
+                  infoText="Disponible uniquement si Auto-pénalité est activée. Quand un KILLER touche son propre numéro : SIMPLE = -1 vie, DOUBLE = -2 vies, TRIPLE = -3 vies. Si le multiplicateur est désactivé, chaque impact retire une seule vie."
+                  active={selfHitUsesMultiplier}
+                  onToggle={() => setVariant("selfHitUsesMultiplier", !selfHitUsesMultiplier)}
+                  primary={primary}
+                  disabled={isVariantDisabled("selfHitUsesMultiplier", variantState) && !selfHitUsesMultiplier}
+                  setResInfo={setResInfo}
+                />}
 
-              <VariantRow
-                title="Vol de vies (Life Steal)"
-                desc="Si ON, les vies perdues par la cible sont transférées au KILLER (plus de chaos)."
-                value={lifeSteal}
-                onChange={(v) => setVariant("lifeSteal", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("lifeSteal", variantState) && !lifeSteal}
-                disabledReason={getConflictReason("lifeSteal", variantState)}
-              />
+                <CompactVariantLine
+                  title="Vol de vies"
+                  infoTitle="VOL DE VIES"
+                  infoText="Si activée, les vies perdues par la cible sont transférées au KILLER."
+                  active={lifeSteal}
+                  onToggle={() => setVariant("lifeSteal", !lifeSteal)}
+                  primary={primary}
+                  disabled={isVariantDisabled("lifeSteal", variantState) && !lifeSteal}
+                  setResInfo={setResInfo}
+                />
 
-              <VariantRow
-                title="Blind Killer (mode aveugle)"
-                desc="Si ON, les numéros sont masqués à l'écran pendant la partie (plus dur, plus fun)."
-                value={blindKiller}
-                onChange={(v) => setVariant("blindKiller", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={(numberAssignMode === "throw" && !blindKiller) || (isVariantDisabled("blindKiller", variantState) && !blindKiller)}
-                disabledReason={
-                  numberAssignMode === "throw"
-                    ? "Incompatible avec “1er lancer = choisir son numéro”."
-                    : getConflictReason("blindKiller", variantState)
-                }
-              />
-
+                <CompactVariantLine
+                  title="Blind Killer"
+                  infoTitle="BLIND KILLER"
+                  infoText={numberAssignMode === "throw" ? "Masque les numéros à l'écran pendant la partie. Incompatible avec “1er lancer = choisir son numéro”." : "Masque les numéros à l'écran pendant la partie pour un mode aveugle plus difficile."}
+                  active={blindKiller}
+                  onToggle={() => setVariant("blindKiller", !blindKiller)}
+                  primary={primary}
+                  disabled={(numberAssignMode === "throw" && !blindKiller) || (isVariantDisabled("blindKiller", variantState) && !blindKiller)}
+                  setResInfo={setResInfo}
+                />
               </div>
 
-              <div
-                data-mss-guide-section="killer-bull"
-                data-mss-guide-label="Fonctions BULL"
-                style={{
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  background: "rgba(0,0,0,0.20)",
-                  padding: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
-                <div style={{ fontWeight: 900, color: "#fff" }}>Fonctions BULL</div>
-                <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25 }}>
-                  Toutes les fonctions déjà existantes du BULL sont regroupées ici pour une lecture plus claire. Une seule fonction BULL doit rester active à la fois, sauf si la rotation est activée.
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div
+                  data-mss-guide-section="killer-bull-rotation"
+                  data-mss-guide-label="Rotation BULL"
+                  style={{
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    background: "rgba(0,0,0,0.20)",
+                    padding: "10px 12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <strong style={{ color: primary, fontSize: 12, letterSpacing: .9 }}>ROTATION BULL</strong>
+                    <button type="button" aria-label="Informations rotation BULL" onClick={() => setResInfo({ title: "ROTATION BULL", text: "Active la rotation si tu veux autoriser plusieurs fonctions sur un même segment BULL. Sans rotation : reste sur une configuration simple et lisible. Avec rotation : tu peux choisir plusieurs fonctions, puis décider si l’alternance est aléatoire ou dans un ordre défini, avec un nombre de tours par fonction." })} style={{ width: 23, height: 23, borderRadius: 99, border: `1px solid ${primary}77`, background: "transparent", color: primary, cursor: "pointer", fontWeight: 900 }}>i</button>
+                  </div>
+
+                  <CompactVariantLine
+                    title={<span style={{ display: "inline-flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}><span>Rotation</span><KeypadBullBadge kind="sbull" /><KeypadBullBadge kind="dbull" /></span>}
+                    infoTitle="ROTATION BULL"
+                    infoText="Si activée : plusieurs fonctions peuvent être sélectionnées pour le 1/2 BULL et le BULL50. Elles alterneront ensuite selon le mode choisi ci-dessous."
+                    active={bullRotate || dbullRotate}
+                    onToggle={() => {
+                      const next = !(bullRotate || dbullRotate);
+                      setBullRotate(next);
+                      setDbullRotate(next);
+                    }}
+                    primary={primary}
+                    setResInfo={setResInfo}
+                  />
+
+                  {(bullRotate || dbullRotate) && (
+                    <div style={{ marginTop: -1, marginLeft: 8, borderLeft: "2px solid rgba(246,196,77,0.28)", paddingLeft: 12, display: "grid", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <RotationModeButton icon="random-order" label="Aléatoire" active={bullRotationMode === "random"} onClick={() => setBullRotationMode("random")} primary={primary} primarySoft={primarySoft} />
+                        <RotationModeButton icon="manual-order" label="Ordre défini" active={bullRotationMode === "defined"} onClick={() => setBullRotationMode("defined")} primary={primary} primarySoft={primarySoft} />
+                      </div>
+                      {bullRotationMode === "defined" && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <RoundChoiceButton
+                              key={`bull-rotation-turns-${n}`}
+                              value={n}
+                              active={bullRotationTurns === n}
+                              onClick={() => setBullRotationTurns(n)}
+                              primary={primary}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <VariantRow
-                  title="BULL = dégâts à tous (SBULL/DBULL)"
-                  desc="Si ON : SBULL enlève 1 vie à chaque adversaire, DBULL enlève 2 vies à chaque adversaire."
-                  value={bullSplash}
-                  onChange={(v) => setVariant("bullSplash", v)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
-                  disabledReason={getConflictReason("bullSplash", variantState)}
-                />
+                <div
+                  data-mss-guide-section="killer-bull"
+                  data-mss-guide-label="Fonctions 1/2 BULL"
+                  style={{
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    background: "rgba(0,0,0,0.20)",
+                    padding: "10px 12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <KeypadBullBadge kind="sbull" />
+                    <strong style={{ color: primary, fontSize: 12, letterSpacing: .9 }}>OPTIONS DU 1/2 BULL</strong>
+                    <button type="button" aria-label="Informations 1/2 BULL" onClick={() => setResInfo({ title: "1/2 BULL (BULL25)", text: "Le 1/2 BULL correspond au bull extérieur vert. Tu peux lui attribuer une fonction simple (dégâts ou soins). Si la rotation est active, plusieurs fonctions peuvent cohabiter et alterner." })} style={{ width: 23, height: 23, borderRadius: 99, border: `1px solid ${primary}77`, background: "transparent", color: primary, cursor: "pointer", fontWeight: 900 }}>i</button>
+                  </div>
 
-                <VariantRow
-                  title="BULL = soins (récupérer des vies)"
-                  desc="Si ON : toucher BULL ou DBULL rend un nombre de vies configurable entre 1 et 3."
-                  value={bullHeal}
-                  onChange={(v) => setVariant("bullHeal", v)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  disabled={isVariantDisabled("bullHeal", variantState as any) && !bullHeal}
-                  disabledReason={getConflictReason("bullHeal", variantState as any)}
-                />
+                  <VariantRow
+                    title="Dégâts à tous (−1)"
+                    desc="Quand cette fonction est active, toucher 1/2 BULL enlève 1 vie à chaque adversaire vivant."
+                    value={bullSplash}
+                    onChange={(v) => setVariant("bullSplash", v)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
+                    disabledReason={getConflictReason("bullSplash", variantState)}
+                    setResInfo={setResInfo}
+                  />
 
-                {bullHeal && (
-                  <div
-                    style={{
-                      marginTop: -2,
-                      marginLeft: 8,
-                      borderLeft: "2px solid rgba(119,255,155,0.35)",
-                      paddingLeft: 12,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, color: "#9fa4c0", fontWeight: 800 }}>
-                      Nombre de vies rendues
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <VariantRow
+                    title="Soins"
+                    desc="Quand cette fonction est active, toucher 1/2 BULL permet de regagner des vies selon le choix ci-dessous."
+                    value={bullHeal}
+                    onChange={(v) => setVariant("bullHeal", v)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    disabled={isVariantDisabled("bullHeal", variantState as any) && !bullHeal}
+                    disabledReason={getConflictReason("bullHeal", variantState as any)}
+                    setResInfo={setResInfo}
+                  />
+
+                  {bullHeal && (
+                    <div style={{ marginTop: -1, marginLeft: 8, borderLeft: "2px solid rgba(119,255,155,0.35)", paddingLeft: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       {[1, 2, 3].map((n) => (
-                        <PillButton
-                          key={`bull-heal-lives-${n}`}
-                          label={`+${n} vie${n > 1 ? "s" : ""}`}
-                          active={bullHealLives === n}
-                          onClick={() => setBullHealLives(n)}
-                          primary={primary}
-                          primarySoft={primarySoft}
-                          compact
-                        />
+                        <HeartLivesButton key={`bull-heal-lives-${n}`} value={n} active={bullHealLives === n} onClick={() => setBullHealLives(n)} primary={primary} />
                       ))}
                     </div>
-                  </div>
-                )}
-
-                <VariantRow
-                  title="Rotation BULL (1 tour / fonction)"
-                  desc="Si ON : les fonctions BULL activées tournent automatiquement à chaque changement de tour. Si deux fonctions sont ON, elles alternent tour après tour."
-                  value={bullRotate}
-                  onChange={(v) => setBullRotate(v)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                />
-
-                {bullRotate && (
-                  <div style={{ marginTop: -2, marginLeft: 8, borderLeft: "2px solid rgba(247,200,92,0.35)", paddingLeft: 12, fontSize: 11, color: "#9fa4c0", lineHeight: 1.35 }}>
-                    Fonction active = index du tour courant modulo nombre de fonctions BULL actives.
-Active uniquement parmi les fonctions cochées ci-dessus.
-                  </div>
-                )}
-              </div>
-
-              <div
-                data-mss-guide-section="killer-dbull"
-                data-mss-guide-label="Fonctions DBULL"
-                style={{
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  background: "rgba(0,0,0,0.20)",
-                  padding: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
-                <div style={{ fontWeight: 900, color: "#fff" }}>Fonctions DBULL</div>
-                <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25 }}>
-                  Une seule fonction DBULL peut être active en même temps. Le désarmement retire le statut KILLER à tous les autres killers sauf le tireur. Le DBULL peut aussi conserver la fonction dégâts à tous (−2).
+                  )}
                 </div>
 
-                <VariantRow
-                  title="DBULL = dégâts à tous (-2)"
-                  desc="Si ON : lorsque la fonction dégâts de zone est active, toucher DBULL enlève 2 vies à chaque adversaire vivant. Cette fonction peut aussi entrer dans la rotation DBULL."
-                  value={bullSplash}
-                  onChange={(v) => setVariant("bullSplash", v)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
-                  disabledReason={getConflictReason("bullSplash", variantState)}
-                />
-
-                <VariantRow
-                  title="DBULL = bouclier"
-                  desc="Si ON : toucher DBULL donne un bouclier temporaire. Un DOUBLE adverse sur le chiffre du joueur protégé casse entièrement le bouclier. Un TRIPLE l'affaiblit de moitié. Deux triples l'annulent."
-                  value={shieldOnDBull}
-                  onChange={(v) => setVariant("shieldOnDBull", v)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  disabled={isVariantDisabled("shieldOnDBull", variantState) && !shieldOnDBull}
-                  disabledReason={getConflictReason("shieldOnDBull", variantState)}
-                />
-
-                {shieldOnDBull && (
-                  <div
-                    style={{
-                      marginTop: -2,
-                      marginLeft: 8,
-                      borderLeft: "2px solid rgba(94,234,212,0.35)",
-                      paddingLeft: 12,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, color: "#9fa4c0", fontWeight: 800 }}>
-                      Durée du bouclier (tours du joueur)
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <PillButton
-                          key={`shield-turns-${n}`}
-                          label={`${n} tour${n > 1 ? "s" : ""}`}
-                          active={shieldTurns === n}
-                          onClick={() => setShieldTurns(n)}
-                          primary={primary}
-                          primarySoft={primarySoft}
-                          compact
-                        />
-                      ))}
-                    </div>
+                <div
+                  data-mss-guide-section="killer-dbull"
+                  data-mss-guide-label="Fonctions BULL50"
+                  style={{
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    background: "rgba(0,0,0,0.20)",
+                    padding: "10px 12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <KeypadBullBadge kind="dbull" />
+                    <strong style={{ color: primary, fontSize: 12, letterSpacing: .9 }}>OPTIONS DU BULL</strong>
+                    <button type="button" aria-label="Informations BULL50" onClick={() => setResInfo({ title: "BULL50", text: "Le BULL50 correspond au centre rouge, aussi appelé DBULL. Tu peux lui attribuer des dégâts de zone, un bouclier, des soins max ou un désarmement. Si la rotation est activée, plusieurs fonctions peuvent être retenues et alterner." })} style={{ width: 23, height: 23, borderRadius: 99, border: `1px solid ${primary}77`, background: "transparent", color: primary, cursor: "pointer", fontWeight: 900 }}>i</button>
                   </div>
-                )}
 
-                <VariantRow
-                  title="DBULL = désarmement"
-                  desc="Si ON : toucher DBULL désarme tous les autres killers sauf le tireur. Ils repassent au statut de base et doivent retoucher leur chiffre pour redevenir killer."
-                  value={disarmOnDBull}
-                  onChange={(v) => setVariant("disarmOnDBull", v)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  disabled={isVariantDisabled("disarmOnDBull", variantState as any) && !disarmOnDBull}
-                  disabledReason={getConflictReason("disarmOnDBull", variantState as any)}
-                />
+                  <VariantRow
+                    title="Dégâts à tous (−2)"
+                    desc="Quand cette fonction est active, toucher BULL50 enlève 2 vies à chaque adversaire vivant."
+                    value={bullSplash}
+                    onChange={(v) => setVariant("bullSplash", v)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
+                    disabledReason={getConflictReason("bullSplash", variantState)}
+                    setResInfo={setResInfo}
+                  />
 
-                <VariantRow
-                  title="Rotation DBULL (1 tour / fonction)"
-                  desc="Si ON : les fonctions DBULL activées tournent automatiquement à chaque changement de tour. Si dégâts à tous, bouclier et/ou désarmement sont ON, elles alternent tour après tour."
-                  value={dbullRotate}
-                  onChange={(v) => setDbullRotate(v)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                />
+                  <VariantRow
+                    title="Bouclier"
+                    desc="Toucher BULL50 donne un bouclier temporaire au joueur. Sa durée se règle ci-dessous."
+                    value={shieldOnDBull}
+                    onChange={(v) => setVariant("shieldOnDBull", v)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    disabled={isVariantDisabled("shieldOnDBull", variantState) && !shieldOnDBull}
+                    disabledReason={getConflictReason("shieldOnDBull", variantState)}
+                    setResInfo={setResInfo}
+                  />
 
-                {dbullRotate && (
-                  <div style={{ marginTop: -2, marginLeft: 8, borderLeft: "2px solid rgba(247,200,92,0.35)", paddingLeft: 12, fontSize: 11, color: "#9fa4c0", lineHeight: 1.35 }}>
-                    Fonction active = index du tour courant modulo nombre de fonctions DBULL actives.
-Active uniquement parmi les fonctions cochées ci-dessus.
-                  </div>
-                )}
+                  {shieldOnDBull && (
+                    <div style={{ marginTop: -1, marginLeft: 8, borderLeft: "2px solid rgba(94,234,212,0.35)", paddingLeft: 12, display: "grid", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <RoundChoiceButton key={`shield-turns-${n}`} value={n} active={shieldTurns === n} onClick={() => setShieldTurns(n)} primary={primary} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <VariantRow
+                    title="Soins max"
+                    desc="Toucher BULL50 restaure toutes les vies du joueur actif."
+                    value={bullHealFull}
+                    onChange={(v) => setBullHealFull(v)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    setResInfo={setResInfo}
+                  />
+
+                  <VariantRow
+                    title="Désarmement"
+                    desc="Toucher BULL50 désarme tous les autres KILLERS. Ils doivent retoucher leur secteur pour redevenir KILLER."
+                    value={disarmOnDBull}
+                    onChange={(v) => setVariant("disarmOnDBull", v)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    disabled={isVariantDisabled("disarmOnDBull", variantState as any) && !disarmOnDBull}
+                    disabledReason={getConflictReason("disarmOnDBull", variantState as any)}
+                    setResInfo={setResInfo}
+                  />
+                </div>
               </div>
 
-              <div data-mss-guide-section="killer-bonus" data-mss-guide-label="Bonus & MISS" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div data-mss-guide-section="killer-bonus" data-mss-guide-label="Bonus & MISS" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <VariantRow
-                title="Bonus bouclier au choix du numéro"
-                desc="En mode “1er lancer = choisir son numéro” : D = bouclier 2 tours, T = 3 tours, BULL = choix libre + 2 tours, DBULL = choix libre + 3 tours."
+                title="BONUS BOUCLIER AU CHOIX DU SECTEUR"
+                desc="En mode 1er lancer : DOUBLE donne 2 tours de bouclier, TRIPLE 3 tours, BULL25 (vert) permet un choix libre + 2 tours, BULL50 (rouge / DBULL) un choix libre + 3 tours."
                 value={selectBonusShield}
                 onChange={(v) => setVariant("selectBonusShield", v)}
                 primary={primary}
@@ -2624,17 +2931,19 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                     ? "Disponible uniquement avec “1er lancer = choisir son numéro”."
                     : getConflictReason("selectBonusShield", variantState)
                 }
+                  setResInfo={setResInfo}
               />
 
               <VariantRow
                 title="MISS = auto-hit"
-                desc="Si ON : toute fléchette hors cible retire automatiquement 1 vie au joueur actif."
+                desc="Si activé : une fléchette MISS (hors cible) retire automatiquement 1 vie au joueur actif."
                 value={missAutoHit}
                 onChange={(v) => setVariant("missAutoHit", v)}
                 primary={primary}
                 primarySoft={primarySoft}
                 disabled={isVariantDisabled("missAutoHit", variantState) && !missAutoHit}
                 disabledReason={getConflictReason("missAutoHit", variantState)}
+                  setResInfo={setResInfo}
               />
 
 
@@ -2651,170 +2960,165 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                   padding: 12,
                 }}
               >
-                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>
-                  Résurrection
+                <div style={{ textAlign: "center", color: primary, fontWeight: 950, fontSize: 13, letterSpacing: 1, marginBottom: 12 }}>RÉSURRECTION</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 9 }}>
+                  {([
+                    ["off", "Résurrection désactivée", "revive-off"],
+                    ["one_player_once", "Un joueur une seule fois", "revive-once"],
+                    ["all_once", "Chaque joueur une fois", "revive-all-once"],
+                    ["all", "Résurrection illimitée", "revive-unlimited"],
+                  ] as const).map(([mode, label, icon]) => (
+                    <MssSelectorIconButton key={mode} icon={icon} label={label} accent={primary} active={resurrectionMode === mode} onClick={() => setResurrectionMode(mode)} />
+                  ))}
                 </div>
-                <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25, marginBottom: 10 }}>
-                  Si un joueur touche le numéro d’un joueur DEAD, il peut lui redonner {resurrectionLives} vie(s), selon le mode choisi.
+                <div style={{ display: "grid", gap: 5, textAlign: "center", justifyItems: "center" }}>
+                  <strong style={{ fontSize: 11, color: primary, letterSpacing: .6 }}>
+                    {{ off: "OFF", one_player_once: "1 JOUEUR (1 FOIS)", all_once: "TOUS (1 FOIS)", all: "TOUS (ILLIMITÉ)" }[resurrectionMode]}
+                  </strong>
+                  <span style={{ fontSize: 10.5, lineHeight: 1.45, color: "#9da5b9", maxWidth: 390 }}>
+                    {{
+                      off: "Aucune résurrection possible.",
+                      one_player_once: "Une seule résurrection dans toute la partie.",
+                      all_once: "Chaque joueur peut revenir une seule fois.",
+                      all: "Chaque joueur peut revenir autant de fois que nécessaire.",
+                    }[resurrectionMode]}
+                  </span>
                 </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {/* OFF */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <PillButton
-                      label="OFF"
-                      active={resurrectionMode === "off"}
-                      onClick={() => setResurrectionMode("off")}
-                      primary={primary}
-                      primarySoft={primarySoft}
-                      compact
-                    />
-                    <button
-                      type="button"
-                      aria-label="Info OFF"
-                      onClick={() => setResInfo({ title: "OFF", text: "Aucune résurrection possible." })}
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(255,255,255,0.06)",
-                        color: "rgba(255,255,255,0.70)",
-                        fontSize: 11,
-                        fontWeight: 900,
-                        lineHeight: "18px",
-                        textAlign: "center",
-                        cursor: "pointer",
-                      }}
-                      title="Détails"
-                    >
-                      i
-                    </button>
-                  </div>
-                
-                  {/* 1 Joueur (1×) */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <PillButton
-                      label="1 Joueur (1×)"
-                      active={resurrectionMode === "one_player_once"}
-                      onClick={() => setResurrectionMode("one_player_once")}
-                      primary={primary}
-                      primarySoft={primarySoft}
-                      compact
-                    />
-                    <button
-                      type="button"
-                      aria-label="Info 1 Joueur"
-                      onClick={() => setResInfo({ title: "1 Joueur (1×)", text: "Une seule résurrection possible dans toute la partie. Un seul joueur (au total) peut revenir une fois." })}
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(255,255,255,0.06)",
-                        color: "rgba(255,255,255,0.70)",
-                        fontSize: 11,
-                        fontWeight: 900,
-                        lineHeight: "18px",
-                        textAlign: "center",
-                        cursor: "pointer",
-                      }}
-                      title="Détails"
-                    >
-                      i
-                    </button>
-                  </div>
-                
-                  {/* All (1×) */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <PillButton
-                      label="All (1×)"
-                      active={resurrectionMode === "all_once"}
-                      onClick={() => setResurrectionMode("all_once")}
-                      primary={primary}
-                      primarySoft={primarySoft}
-                      compact
-                    />
-                    <button
-                      type="button"
-                      aria-label="Info All 1×"
-                      onClick={() => setResInfo({ title: "All (1×)", text: "Chaque joueur peut être ressuscité une seule fois maximum." })}
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(255,255,255,0.06)",
-                        color: "rgba(255,255,255,0.70)",
-                        fontSize: 11,
-                        fontWeight: 900,
-                        lineHeight: "18px",
-                        textAlign: "center",
-                        cursor: "pointer",
-                      }}
-                      title="Détails"
-                    >
-                      i
-                    </button>
-                  </div>
-                
-                  {/* All (illimité) */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <PillButton
-                      label="All (illimité)"
-                      active={resurrectionMode === "all"}
-                      onClick={() => setResurrectionMode("all")}
-                      primary={primary}
-                      primarySoft={primarySoft}
-                      compact
-                    />
-                    <button
-                      type="button"
-                      aria-label="Info All illimité"
-                      onClick={() => setResInfo({ title: "All (illimité)", text: "Chaque joueur peut être ressuscité autant de fois que nécessaire." })}
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(255,255,255,0.06)",
-                        color: "rgba(255,255,255,0.70)",
-                        fontSize: 11,
-                        fontWeight: 900,
-                        lineHeight: "18px",
-                        textAlign: "center",
-                        cursor: "pointer",
-                      }}
-                      title="Détails"
-                    >
-                      i
-                    </button>
-                  </div>
-                </div>
-
                 {resurrectionMode !== "off" && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 8 }}>Vies données au ressuscité</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {[1, 2, 3, 4, 5, 6].map((n) => (
-                        <PillButton
-                          key={n}
-                          label={String(n)}
-                          active={resurrectionLives === n}
-                          onClick={() => setResurrectionLives(n)}
-                          primary={primary}
-                          primarySoft={primarySoft}
-                          compact
-                        />
-                      ))}
-                    </div>
+                  <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                    {[1,2,3,4,5,6].map((n) => (
+                      <HeartLivesButton key={n} value={n} active={resurrectionLives === n} onClick={() => setResurrectionLives(n)} primary={primary} />
+                    ))}
                   </div>
                 )}
               </div>
+
+              {/* Méthode de saisie commune : une seule décision avant la synthèse de partie. */}
+              <div data-mss-guide-section="killer-input-mode" data-mss-guide-label="Mode de saisie" style={{ marginBottom: 13 }}>
+                <MssConfigCaption accent={primary}>MODE DE SAISIE</MssConfigCaption>
+                <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+                  {KILLER_INPUT_METHODS.map((method) => (
+                    <MssInputMethodChoice key={method.id} label={method.label} icon={method.id} accent={primary}
+                      active={inputMode === method.id} disabled={!inputMethodsAvailability[method.id]}
+                      onClick={() => setInputMode(method.id)} />
+                  ))}
+                </div>
+                <div style={{ textAlign: "center", marginTop: 9, display: "grid", gap: 5 }}>
+                  <strong style={{ color: primary, fontSize: 12, letterSpacing: .7 }}>
+                    {KILLER_INPUT_METHODS.find((entry) => entry.id === inputMode)?.label || "KEYPAD"}
+                  </strong>
+                  <span style={{ color: "#aeb6ca", fontSize: 11, lineHeight: 1.45 }}>
+                    {KILLER_INPUT_METHODS.find((entry) => entry.id === inputMode)?.description}
+                  </span>
+                  {(!cameraReady || !voiceReady || !autodartsReady) && (
+                    <div style={{ fontSize: 10.5, lineHeight: 1.45, color: "#8d97b0" }}>
+                      {!voiceReady ? "Vocal : navigateur incompatible.  " : ""}
+                      {!cameraReady ? "Caméra : calibration et accès requis.  " : ""}
+                      {!autodartsReady ? "AutoDarts : bridge non configuré." : ""}
+                    </div>
+                  )}
+                  {!inputModeReady && <div role="status" style={{ color: "#ffb87a", fontSize: 11 }}>Cette ancienne préférence est indisponible : KEY­PAD sera utilisé pour cette partie.</div>}
+                </div>
+              </div>
+
+              {/* Fiche de match premium : composition et choix réellement appliqués, sans répétitions. */}
+              <div data-mss-guide-section="killer-recap" data-mss-guide-label="Récapitulatif"
+                style={{ border: `1px solid ${primary}55`, borderRadius: 16, background: "linear-gradient(155deg,rgba(25,26,37,.9),rgba(9,11,21,.94))", padding: "12px 12px 10px", display: "grid", gap: 12, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+                    <strong style={{ fontSize: 14, fontWeight: 1000, letterSpacing: .65, color: primary }}>FICHE DE PARTIE</strong>
+                    <span style={{ color: "#afb8cb", fontSize: 11 }}>
+                      {participantMode === "teams" ? `${activeTeamGroups.length} équipes · ${teamSize} membres / équipe` : `${selectedIds.length} joueurs · ${playerFormat === "duel" ? "Duel" : "Multi"}`}
+                    </span>
+                  </div>
+                  <span role="status" style={{ border: `1px solid ${canStart ? primary : "#fb7185"}55`, borderRadius: 20, padding: "5px 9px", fontWeight: 950, fontSize: 10, whiteSpace: "nowrap", color: canStart ? primary : "#fb7185" }}>
+                    {canStart ? "✓ PRÊT" : "À COMPLÉTER"}
+                  </span>
+                </div>
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 9 }}>
+                  <MssConfigCaption accent={primary}>{participantMode === "teams" ? "ÉQUIPES EN JEU" : "JOUEURS EN JEU"}</MssConfigCaption>
+                  <div style={{ display: "grid", gap: 5 }}>
+                    {participantMode === "teams" ? activeTeamGroups.map((group, index) => (
+                      <div key={`${group.teamId}-${index}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 7px", borderRadius: 10, minWidth: 0, background: "rgba(255,255,255,.025)", borderLeft: `2px solid ${group.color || primary}` }}>
+                        <KillerRecapAvatar name={group.name} src={group.logo} size={39} color={group.color || primary} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 950, color: group.color || "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.name}</div>
+                          <div style={{ fontSize: 10, color: "#bbc2d3", overflowWrap: "anywhere", lineHeight: 1.3 }}>{group.ids.map((id) => resolvePlayer(id)?.name || id).join(" · ")}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 2, flexShrink: 0, alignItems: "center" }}>
+                          {group.ids.slice(0, 5).map((id) => { const member = resolvePlayer(id); return <KillerRecapAvatar key={id} name={member?.name || id} src={member?.avatarDataUrl} color={primary} size={23} />; })}
+                        </div>
+                      </div>
+                    )) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+                        {selectedIds.map((id) => { const player = resolvePlayer(id); return (
+                          <div key={id} style={{ display: "flex", alignItems: "center", minWidth: 0, gap: 7, padding: 5 }}>
+                            <KillerRecapAvatar name={player?.name || id} src={player?.avatarDataUrl} color={primary} size={29}/>
+                            <span style={{ overflowWrap: "anywhere", fontWeight: 850, fontSize: 11, minWidth: 0 }}>{player?.name || id}</span>
+                          </div>
+                        ); })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 8 }}>
+                  <MssConfigCaption accent={primary}>RÈGLES ESSENTIELLES</MssConfigCaption>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", columnGap: 13, rowGap: 0 }}>
+                    <MssConfigFact label="Vies" value={`${lives} / ${participantMode === "teams" ? "équipe" : "joueur"}`} />
+                    <MssConfigFact label="Killer" value={becomeRule === "double" ? "Double" : "Simple"}/>
+                    <MssConfigFact label="Départ" value={startOrderLabel}/>
+                    <MssConfigFact label="Secteurs" value={numberAssignLabel === "1er lancer" ? "Fléchette" : numberAssignLabel}/>
+                    <MssConfigFact label="Dégâts" value={damageRule === "multiplier" ? "S / D / T" : "−1 / impact"}/>
+                    <MssConfigFact label="Résurrection" value={resurrectionMode === "off" ? "OFF" : `${resurrectionLabel} · +${resurrectionLives}`}/>
+                  </div>
+                </div>
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 8 }}>
+                  <MssConfigCaption accent={primary}>SAISIE & VARIANTES</MssConfigCaption>
+                  <MssConfigFact label="Saisie" value={KILLER_INPUT_METHODS.find((method) => method.id === effectiveInputMode)?.label || "KEYPAD"} />
+                  <div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {[
+                      selfHitWhileKiller ? `Auto-pénalité${selfHitUsesMultiplier ? " ×S/D/T" : ""}` : null,
+                      lifeSteal ? "Vol de vies" : null,
+                      blindKiller ? "Blind Killer" : null,
+                      selectBonusShield && numberAssignMode === "throw" ? "Bonus bouclier" : null,
+                      missAutoHit ? "MISS auto-hit" : null,
+                    ].filter(Boolean).length ? [
+                      selfHitWhileKiller ? `Auto-pénalité${selfHitUsesMultiplier ? " ×S/D/T" : ""}` : null,
+                      lifeSteal ? "Vol de vies" : null,
+                      blindKiller ? "Blind Killer" : null,
+                      selectBonusShield && numberAssignMode === "throw" ? "Bonus bouclier" : null,
+                      missAutoHit ? "MISS auto-hit" : null,
+                    ].filter(Boolean).map((item) => <span key={String(item)} style={{ fontSize: 10, borderRadius: 20, padding: "4px 8px", border: `1px solid ${primary}4d`, color: "#e2e5ee", background: `${primary}11` }}>{item}</span>) : <span style={{ fontSize: 10, color: "#969db1" }}>Aucune variante supplémentaire</span>}
+                  </div>
+                </div>
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 8 }}>
+                  <MssConfigCaption accent={primary}>FONCTIONS BULL</MssConfigCaption>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+                      <KeypadBullBadge kind="sbull" />
+                      <span style={{ fontWeight: 700, fontSize: 10.5, lineHeight: 1.4, minWidth: 0, color: bullFunctionLabels.length ? "#eceef6" : "#969db1" }}>{bullFunctionLabels.join(" · ") || "Sans fonction"}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+                      <KeypadBullBadge kind="dbull" />
+                      <span style={{ fontWeight: 700, fontSize: 10.5, lineHeight: 1.4, minWidth: 0, color: dbullFunctionLabels.length ? "#eceef6" : "#969db1" }}>{dbullFunctionLabels.join(" · ") || "Sans fonction"}</span>
+                    </div>
+                    {(bullRotate || dbullRotate) && <span style={{ color: "#aeb5c9", fontSize: 10 }}>↻ Rotation {bullRotationMode === "defined" ? `${bullRotationTurns} tour(s) par fonction` : "aléatoire"}</span>}
+                  </div>
+                </div>
+                {!canStart && <p style={{ fontSize: 10.5, margin: 0, color: "#fca5a5" }}>Complète les choix requis avant de lancer la partie.</p>}
+              </div>
+
 </div>
 
-            <div style={{ marginTop: 10, fontSize: 10.5, color: "#7c80a0", lineHeight: 1.35 }}>
-              Astuce : certaines variantes sont <b>exclusives</b> pour garder un gameplay lisible (ex : BULL dégâts vs BULL soins).
+            {/* Astuce dans la bulle dessinée d'Awena : asset existant, sans duplication. */}
+            <div role="note" aria-label="Astuce Awena" style={{ width: "100%", maxWidth: 208, margin: "10px auto 0", position: "relative", containerType: "inline-size", pointerEvents: "none" }}>
+              <img src={awenaConseils} alt="Awena te donne une astuce" style={{ display: "block", width: "100%", height: "auto" }} />
+              <div style={{ position: "absolute", top: "16%", left: "39%", width: "56%", height: "68%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4%", textAlign: "center", color: "#251c28", overflow: "hidden", padding: "0 1.5%", boxSizing: "border-box" }}>
+                <strong style={{ fontSize: "clamp(8.5px,4.2cqw,10.5px)", fontWeight: 1000, color: "#d81e2b", letterSpacing: .35, lineHeight: 1.05 }}>ASTUCE</strong>
+                <span style={{ fontSize: "clamp(7px,3.15cqw,8.6px)", fontWeight: 800, lineHeight: 1.12, overflowWrap: "break-word", maxWidth: "100%" }}>
+                  {currentAwenaTip}
+                </span>
+              </div>
             </div>
           </div>
           </div>
@@ -3162,17 +3466,168 @@ Active uniquement parmi les fonctions cochées ci-dessus.
   );
 }
 
+
+// Ne pas dupliquer les couleurs ici : elles viennent de mss-scoring-palette.css,
+// comme les touches du Keypad X01. L'état sélectionné ne modifie que le halo.
+function buildKeypadModeButtonStyle(_kind: "single" | "double", active: boolean): React.CSSProperties {
+  return {
+    minWidth: 0,
+    minHeight: 58,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: "solid",
+    padding: "12px 8px",
+    fontSize: 13,
+    fontWeight: 950,
+    letterSpacing: 0.6,
+    cursor: "pointer",
+    textTransform: "uppercase",
+    outline: active ? "2px solid #f6c44d" : "none",
+    outlineOffset: active ? 3 : 0,
+    boxShadow: active ? "0 0 15px rgba(246,196,77,.18)" : "none",
+  };
+}
+
+function buildMiniChoiceButtonStyle(active: boolean, accent: string): React.CSSProperties {
+  return {
+    width: 64,
+    height: 56,
+    borderRadius: 18,
+    border: active ? `1px solid ${accent}` : `1px solid ${accent}55`,
+    background: active ? `${accent}20` : "rgba(255,255,255,.035)",
+    color: accent,
+    boxShadow: active ? `0 0 12px ${accent}33` : "none",
+    display: "grid",
+    placeItems: "center",
+    cursor: "pointer",
+  };
+}
+
+/** Ligne de variante KILLER : titre + infomini + voyant rond, sans description dans la page. */
+function CompactVariantLine({
+  title,
+  infoTitle,
+  infoText,
+  active,
+  onToggle,
+  primary,
+  disabled,
+  setResInfo,
+}: {
+  title: React.ReactNode;
+  infoTitle: string;
+  infoText: string;
+  active: boolean;
+  onToggle: () => void;
+  primary: string;
+  disabled?: boolean;
+  setResInfo: (v: { title: string; text: string } | null) => void;
+}) {
+  const isDisabled = !!disabled;
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0,1fr) auto",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 38,
+        padding: "3px 2px",
+        borderBottom: "1px solid rgba(255,255,255,.045)",
+        opacity: isDisabled ? 0.52 : 1,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 11.8,
+            lineHeight: 1.15,
+            color: "#f0f2ff",
+            fontWeight: 900,
+            textTransform: "uppercase",
+            letterSpacing: 0.35,
+            overflow: "hidden",
+            minWidth: 0,
+          }}
+        >
+          {title}
+        </div>
+        <button
+          type="button"
+          aria-label={`Informations : ${infoTitle}`}
+          title={`Informations : ${infoTitle}`}
+          onClick={() => setResInfo({ title: infoTitle, text: infoText })}
+          style={{
+            width: 21,
+            height: 21,
+            flex: "0 0 auto",
+            borderRadius: 999,
+            border: `1px solid ${primary}77`,
+            background: "transparent",
+            color: primary,
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 900,
+            display: "grid",
+            placeItems: "center",
+            padding: 0,
+          }}
+        >
+          i
+        </button>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={active}
+        aria-label={`${infoTitle} : ${active ? "activé" : "désactivé"}`}
+        title={isDisabled ? `${infoTitle} : nécessite l'activation d'une autre option` : `${infoTitle} : ${active ? "désactiver" : "activer"}`}
+        disabled={isDisabled}
+        onClick={onToggle}
+        style={{
+          width: 28,
+          height: 28,
+          minWidth: 28,
+          borderRadius: "50%",
+          border: active ? `1.6px solid ${primary}` : "1px solid rgba(255,102,136,.64)",
+          background: active ? "linear-gradient(180deg, rgba(255,220,120,.98), rgba(229,176,33,.94))" : "transparent",
+          color: active ? "#241300" : "rgba(255,122,154,.88)",
+          fontSize: 15,
+          fontWeight: 1000,
+          lineHeight: 1,
+          display: "grid",
+          placeItems: "center",
+          flex: "0 0 auto",
+          boxShadow: active
+            ? `0 0 0 1px ${primary}22, 0 0 8px ${primary}22`
+            : "0 0 0 1px rgba(255,102,136,.08), 0 0 6px rgba(255,102,136,.12)",
+          cursor: isDisabled ? "not-allowed" : "pointer",
+          padding: 0,
+        }}
+      >
+        <span aria-hidden="true">{active ? "✓" : ""}</span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Même commande compacte pour les variantes avancées, fonctions BULL25/BULL50,
+ * bonus et MISS. Aucune modification des règles : les callbacks historiques
+ * continuent de piloter le moteur et les incompatibilités.
+ */
 function VariantRow({
   title,
   desc,
   value,
   onChange,
   primary,
-  primarySoft,
+  primarySoft: _primarySoft,
   disabled,
   disabledReason,
+  setResInfo,
 }: {
-  title: string;
+  title: React.ReactNode;
   desc: string;
   value: boolean;
   onChange: (v: boolean) => void;
@@ -3180,42 +3635,17 @@ function VariantRow({
   primarySoft: string;
   disabled?: boolean;
   disabledReason?: string;
+  setResInfo: (v: { title: string; text: string } | null) => void;
 }) {
-  const isDisabled = !!disabled;
-
-  return (
-    <div
-      title={isDisabled ? disabledReason || "Option indisponible." : undefined}
-      style={{
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.06)",
-        background: "rgba(0,0,0,0.20)",
-        padding: 10,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 10,
-        opacity: isDisabled ? 0.45 : 1,
-        filter: isDisabled ? "grayscale(35%)" : "none",
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", color: "#d6d8ea" }}>
-          {title}
-        </div>
-        <div style={{ marginTop: 4, fontSize: 10.5, color: "#7c80a0", lineHeight: 1.25 }}>{desc}</div>
-
-        {isDisabled && !!disabledReason && (
-          <div style={{ marginTop: 6, fontSize: 10.5, color: "#ffb3b3", fontWeight: 800, lineHeight: 1.2 }}>
-            {disabledReason}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: "flex", gap: 6, flexShrink: 0, pointerEvents: isDisabled ? "none" : "auto" }}>
-        <PillButton label="ON" active={value === true} onClick={() => onChange(true)} primary={primary} primarySoft={primarySoft} compact />
-        <PillButton label="OFF" active={value === false} onClick={() => onChange(false)} primary={primary} primarySoft={primarySoft} compact />
-      </div>
-    </div>
-  );
+  const fullInfo = disabledReason ? `${desc}\n${disabledReason}` : desc;
+  return <CompactVariantLine
+    title={title}
+    infoTitle={title.toUpperCase()}
+    infoText={fullInfo}
+    active={value}
+    onToggle={() => onChange(!value)}
+    primary={primary}
+    disabled={disabled}
+    setResInfo={setResInfo}
+  />;
 }

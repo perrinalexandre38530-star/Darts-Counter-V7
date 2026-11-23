@@ -1,9 +1,10 @@
 /** KILO DE MERDE — jeu de cartes autonome, distinct du Président.
  * Règles Ducale : 4 cartes, échanges simultanés vers la gauche, 4 identiques,
- * dernier à taper = pénalité, 7 du tas = chasse d'eau intégrale.
+ * défi BULL aux fléchettes quand un carré apparaît, 7 = chasse d'eau.
  */
 export type KiloCard = { value: number; suit: number };
-export type KiloRound = { number: number; loserId: string; card: KiloCard; delta: number; flushed: boolean; premature?: boolean };
+export type KiloRound = { number: number; loserId: string; card: KiloCard; delta: number; flushed: boolean; premature?: boolean; dartScores?: Record<string,number>; dartSeries?: number };
+export type KiloDarts = { participants:string[]; scores:Record<string,number>; hits:Record<string,number[]>; index:number; series:number };
 export type KiloState = {
   playerIds: string[];
   hands: Record<string, KiloCard[]>;
@@ -11,7 +12,8 @@ export type KiloState = {
   kilos: Record<string, number>;
   awarded: Record<string, KiloCard[]>;
   selections: Record<string, number>;
-  phase: 'select' | 'slap' | 'result' | 'finished';
+  phase: 'select' | 'shootout' | 'result' | 'finished';
+  darts: KiloDarts | null;
   selectorIndex: number;
   /** Révision de distribution/échange : empêche la réutilisation d’anciens boutons. */
   exchangeEpoch: number;
@@ -29,6 +31,37 @@ const RANKS_BY_PLAYERS: Record<number,number[]> = {
 export const kiloCardLabel = (v:number) => ({11:'V',12:'D',13:'R',14:'A'} as Record<number,string>)[v] || String(v);
 export const kiloCardPenalty = (v:number) => v===14?100:v;
 function shuffle<T>(arr:T[]):T[]{const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function beginBullChallenge(ids:string[], series=1):KiloDarts {
+  return {participants:[...ids],scores:Object.fromEntries(ids.map(id=>[id,0])),hits:Object.fromEntries(ids.map(id=>[id,[]])),index:0,series};
+}
+/** Défi BULL : trois fléchettes par joueur, MISS 0, BULL25 25, DBULL 50.
+ * Le plus faible score prend la pénalité. Égalité : nouveau barrage entre ex æquo.
+ * expectedPlayerId/epoch protègent le téléphone partagé et les anciens boutons.
+ */
+export function kiloThrowBull(state:KiloState, value:0|25|50, expectedPlayerId?:string, expectedEpoch?:number):KiloState {
+  if(state.phase!=='shootout'||!state.darts||![0,25,50].includes(value)) return state;
+  if(expectedEpoch!==undefined&&expectedEpoch!==state.exchangeEpoch) return state;
+  const d=state.darts;
+  const id=d.participants[d.index];
+  if(expectedPlayerId!==undefined&&expectedPlayerId!==id)return state;
+  if((d.hits[id]||[]).length>=3)return state;
+  const hits={...d.hits,[id]:[...d.hits[id],value]};
+  const scores={...d.scores,[id]:d.scores[id]+value};
+  const nextIndex=hits[id].length>=3?d.index+1:d.index;
+  if(nextIndex<d.participants.length){
+    const nextId=d.participants[nextIndex];
+    return {...state,darts:{...d,hits,scores,index:nextIndex},exchangeEpoch:state.exchangeEpoch+1,
+      notice:nextIndex!==d.index?'Volée terminée : passez le téléphone au tireur suivant.':`Fléchette ${hits[id].length}/3 enregistrée.`};
+  }
+  const minimum=Math.min(...d.participants.map(pid=>scores[pid]));
+  const tied=d.participants.filter(pid=>scores[pid]===minimum);
+  if(tied.length>1){
+    return {...state,darts:beginBullChallenge(tied,d.series+1),exchangeEpoch:state.exchangeEpoch+1,
+      notice:`ÉGALITÉ À ${minimum} POINTS : barrage BULL entre ${tied.length} joueurs, trois nouvelles fléchettes chacun.`};
+  }
+  const finishedDarts={...d,scores,hits,index:nextIndex};
+  return kiloPenalty({...state,darts:finishedDarts},tied[0],false,state.rounds.length,'shootout',state.exchangeEpoch);
+}
 export function createKiloState(playerIds:string[], maxRounds:number):KiloState {
   const ids=[...new Set(playerIds)].slice(0,10);
   if(ids.length<3) throw new Error('Kilo de merde demande 3 à 10 joueurs.');
@@ -39,7 +72,7 @@ export function createKiloState(playerIds:string[], maxRounds:number):KiloState 
   const pile=shuffle(cards.filter(c=>!selected.has(c.value)));
   const hands:Record<string,KiloCard[]>={};
   ids.forEach((id,i)=>hands[id]=distribution.slice(i*4,i*4+4).sort((a,b)=>a.value-b.value||a.suit-b.suit));
-  return {playerIds:ids,hands,pile,kilos:Object.fromEntries(ids.map(id=>[id,0])),awarded:Object.fromEntries(ids.map(id=>[id,[]])),selections:{},selectorIndex:0,exchangeEpoch:0,phase:ids.some(id=>kiloHasFour(hands[id]))?'slap':'select',rounds:[],maxRounds:Math.max(1,Math.floor(maxRounds)),winnerId:null,notice:ids.some(id=>kiloHasFour(hands[id]))?'Un joueur a déjà quatre cartes identiques : tout le monde tape sur le tas !':'Chaque joueur choisit secrètement une carte à passer au voisin de gauche.'};
+  return {playerIds:ids,hands,pile,kilos:Object.fromEntries(ids.map(id=>[id,0])),awarded:Object.fromEntries(ids.map(id=>[id,[]])),selections:{},selectorIndex:0,exchangeEpoch:0,phase:ids.some(id=>kiloHasFour(hands[id]))?'shootout':'select',darts:ids.some(id=>kiloHasFour(hands[id]))?beginBullChallenge(ids):null,rounds:[],maxRounds:Math.max(1,Math.floor(maxRounds)),winnerId:null,notice:ids.some(id=>kiloHasFour(hands[id]))?'Carré dès la distribution : défi BULL ! Trois fléchettes par joueur.':'Chaque joueur choisit secrètement une carte à passer au voisin de gauche.'};
 }
 export function kiloHasFour(hand:KiloCard[]) {return hand.length===4 && hand.every(c=>c.value===hand[0].value);}
 export function kiloSelectCard(state:KiloState, cardIndex:number, expectedPlayerId?:string, expectedExchangeEpoch?:number):KiloState {
@@ -62,7 +95,7 @@ export function kiloSelectCard(state:KiloState, cardIndex:number, expectedPlayer
     hands[pid]=[...without,fromRight].sort((a,b)=>a.value-b.value||a.suit-b.suit);
   });
   const four=state.playerIds.some(pid=>kiloHasFour(hands[pid]));
-  return {...state,hands,selections:{},selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,phase:four?'slap':'select',notice:four?'QUATRE CARTES IDENTIQUES ! Tout le monde tape sur le tas.':'Échange terminé : chaque joueur possède toujours quatre cartes. Recommencez.'};
+  return {...state,hands,selections:{},selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,phase:four?'shootout':'select',darts:four?beginBullChallenge(state.playerIds):null,notice:four?'QUATRE CARTES IDENTIQUES ! Défi BULL : trois fléchettes par joueur.':'Échange terminé : chaque joueur possède toujours quatre cartes. Recommencez.'};
 }
 export function kiloPenalty(
   state:KiloState, loserId:string, premature=false,
@@ -75,7 +108,11 @@ export function kiloPenalty(
   if(expectedExchangeEpoch !== undefined && expectedExchangeEpoch !== state.exchangeEpoch) return state;
   // Une tape prématurée est sanctionnée même avant la formation d'un carré.
   // Aucune carte en cours de sélection ne doit être échangée dans ce cas.
-  if((premature ? state.phase!=='select' : state.phase!=='slap') || !state.playerIds.includes(loserId)) return state;
+  if(premature || state.phase!=='shootout' || !state.darts || !state.playerIds.includes(loserId)) return state;
+  // Un pénalisé ne peut être déterminé qu'après une volée complète de chaque joueur.
+  if(state.darts.index!==state.darts.participants.length || state.darts.participants.some(id=>(state.darts!.hits[id]||[]).length!==3))return state;
+  const minScore=Math.min(...state.darts.participants.map(id=>state.darts!.scores[id]));
+  if(state.darts.participants.filter(id=>state.darts!.scores[id]===minScore).length!==1 || state.darts.scores[loserId]!==minScore)return state;
   const card=state.pile[0];
   if(!card) {
     const min = Math.min(...state.playerIds.map(id=>state.kilos[id]));
@@ -90,22 +127,18 @@ export function kiloPenalty(
   const returned=flushed?state.awarded[loserId]:[];
   const awarded={...state.awarded,[loserId]:flushed?[]:[...state.awarded[loserId],card]};
   const pile=shuffle([...state.pile.slice(1),...returned,...(flushed ? [card] : [])]); // Le 7 de chasse d’eau reste dans le tas après activation.
-  const rounds=[...state.rounds,{number:state.rounds.length+1,loserId,card,delta:flushed?-before:kiloCardPenalty(card.value),flushed,premature}];
+  const rounds=[...state.rounds,{number:state.rounds.length+1,loserId,card,delta:flushed?-before:kiloCardPenalty(card.value),flushed,premature:false,dartScores:{...state.darts!.scores},dartSeries:state.darts!.series}];
   const finished=rounds.length>=state.maxRounds||pile.length===0;
   const lowest=Math.min(...state.playerIds.map(id=>kilos[id]));
   const leaders=state.playerIds.filter(id=>kilos[id]===lowest);
   const winnerId=finished&&leaders.length===1?leaders[0]:null; // Ex æquo : pas de gagnant arbitraire.
-  const noticePrefix=premature?'TAPE PRÉMATURÉE · ':'';
+  const noticePrefix=`DÉFI BULL · ${loserId} : ${state.darts!.scores[loserId]} pts · `;
   const notice=noticePrefix+(flushed?`CHASSE D'EAU ! ${before} kg effacés. Les cartes de pénalité retournent au tas.`:`${kiloCardLabel(card.value)} : +${kiloCardPenalty(card.value)} kg pour le joueur pénalisé.`);
-  return {...state,kilos,awarded,pile,rounds,winnerId,selections:{},selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,phase:finished?'finished':'result',notice};
+  return {...state,kilos,awarded,pile,rounds,winnerId,selections:{},selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,phase:finished?'finished':'result',darts:null,notice};
 }
 export function kiloContinue(state:KiloState):KiloState {
   if(state.phase!=='result') return state;
   const last=state.rounds[state.rounds.length-1];
-  // Une tape prématurée n'interrompt que les sélections en cours :
-  // les joueurs conservent leurs quatre cartes physiques.
-  if(last?.premature) return {...state,selections:{},phase:'select',selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,
-    notice:'Tape prématurée sanctionnée. Les mains sont conservées : reprenez les échanges.'};
   // Après un carré, ne pas rejouer indéfiniment avec le même carré.
   // On redistribue uniquement les cartes déjà dans les mains, jamais les cartes
   // de pénalité ni celles du tas. Chaque carte conserve sa valeur et son enseigne.
@@ -115,8 +148,8 @@ export function kiloContinue(state:KiloState):KiloState {
     hands[id]=inHands.slice(i*4,i*4+4).sort((a,b)=>a.value-b.value||a.suit-b.suit);
   });
   const four=state.playerIds.some(id=>kiloHasFour(hands[id]));
-  return {...state,hands,selections:{},phase:four?'slap':'select',selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,
-    notice:four?'NOUVEAU CARRÉ À LA DISTRIBUTION ! Tout le monde tape sur le tas.':'Nouvelle donne : les kilos sont conservés. Chaque joueur choisit une carte à passer à gauche.'};
+  return {...state,hands,selections:{},phase:four?'shootout':'select',darts:four?beginBullChallenge(state.playerIds):null,selectorIndex:0,exchangeEpoch:state.exchangeEpoch+1,
+    notice:four?'NOUVEAU CARRÉ ! Défi BULL : trois fléchettes par joueur.':'Nouvelle donne : les kilos sont conservés. Chaque joueur choisit une carte à passer à gauche.'};
 }
 export function kiloTotalCards(state:KiloState):number {
   return state.playerIds.reduce((n,id)=>n+state.hands[id].length+state.awarded[id].length,0)+state.pile.length;

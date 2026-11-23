@@ -24,6 +24,7 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import TacticalMatchPanels from "../components/TacticalMatchPanels";
 import MssCombatActiveCard from "../components/MssCombatActiveCard";
 import "./mssBattleLayouts.css";
+import "./mssCombatFinish.css";
 import type { Dart as UIDart } from "../lib/types";
 import { History } from "../lib/history";
 import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";

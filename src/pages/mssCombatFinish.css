@@ -1,0 +1,75 @@
+/* MSS — WARFARE / BATTLE ROYALE
+   Couche finale ciblée. Les composants historiques restent fonctionnels ;
+   toutes les dimensions visuelles convergent ici plutôt que dans de nouveaux
+   correctifs contradictoires ajoutés à mssBattleLayouts.css. */
+.mss-war-play,.mss-br-play { --combat-space: 8px; }
+.mss-war-content,.mss-br-content { scrollbar-gutter:stable; overscroll-behavior-y:contain; }
+.mss-war-content { display:flex!important; flex-direction:column!important; gap:var(--combat-space)!important; align-content:normal!important; }
+.mss-war-content > *,.mss-br-content > div > * { min-width:0; max-width:100%; flex-shrink:0; }
+
+/* Bandeau unique : rythme, avatars et statut dans l'esprit KILLER. */
+.mss-combat-band { border-radius:18px!important; background:linear-gradient(145deg,#1a1b21,#0c0d12)!important; border:1px solid rgba(255,255,255,.11)!important; }
+.mss-combat-band-scroll { display:flex; align-items:center; gap:0; padding:5px; scrollbar-width:thin; }
+.mss-combat-band-segment { flex:0 0 auto!important; min-width:0!important; min-height:49px!important; display:flex; gap:8px!important; padding:5px 11px!important; border:1px solid transparent!important; border-radius:999px!important; margin-right:5px; background:rgba(0,0,0,.20)!important; box-shadow:none!important; transition:background .15s ease,border-color .15s ease; }
+.mss-combat-band-segment.is-active { border-color:color-mix(in srgb,var(--roster-accent) 65%,transparent)!important; background:linear-gradient(120deg,color-mix(in srgb,var(--roster-accent) 19%,#171719),#17171d)!important; box-shadow:0 0 14px color-mix(in srgb,var(--roster-accent) 16%,transparent)!important; }
+.mss-combat-band-avatar { width:39px!important; height:39px!important; flex-basis:39px!important; }
+.mss-combat-band-copy { display:flex; align-items:center; gap:7px!important; }
+.mss-combat-band-copy strong { font-size:14px!important; color:#fff; max-width:105px; }
+.mss-combat-band-copy small { font-size:12px!important; font-weight:900; color:var(--roster-accent); }
+.mss-combat-band-segment.is-eliminated { opacity:.42; }
+
+/* Carte LOTERIE : portrait à gauche, donnée immédiatement lisible, objectif à droite. */
+.mss-combat-active-card-v219 { border-radius:19px!important; background:linear-gradient(105deg,#151720,#0b0d14)!important; box-shadow:0 10px 26px rgba(0,0,0,.22); }
+.mss-combat-active-card-v219 .mss-combat-active-main { display:grid!important; grid-template-columns:minmax(0,1.18fr) minmax(138px,.82fr)!important; gap:8px!important; min-height:140px!important; padding:8px!important; }
+.mss-combat-active-card-v219 .mss-combat-active-identity { display:flex!important; flex-direction:column!important; align-items:center!important; justify-content:center!important; gap:3px!important; min-width:0; padding:7px!important; text-align:center; }
+.mss-combat-active-card-v219 .mss-combat-active-portrait { width:62%!important; opacity:.25!important; }
+.mss-combat-active-card-v219 .mss-combat-active-avatar { width:50px!important; height:50px!important; flex:0 0 50px!important; }
+.mss-combat-active-card-v219 .mss-combat-active-copy { gap:3px!important; align-items:center!important; }
+.mss-combat-active-card-v219 .mss-combat-active-copy small { font-size:10px!important; color:var(--combat-accent)!important; text-transform:uppercase; }
+.mss-combat-active-card-v219 .mss-combat-active-copy strong { font-size:19px!important; line-height:1.1; max-width:100%; }
+.mss-combat-active-card-v219 .mss-combat-active-value { font-size:clamp(28px,5vw,39px)!important; line-height:1!important; }
+.mss-combat-active-card-v219 .mss-combat-active-detail { font-size:10px!important; letter-spacing:.035em; }
+.mss-combat-active-card-v219 .mss-combat-active-goal { gap:3px!important; padding:8px!important; border-radius:14px!important; }
+.mss-combat-active-card-v219 .mss-combat-goal-title { font-size:10px!important; }
+.mss-combat-active-card-v219 .mss-combat-goal-main small { font-size:10px!important; }
+.mss-combat-active-card-v219 .mss-combat-goal-main strong { font-size:clamp(30px,5vw,44px)!important; }
+.mss-combat-active-card-v219 .mss-combat-objective-instruction { font-size:11px!important; line-height:1.27!important; margin:2px 0!important; }
+.mss-combat-active-card-v219 .mss-combat-goal-detail { font-size:10px!important; }
+
+/* Les actions sont une vraie barre d'icônes, pas une seconde configuration. */
+.mss-combat-bottomnav { min-height:45px!important; padding:4px!important; gap:3px!important; border-radius:14px!important; background:linear-gradient(180deg,#181922,#11121a)!important; }
+.mss-combat-nav-item { flex:1 1 0!important; min-width:35px!important; min-height:37px!important; padding:6px!important; }
+.mss-combat-nav-item.is-selected { flex:1 0 auto!important; }
+.mss-combat-nav-glyph { font-size:21px!important; }
+.mss-combat-nav-title { font-size:11px!important; }
+
+/* WARFARE : deux terrains distincts ; pas d'intermédiaire redondant. */
+.mss-war-armies { display:grid!important; grid-template-columns:repeat(2,minmax(0,1fr))!important; align-items:start!important; gap:8px!important; margin:0!important; }
+.mss-war-army { min-width:0; padding:8px!important; border-radius:17px!important; }
+.mss-war-soldiers { display:grid!important; grid-template-columns:repeat(5,minmax(0,1fr))!important; gap:4px!important; }
+.mss-war-soldier { min-width:0; min-height:31px; display:grid; place-items:center; font-weight:950; font-variant-numeric:tabular-nums; }
+.mss-war-army-progress { margin-top:7px; }
+.mss-war-army-side { min-width:0; }
+
+/* BATTLE ROYALE : conserver la grande carte illustrée et ses vraies fiches joueurs. */
+.mss-br-players-arena { min-height:130px!important; border-radius:17px!important; }
+.mss-br-players-arena .mss-br-classic-roster { min-height:54px; }
+.mss-br-players-arena .mss-br-classic-player { border-radius:14px!important; background:rgba(9,11,18,.67)!important; }
+.mss-br-players-arena .mss-br-classic-player.is-active { background:color-mix(in srgb,var(--mss-accent) 16%,rgba(10,12,19,.82))!important; }
+
+@media(max-width:570px) {
+ .mss-war-armies { grid-template-columns:1fr!important; }
+ .mss-combat-active-card-v219 .mss-combat-active-main { grid-template-columns:minmax(0,1fr) minmax(116px,.86fr)!important; min-height:125px!important; gap:5px!important; padding:6px!important; }
+ .mss-combat-active-card-v219 .mss-combat-active-avatar { width:42px!important; height:42px!important; flex-basis:42px!important; }
+ .mss-combat-active-card-v219 .mss-combat-active-copy strong { font-size:16px!important; }
+ .mss-combat-active-card-v219 .mss-combat-goal-main strong { font-size:30px!important; }
+ .mss-combat-band-copy { flex-direction:column; align-items:start; gap:2px!important; }
+ .mss-combat-band-segment { padding:5px 8px!important; }
+ .mss-combat-band-copy strong { font-size:12px!important; }
+ .mss-combat-band-copy small { font-size:10px!important; }
+}
+@media(min-width:800px) and (orientation:landscape) {
+ .mss-war-armies { grid-template-columns:repeat(2,minmax(0,1fr))!important; }
+ .mss-combat-active-card-v219 .mss-combat-active-main { min-height:118px!important; }
+}
+@media(prefers-reduced-motion:reduce) { .mss-combat-band-segment { transition:none; } }

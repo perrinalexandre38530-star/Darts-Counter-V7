@@ -1,4 +1,5 @@
 import * as React from "react";
+import { canDistributeLandscapePanels } from "./landscapeRoomPolicy";
 
 /**
  * MSS V248 — one landscape contract for the existing phone and Samsung routes.
@@ -32,12 +33,45 @@ function isLandscapeRuntime(): boolean {
     document.documentElement.dataset.mssSamsungTvSharedApp === "1";
 }
 
+/** Mark only native, full-height multi-panel columns. Do not convert blocks to
+ * flex/grid, and do not alter input panels or the heights of their children. */
+function annotatePanelDistribution(route: HTMLElement, roomy: boolean) {
+  const candidates = route.querySelectorAll<HTMLElement>(
+    ".msc-landscape-primary, .msc-gameplay-primary"
+  );
+  candidates.forEach((panel) => {
+    panel.removeAttribute("data-mss-landscape-distribute");
+    if (!roomy || !panel.isConnected) return;
+    const style = window.getComputedStyle(panel);
+    const isGrid = style.display === "grid" || style.display === "inline-grid";
+    const isColumn = (style.display === "flex" || style.display === "inline-flex") &&
+      style.flexDirection === "column";
+    if (!isGrid && !isColumn) return;
+    if (panel.closest("[role='dialog'],[aria-modal='true'],dialog")) return;
+    if (panel.querySelector("[data-mss-keypad='1'],[data-mss-score-input-hub='1'],[data-mss-play-input='1']")) return;
+    const height = panel.clientHeight;
+    if (height <= 0 || panel.scrollHeight > height + 8) return;
+    const children = elementChildren(panel).filter((child) => {
+      const s = window.getComputedStyle(child);
+      return s.display !== "none" && s.position !== "absolute" && s.position !== "fixed";
+    });
+    if (children.length < 3) return;
+    if (children.some((child) => window.getComputedStyle(child).position === "sticky")) return;
+    const heights = children.map((child) => child.getBoundingClientRect().height);
+    const gap = parseFloat(isGrid ? style.rowGap : style.gap) || 0;
+    if (canDistributeLandscapePanels(height, heights, gap)) {
+      panel.dataset.mssLandscapeDistribute = isGrid ? "grid" : "flex";
+    }
+  });
+}
+
 function annotate(route: HTMLElement) {
   // Clear stale landscape marks on rotation to portrait; the previous bridge
   // only ever annotated, which could preserve landscape sizing after rotation.
   if (!isLandscapeRuntime()) {
     route.removeAttribute("data-mss-landscape-fit");
     route.removeAttribute("data-mss-landscape-spacious");
+    annotatePanelDistribution(route, false);
     route.querySelectorAll<HTMLElement>("[data-mss-landscape-unclamp]").forEach((node) =>
       node.removeAttribute("data-mss-landscape-unclamp")
     );
@@ -49,6 +83,7 @@ function annotate(route: HTMLElement) {
   // phones, preserve independent scroll and minimum 44px touch target sizes.
   if (roomWidth >= 840 && roomHeight >= 650) route.dataset.mssLandscapeSpacious = "1";
   else route.removeAttribute("data-mss-landscape-spacious");
+  annotatePanelDistribution(route, roomWidth >= 840 && roomHeight >= 650);
   const screen = route.dataset.mscGameScreen || "page";
   route.dataset.mssLandscapeFit = screen;
 
@@ -114,6 +149,7 @@ export default function LandscapePageFitBridge({ routeKey }: { routeKey: string 
       window.removeEventListener("msc:responsive-layout", refresh as EventListener);
       route.removeAttribute("data-mss-landscape-fit");
       route.removeAttribute("data-mss-landscape-spacious");
+      annotatePanelDistribution(route, false);
       route.querySelectorAll<HTMLElement>("[data-mss-landscape-unclamp]").forEach((node) =>
         node.removeAttribute("data-mss-landscape-unclamp")
       );

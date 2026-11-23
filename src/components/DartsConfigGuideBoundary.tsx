@@ -260,6 +260,22 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
           ))}
         </div>
       </div>
+      {mode === "guided" && steps.length > 2 && (
+        <div aria-label={`Progression : étape ${step + 1} sur ${steps.length}`} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 5, marginTop: 8 }}>
+          {Array.from({ length: Math.min(7, steps.length) }, (_, i) => {
+            const count = Math.min(7, steps.length);
+            const offset = Math.max(0, Math.min(step - 3, steps.length - count));
+            const idx = offset + i;
+            const active = idx === step;
+            return <button key={idx} type="button" onClick={() => setStep(idx)}
+              aria-current={active ? "step" : undefined} aria-label={`Aller à l'étape ${idx + 1} : ${steps[idx]}`}
+              title={`${idx + 1}. ${steps[idx]}`}
+              style={{ width: active ? 29 : 20, height: active ? 23 : 20, flexShrink: 0, borderRadius: 9, border: `1px solid ${active ? accent : `${accent}35`}`, background: active ? `${accent}25` : idx < step ? `${accent}10` : "rgba(255,255,255,.025)", color: active ? accent : "#a5adbf", fontSize: 10, fontWeight: 950, cursor: "pointer", boxShadow: active ? `0 0 12px ${accent}20` : "none" }}>
+              {idx + 1}
+            </button>;
+          })}
+        </div>
+      )}
       {mode === "guided" && step > 0 && hasAwenaVideo && (
         <div style={{ display: "flex", justifyContent: "center", marginTop: 9 }}>
           <MssAwenaExplainButton onClick={() => {

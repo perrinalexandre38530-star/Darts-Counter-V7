@@ -243,13 +243,13 @@ function appEntity() {
     isAccessibleForFree:true,
     offers:{'@type':'Offer',price:'0',priceCurrency:'EUR'},
     featureList:['Darts score counter','X01 301 / 501 / 701 / 901','Cricket darts scoring','Killer darts','Shanghai darts','Challenge darts','Darts Poker','Gros 6','CRADOS','Player profiles','Match history','Darts statistics','Online X01','Multi-sport scoring'],
-    sameAs:[PLAY,'https://github.com/perrinalexandre38530-star/Darts-Counter-V7'],
+    sameAs:[PLAY,'https://github.com/perrinalexandre38530-star/Darts-Counter-V7','https://x.com/multisportsscor','https://www.youtube.com/@MultisportsScoring'],
   };
 }
 
 function jsonLd({lang,url,title,description,breadcrumb,faqItems=[]}) {
   const graph = [
-    {'@type':'Organization','@id':`${BASE}/#organization`,name:'MULTISPORTS SCORING',url:`${BASE}/`,logo:`${BASE}/app-512.png`},
+    {'@type':'Organization','@id':`${BASE}/#organization`,name:'MULTISPORTS SCORING',url:`${BASE}/`,logo:`${BASE}/app-512.png`,sameAs:['https://x.com/multisportsscor','https://www.youtube.com/@MultisportsScoring']},
     {'@type':'WebSite','@id':`${BASE}/#website`,url:`${BASE}/`,name:'MULTISPORTS SCORING',publisher:{'@id':`${BASE}/#organization`}},
     appEntity(),
     {'@type':'WebPage','@id':`${url}#webpage`,url,name:title,description,inLanguage:lang,isPartOf:{'@id':`${BASE}/#website`},about:{'@id':`${BASE}/#app`}},

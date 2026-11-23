@@ -119,3 +119,66 @@
  .mss-finish-do .mss-finish-stage{max-height:calc(100dvh - 130px);overflow-y:auto;overscroll-behavior:contain}
 }
 @media(prefers-reduced-motion:reduce){.mss-finish-do button{transition:none}}
+
+/* V41 — FINISH DO SIMPLICITÉ : une seule action essentielle par écran.
+   La charte MSS fournit le header, la navigation, les icônes et les couleurs. */
+.mss-finish-do .mss-finish-content{gap:7px;width:min(100%,1100px);padding:7px 10px 10px}
+.mss-finish-do .mss-finish-stage{min-width:0}
+.mss-finish-config-simple{display:flex;flex-direction:column;gap:16px;max-width:680px;width:100%;margin:0 auto;padding:clamp(8px,2vw,20px) 0}
+.mss-finish-config-title{display:flex;align-items:center;gap:12px;font-size:clamp(16px,2.1vw,21px);font-weight:850}
+.mss-finish-config-title .mss-finish-section-icon{width:42px;height:42px}
+.mss-finish-config-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mss-finish-config-row label{font-size:13px;font-weight:750;color:#c2d5df}
+.mss-finish-config-row input,.mss-finish-config-row select{min-height:50px;width:100%;padding:10px 12px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.15);color:#f7fbff;border-radius:12px;font-size:18px;font-weight:800}
+.mss-finish-config-row select option{background:#121d2a;color:#fff}
+.mss-finish-config-actions{display:grid;grid-template-columns:minmax(110px,.32fr) minmax(0,1fr);gap:10px}
+.mss-finish-config-actions button{min-height:52px;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.15);font-size:13px;font-weight:900;cursor:pointer}
+.mss-finish-random{background:rgba(255,255,255,.05);color:#f2f8fc}
+.mss-finish-launch{display:flex;align-items:center;justify-content:center;gap:9px;background:var(--mss-ui-accent,#27dcff);border-color:var(--mss-ui-accent,#27dcff)!important;color:#051823}
+.mss-finish-extras{margin:0;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.025)}
+.mss-finish-extras summary{color:#bfd4e0;font-weight:700}
+.mss-finish-extras .mss-finish-score-preset-grid{padding:9px 10px 0;grid-template-columns:repeat(6,minmax(0,1fr))}
+.mss-finish-extras .mss-finish-drills-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.mss-finish-panel--hero{padding:7px 10px!important;gap:4px}
+.mss-finish-exercise-nav{min-height:30px}
+.mss-finish-exercise-nav-status>span{display:none}
+.mss-finish-scoreboard{border:0;background:transparent;padding:3px 8px}
+.mss-finish-score-label{font-size:10px}
+.mss-finish-score-number{font-size:clamp(40px,6vw,62px)}
+.mss-finish-darts{margin:1px 0;gap:9px}
+.mss-finish-darts img{height:24px;width:10px}
+.mss-finish-live-route{min-height:58px;border:0;background:transparent;padding:5px 8px}
+.mss-finish-live-route-hits{margin-top:5px}
+.mss-finish-panel--workspace.mss-finish-game-panel{gap:6px}
+.mss-finish-game-panel .mss-finish-section-head{min-height:30px;justify-content:space-between}
+.mss-finish-game-panel .mss-finish-section-head strong{font-size:13px}
+.mss-finish-aim-panel{padding:0;border-color:rgba(255,255,255,.08)}
+.mss-finish-aim-panel summary{padding:7px 10px;font-size:11px;letter-spacing:0;color:#a7c3d0}
+.mss-finish-aim-panel .mss-finish-aim-toggle,.mss-finish-aim-panel .mss-finish-aim-selection,.mss-finish-aim-panel .mss-finish-aim-feedback{margin:7px 10px}
+.mss-finish-game-panel .mss-finish-visit-log{min-height:20px;padding:1px 0}
+.mss-finish-game-panel .mss-finish-placeholder{font-size:10px}
+@media(max-width:680px){
+ .mss-finish-config-row{grid-template-columns:1fr 1fr;gap:8px}
+ .mss-finish-config-row input,.mss-finish-config-row select{min-height:46px;font-size:15px}
+ .mss-finish-config-simple{gap:13px;padding:7px 0}
+ .mss-finish-config-actions{grid-template-columns:1fr 1.7fr;gap:7px}
+ .mss-finish-config-actions button{min-height:48px;font-size:11px;padding:8px}
+ .mss-finish-extras .mss-finish-score-preset-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .mss-finish-extras .mss-finish-drills-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .mss-finish-hero-grid{grid-template-columns:minmax(92px,.34fr) minmax(0,.66fr)}
+ .mss-finish-panel--hero{padding:5px!important}
+ .mss-finish-scoreboard{padding:2px}
+ .mss-finish-score-number{font-size:clamp(36px,11vw,52px)}
+ .mss-finish-darts img{height:20px;width:8px}
+ .mss-finish-live-route{min-height:52px;padding:4px}
+ .mss-finish-panel--workspace.mss-finish-game-panel{padding:7px!important;gap:5px}
+ .mss-finish-numbers>button{min-height:40px}
+ .mss-finish-multipliers>button{min-height:39px!important}
+ .mss-finish-specials>button{min-height:40px}
+}
+@media(min-width:720px) and (orientation:landscape){
+ .mss-finish-content{grid-template-columns:minmax(230px,35%) minmax(0,65%)}
+ .mss-finish-content:has(.mss-finish-config-simple){display:flex;flex-direction:column}
+ .mss-finish-content:has(.mss-finish-config-simple) .mss-finish-stage{width:100%}
+ .mss-finish-do .mss-finish-stage{max-height:calc(100dvh - 132px)}
+}
