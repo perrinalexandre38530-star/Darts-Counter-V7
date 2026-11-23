@@ -10,6 +10,7 @@
 
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
+import MssAwenaExplainButton from "../components/MssAwenaExplainButton";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
 import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { applyResolvedBotCountries } from "../lib/botCountries";
@@ -3023,8 +3024,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   const guidedSteps = React.useMemo(() => (
     participantMode === "teams"
-      ? ["Mode", "Équipes", "Score", "Format", "Saisie", "Récap"]
-      : ["Mode", "Joueurs", "Score", "Format", "Saisie", "Récap"]
+      ? ["Awena", "Mode", "Équipes", "Score", "Format", "Saisie", "Récap"]
+      : ["Awena", "Mode", "Joueurs", "Score", "Format", "Saisie", "Récap"]
   ), [participantMode]);
   const guidedMaxStep = Math.max(0, guidedSteps.length - 1);
   React.useEffect(() => {
@@ -3866,7 +3867,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
       {/* CONTENU SCROLLABLE */}
       <div ref={contentRef} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
-        <section
+        {(configViewMode === "complete" || guidedStep === 0) && <section
           className="x01-config-overview"
           style={{
             background: "rgba(10,12,24,0.94)",
@@ -4037,7 +4038,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </div>
             </button>
           </div>
-        </section>
+        </section>}
+        {configViewMode === "guided" && guidedStep > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+            <MssAwenaExplainButton onClick={() => setRulesVideoOpen(true)} />
+          </div>
+        )}
 
         {awenaVoiceSetupActive && (
           <section style={{ borderRadius: 18, padding: 12, marginBottom: 14, border: "1px solid rgba(54,245,154,.55)", background: "linear-gradient(135deg,rgba(21,72,58,.44),rgba(10,17,35,.96))", boxShadow: "0 0 24px rgba(54,245,154,.12)" }}>
@@ -4111,7 +4117,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </div>
             </section>
 
-            {guidedStep === 0 && (
+            {guidedStep === 1 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
                 <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>1. Type de partie</h3>
                 <p style={{ fontSize: 12, color: "#aeb2d3", lineHeight: 1.35, margin: "0 0 12px" }}>
@@ -4153,7 +4159,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 1 && participantMode === "players" && (
+            {guidedStep === 2 && participantMode === "players" && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
                 <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>2. Joueurs</h3>
                 <SelectedParticipantsCompactBlock
@@ -4206,7 +4212,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 1 && participantMode === "teams" && (
+            {guidedStep === 2 && participantMode === "teams" && (
               <>
                 <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
                   <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>2. Équipes</h3>
@@ -4270,7 +4276,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </>
             )}
 
-            {guidedStep === 2 && (
+            {guidedStep === 3 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
                 <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>3. Score et sortie</h3>
                 <div style={{ marginBottom: 14 }}>
@@ -4298,7 +4304,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 3 && (
+            {guidedStep === 4 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
                 <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>4. Format</h3>
                 <div style={{ marginBottom: 14 }}>
@@ -4350,7 +4356,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 4 && (
+            {guidedStep === 5 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
                 <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>5. Saisie et audio</h3>
                 <div style={{ marginBottom: 14 }}>
@@ -4405,7 +4411,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 5 && (
+            {guidedStep === 6 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: `1px solid ${canStart ? primary + "66" : "rgba(255,255,255,0.08)"}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
                 <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 10px" }}>6. Récapitulatif</h3>
                 <div style={{ display: "grid", gap: 8, fontSize: 12, color: "#dfe2ff" }}>
@@ -5813,6 +5819,7 @@ export type TeamsSectionProps = {
   teamSizeOverride?: number;
   teamCountOverride?: number;
   allowSaveGeneratedTeams?: boolean;
+  compactContent?: boolean;
   primary: string;
   primarySoft: string;
 };
@@ -6101,6 +6108,7 @@ export function TeamsSection({
   teamSizeOverride,
   teamCountOverride,
   allowSaveGeneratedTeams = true,
+  compactContent = false,
   primary,
   primarySoft,
 }: TeamsSectionProps) {
@@ -6111,6 +6119,8 @@ export function TeamsSection({
   const selectedStored = new Set(selectedStoredTeamIds.map(String));
   const selectedBot = new Set((selectedBotTeamIds || []).map(String));
   const teamByPlayer = React.useMemo(() => new Map((profiles || []).map((p: any) => [String(p.id), p])), [profiles]);
+  const [savedTeamsPage, setSavedTeamsPage] = React.useState(0);
+  const [savedMembersPage, setSavedMembersPage] = React.useState(0);
   const [teamPicker, setTeamPicker] = React.useState<any | null>(null);
   const [teamPickerInstanceId, setTeamPickerInstanceId] = React.useState<string | null>(null);
   const [teamPickerPlayerIds, setTeamPickerPlayerIds] = React.useState<string[]>([]);
@@ -6397,6 +6407,7 @@ export function TeamsSection({
     const used = usedStoredPlayersByBase[baseId] || new Set<string>();
     const available = ids.filter((id: string) => !used.has(id));
     if (available.length <= 0) return;
+    setSavedMembersPage(0);
     setTeamPicker(team);
     setTeamPickerInstanceId(null);
     setTeamPickerPlayerIds(configuredTeamSize > 0 ? available.slice(0, configuredTeamSize) : available);
@@ -6408,6 +6419,7 @@ export function TeamsSection({
     if (!team || !instanceId) return;
     const chosen = Array.isArray(item?.chosen) ? item.chosen.map(String).filter(Boolean) : [];
     const fallback = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+    setSavedMembersPage(0);
     setTeamPicker(team);
     setTeamPickerInstanceId(instanceId);
     setTeamPickerPlayerIds(chosen.length ? chosen : (configuredTeamSize > 0 ? fallback.slice(0, configuredTeamSize) : fallback));
@@ -6598,11 +6610,11 @@ export function TeamsSection({
         border: `1px solid rgba(255,255,255,0.04)`,
       }}
     >
-      <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: "#9fa4c0", marginBottom: 6 }}>
+      {!compactContent && <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: "#9fa4c0", marginBottom: 6 }}>
         {t("x01v3.teams.title", "Composition des équipes")}
-      </h3>
+      </h3>}
 
-      <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
+      {!compactContent && <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
         {sourceMode === "saved"
           ? "Choisis tes équipes enregistrées, puis coche les joueurs qui participent au match."
           : sourceMode === "auto"
@@ -6611,9 +6623,9 @@ export function TeamsSection({
               "x01v3.teams.subtitle",
               "Assigne chaque joueur à une Team : Gold, Pink, Blue ou Green. Combos possibles : 2v2, 3v3, 4v4, 2v2v2 ou 2v2v2v2."
             )}
-      </p>
+      </p>}
 
-      <div
+      {!compactContent && <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
@@ -6624,7 +6636,7 @@ export function TeamsSection({
         <button type="button" onClick={() => setSourceMode("manual")} style={x01AutoModeTab(primary, sourceMode === "manual")}>Manuel</button>
         <button type="button" onClick={() => setSourceMode("saved")} style={x01AutoModeTab(primary, sourceMode === "saved")}>Équipes enregistrées</button>
         <button type="button" onClick={() => setSourceMode("auto")} style={x01AutoModeTab(primary, sourceMode === "auto")}>Brassage auto</button>
-      </div>
+      </div>}
 
       {sourceMode === "auto" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -6633,7 +6645,7 @@ export function TeamsSection({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
                 <div>
                   <div style={{ color: primary, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1.1 }}>Composition automatique</div>
-                  <div style={{ color: "#dfe4ff", fontSize: 12, marginTop: 4, lineHeight: 1.35 }}>Sélectionne les joueurs avec le même sélecteur que le mode manuel, puis génère les équipes.</div>
+                  {!compactContent && <div style={{ color: "#dfe4ff", fontSize: 12, marginTop: 4, lineHeight: 1.35 }}>Sélectionne les joueurs avec le même sélecteur que le mode manuel, puis génère les équipes.</div>}
                 </div>
                 <span style={{ color: "#dfe6ff", fontWeight: 950, fontSize: 12, whiteSpace: "nowrap" }}>{autoSelectedIds.length} sélectionné{autoSelectedIds.length > 1 ? "s" : ""}</span>
               </div>
@@ -6783,17 +6795,17 @@ export function TeamsSection({
                 Aucune équipe fléchettes enregistrée. Crée-les dans Profils → Teams Fléchettes.
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(180px,100%),1fr))", gap: 10, padding: "2px 0 8px", minWidth: 0 }}>
-                {allStoredTeams.map((team: any) => {
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, padding: "2px 0 8px", minWidth: 0 }}>
+                {allStoredTeams.slice(savedTeamsPage * 9, savedTeamsPage * 9 + 9).map((team: any) => {
                   const baseId = String(team?.id || "");
                   const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
                   const used = usedStoredPlayersByBase[baseId] || new Set<string>();
                   const remaining = ids.filter((id: string) => !used.has(id)).length;
                   const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || undefined;
                   return (
-                    <button key={baseId} type="button" disabled={remaining <= 0} onClick={() => openStoredTeamPicker(team)} style={{ textAlign: "center", borderRadius: 20, padding: "14px 12px 12px", border: remaining > 0 ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.06)", background: remaining > 0 ? "rgba(8,10,20,0.90)" : "rgba(255,255,255,0.025)", color: remaining > 0 ? "#f5f7ff" : "#656a82", cursor: remaining > 0 ? "pointer" : "not-allowed", width: "100%", minWidth: 0, minHeight: 154 }}>
-                      <div style={{ display: "grid", justifyItems: "center", gap: 8, minWidth: 0 }}>
-                        <ProfileAvatar name={team?.name || "Équipe"} dataUrl={logo} size={66} />
+                    <button key={baseId} type="button" disabled={remaining <= 0} onClick={() => openStoredTeamPicker(team)} style={{ textAlign: "center", borderRadius: 20, padding: "14px 12px 12px", border: remaining > 0 ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.06)", background: remaining > 0 ? "rgba(8,10,20,0.90)" : "rgba(255,255,255,0.025)", color: remaining > 0 ? "#f5f7ff" : "#656a82", cursor: remaining > 0 ? "pointer" : "not-allowed", width: "100%", minWidth: 0, minHeight: 118 }}>
+                      <div style={{ display: "grid", justifyItems: "center", gap: 5, minWidth: 0 }}>
+                        <ProfileAvatar name={team?.name || "Équipe"} dataUrl={logo} size={48} />
                         <div style={{ width: "100%", minWidth: 0 }}>
                           <div style={{ fontWeight: 950, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team?.name || "Équipe"}</div>
                           <div style={{ color: "#9da3c0", fontSize: 11, marginTop: 2 }}>{remaining} joueur{remaining > 1 ? "s" : ""} disponible{remaining > 1 ? "s" : ""}</div>
@@ -6802,6 +6814,13 @@ export function TeamsSection({
                     </button>
                   );
                 })}
+              </div>
+            )}
+            {allStoredTeams.length > 9 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8 }}>
+                <button type="button" disabled={savedTeamsPage === 0} onClick={() => setSavedTeamsPage((p) => Math.max(0, p - 1))} style={x01AutoSmallPill(primary, false)} aria-label="Page précédente">←</button>
+                <span style={{ color: primary, fontWeight: 900, fontSize: 12 }}>PAGE {savedTeamsPage + 1}/{Math.ceil(allStoredTeams.length / 9)}</span>
+                <button type="button" disabled={(savedTeamsPage + 1) * 9 >= allStoredTeams.length} onClick={() => setSavedTeamsPage((p) => p + 1)} style={x01AutoSmallPill(primary, false)} aria-label="Page suivante">→</button>
               </div>
             )}
           </div>
@@ -6827,6 +6846,7 @@ export function TeamsSection({
                         const editableIds = new Set(teamPickerInstanceId && Array.isArray(savedTeamMemberSelections?.[teamPickerInstanceId]) ? savedTeamMemberSelections[teamPickerInstanceId].map(String) : []);
                         return !(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid) || editableIds.has(pid);
                       })
+                      .slice(savedMembersPage * 9, savedMembersPage * 9 + 9)
                       .map((pid: string) => {
                         const p = teamByPlayer.get(pid);
                         if (!p) return null;
@@ -6895,6 +6915,11 @@ export function TeamsSection({
                         );
                       })}
                   </div>
+                  {(teamPicker?.playerIds || []).length > 9 && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 10, color: primary, fontWeight: 900, fontSize: 12 }}>
+                    <button type="button" disabled={savedMembersPage === 0} onClick={() => setSavedMembersPage((p) => Math.max(0,p-1))} style={x01AutoSmallPill(primary,false)}>←</button>
+                    PAGE {savedMembersPage+1}/{Math.ceil(teamPicker.playerIds.length/9)}
+                    <button type="button" disabled={(savedMembersPage+1)*9>=teamPicker.playerIds.length} onClick={() => setSavedMembersPage((p) => p+1)} style={x01AutoSmallPill(primary,false)}>→</button>
+                  </div>}
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
                     <button type="button" onClick={() => { setTeamPicker(null); setTeamPickerInstanceId(null); setTeamPickerPlayerIds([]); }} style={{ borderRadius: 999, padding: "10px 15px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
                     <button type="button" disabled={teamPickerPlayerIds.length <= 0 || (configuredTeamSize > 0 && teamPickerPlayerIds.length !== configuredTeamSize)} onClick={validateStoredTeamPicker} style={{ borderRadius: 999, padding: "10px 18px", border: `1px solid ${primary}`, background: teamPickerPlayerIds.length > 0 && (!configuredTeamSize || teamPickerPlayerIds.length === configuredTeamSize) ? `${primary}22` : "rgba(255,255,255,.04)", color: teamPickerPlayerIds.length > 0 && (!configuredTeamSize || teamPickerPlayerIds.length === configuredTeamSize) ? primary : "#777", fontWeight: 950, cursor: teamPickerPlayerIds.length > 0 && (!configuredTeamSize || teamPickerPlayerIds.length === configuredTeamSize) ? "pointer" : "not-allowed" }}>Valider</button>
@@ -6906,9 +6931,9 @@ export function TeamsSection({
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ color: "#c8cbe4", fontSize: 12, lineHeight: 1.35 }}>
+          {!compactContent && <div style={{ color: "#c8cbe4", fontSize: 12, lineHeight: 1.35 }}>
             Choisir au minimum {manualRequiredPlayers} joueurs, puis assigne-les manuellement à Gold, Pink, Blue ou Green.
-          </div>
+          </div>}
           {togglePlayer ? (
             <PlayerPagedSelector
                   usageMode="x01"
@@ -6934,7 +6959,7 @@ export function TeamsSection({
               )}
             />
           ) : null}
-          {selectedIds.length < manualRequiredPlayers && (
+          {selectedIds.length < manualRequiredPlayers && !compactContent && (
             <div style={{ color: "#8f94b2", fontSize: 12, marginBottom: 4 }}>
               Sélectionne au moins {manualRequiredPlayers} joueurs pour composer des équipes manuelles.
             </div>

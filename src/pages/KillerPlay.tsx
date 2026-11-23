@@ -29,6 +29,7 @@
 
 import React from "react";
 import { parseBotLevelValue } from "../lib/bots";
+import { setKillerTeamShooter, teamMemberForTurn } from "../lib/killerTeams";
 import { useViewport } from "../hooks/useViewport";
 import type { Store, MatchRecord, Dart as UIDart } from "../lib/types";
 import { History } from "../lib/history";
@@ -117,6 +118,10 @@ type KillerPlayerState = {
   avatarDataUrl?: string | null;
   isBot?: boolean;
   botLevel?: string;
+  teamId?: string;
+  teamMembers?: Array<{ id: string; name: string; avatarDataUrl?: string | null; isBot?: boolean; botLevel?: string }>;
+  teamTurnsPlayed?: number;
+  teamCurrentMemberIndex?: number;
 
   number: number; // 0..20
   lives: number; // Killer classique >=0 ; progressif peut finir sous 0
@@ -2359,6 +2364,11 @@ function AssignOverlay({
             >
               {player.name}
             </div>
+            {Array.isArray(player.teamMembers) && player.teamMembers.length > 0 && (
+              <div style={{ fontSize: 10, textAlign: "center", color: "#fff", maxWidth: 86 }}>
+                {teamMemberForTurn(player)?.name || "—"}
+              </div>
+            )}
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
@@ -2774,6 +2784,8 @@ React.useEffect(() => {
   function pushEvent(e: any) {
     const now = Number(e?.at ?? e?.t) || Date.now();
     const actorId = e?.actorId ?? e?.playerId ?? e?.by ?? null;
+    const actorTeam = Array.isArray(players) ? players.find((p) => p?.id === actorId) : null;
+    const member = actorTeam ? teamMemberForTurn(actorTeam) : null;
     const hasExactThrow = !!(e?.throw || e?.dart || (Array.isArray(e?.darts) && e.darts.length));
     const enriched = {
       ...(e || {}),
@@ -2781,6 +2793,9 @@ React.useEffect(() => {
       at: now,
       actorId,
       playerId: actorId,
+      teamId: actorTeam?.teamId || e?.teamId || undefined,
+      teamMemberId: member?.id || e?.teamMemberId || undefined,
+      teamMemberName: member?.name || e?.teamMemberName || undefined,
       visitIndex: e?.visitIndex ?? (hasExactThrow ? Number(turnCount || 0) : undefined),
       roundIndex: e?.roundIndex ?? (hasExactThrow ? Number(turnCount || 0) : undefined),
       dartIndex: e?.dartIndex ?? (hasExactThrow ? Math.max(0, 3 - Number(dartsLeft || 3)) : undefined),
@@ -2875,6 +2890,10 @@ React.useEffect(() => {
         avatarDataUrl: hydrateAvatarForPlayer(p, null),
         isBot: !!p.isBot,
         botLevel: p.botLevel ?? "",
+        teamId: (p as any).teamId,
+        teamMembers: Array.isArray((p as any).teamMembers) ? (p as any).teamMembers.map((m: any) => ({ ...m })) : undefined,
+        teamTurnsPlayed: 0,
+        teamCurrentMemberIndex: 0,
         // En "1er lancer", seuls les humains attendent une saisie. Les bots sont
         // attribués automatiquement juste après la construction de la liste.
         number: waitsForHumanThrow ? 0 : (inNumberAssignRound ? 0 : clampInt(p.number, 1, 20, 1)),
@@ -3097,9 +3116,11 @@ React.useEffect(() => {
     assignmentPlayerSpokenRef.current = assignPlayer.id;
     const isFirst = !assignmentIntroSpokenRef.current;
     assignmentIntroSpokenRef.current = true;
+    const teamShooter = teamMemberForTurn(assignPlayer);
+    const callerName = teamShooter ? `${teamShooter.name}, pour ${assignPlayer.name}` : assignPlayer.name;
     const message = isFirst
-      ? `Lance ta flèche pour déterminer ton secteur. ${assignPlayer.name}, à toi de lancer ta flèche.`
-      : `${assignPlayer.name}, à toi de lancer ta flèche.`;
+      ? `Lance ta flèche pour déterminer ton secteur. ${callerName}, à toi de lancer ta flèche.`
+      : `${callerName}, à toi de lancer ta flèche.`;
     void awenaSayRef.current?.(message);
   }, [assignActive, assignPlayer?.id, voiceEnabled]);
 
@@ -3692,7 +3713,13 @@ React.useEffect(() => {
     const base = nextPlayers || players;
 
     setPlayers((prev) => {
+      const nextActorIndex = nextAliveIndex(base, turnIndex);
       const next = prev.map((p, i) => {
+        // Équipes : une entrée = une équipe, mais le lanceur change à chaque passage.
+        // Le bouclier et les vies restent sur l'équipe, indépendamment du membre.
+        if (i === nextActorIndex && nextActorIndex !== turnIndex && Array.isArray(p.teamMembers) && p.teamMembers.length) {
+          return setKillerTeamShooter(p, Number(p.teamTurnsPlayed || 0));
+        }
         if (i !== turnIndex) return p;
         const shieldTurnsLeft = Math.max(0, Number(p.shieldTurnsLeft || 0));
         const shieldJustGranted = !!p.shieldJustGranted;
@@ -3710,6 +3737,7 @@ React.useEffect(() => {
               ? 0
               : Math.max(0, Math.min(1, Number(p.shieldStrength ?? (shieldTurnsLeft > 0 ? 1 : 0)) || 0)),
           shieldJustGranted: false,
+          teamTurnsPlayed: Array.isArray(p.teamMembers) ? Math.max(0, Number(p.teamTurnsPlayed || 0)) + 1 : p.teamTurnsPlayed,
         };
       });
       return next;
@@ -3833,10 +3861,14 @@ React.useEffect(() => {
         playerId: p.id,
         profileId: p.id,
         id: p.id,
+        teamId: p.teamId || undefined,
+        teamMembers: Array.isArray(p.teamMembers) ? p.teamMembers.map((m) => ({ id: m.id, name: m.name, isBot: !!m.isBot })) : undefined,
         name: p.name,
         avatarDataUrl: p.avatarDataUrl ?? null,
         isBot: !!p.isBot,
         botLevel: p.botLevel ?? "",
+        teamId: (p as any).teamId,
+        teamMembers: (p as any).teamMembers,
         number: p.number,
         eliminated: !!p.eliminated,
         isKiller: isActiveKiller(p),
@@ -6781,6 +6813,11 @@ return (
             >
               {current?.name ?? "—"}
             </div>
+            {Array.isArray(current?.teamMembers) && current.teamMembers.length > 0 && (
+              <div style={{ fontSize: 10, fontWeight: 850, color: "#f5f2ff", textAlign: "center", maxWidth: 100, lineHeight: 1.2 }} title="Lanceur de l’équipe">
+                🎯 {current.teamMembers[Math.max(0, Number(current.teamCurrentMemberIndex || 0)) % current.teamMembers.length]?.name || "—"}
+              </div>
+            )}
           </div>
 
           <div

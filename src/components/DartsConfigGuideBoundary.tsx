@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../contexts/ThemeContext";
+import MssAwenaExplainButton from "./MssAwenaExplainButton";
 
 type ViewMode = "guided" | "complete";
 
@@ -33,8 +34,20 @@ function isPersistentNode(el: HTMLElement, index: number) {
   return false;
 }
 
+// Le boundary rend une balise <style> avant la page React. Ne jamais prendre
+// firstElementChild ici : cela placerait la barre de configuration dans <style>
+// et empêcherait de détecter les étapes, surtout après les rerenders.
+function getGuidePage(host: HTMLElement): HTMLElement | null {
+  const direct = Array.from(host.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
+  return direct.find((node) =>
+    node.tagName !== "STYLE" && node.tagName !== "SCRIPT" &&
+    !node.hasAttribute("data-mss-config-guide-toolbar") &&
+    (node.matches(".screen, .page, .msc-mode-config") || !!node.querySelector("[data-mss-guide-section], [data-mss-config-guide-anchor]"))
+  ) || direct.find((node) => node.tagName !== "STYLE" && node.tagName !== "SCRIPT") || null;
+}
+
 function findStepNodes(host: HTMLElement): HTMLElement[] {
-  const page = (host.querySelector(":scope > .page") || host.firstElementChild) as HTMLElement | null;
+  const page = getGuidePage(host);
   if (!page) return [];
 
   // Les configs riches (Killer, etc.) peuvent déclarer leurs étapes explicitement.
@@ -42,7 +55,7 @@ function findStepNodes(host: HTMLElement): HTMLElement[] {
   // ne soit jamais une simple copie de la configuration complète.
   const explicit = Array.from(page.querySelectorAll("[data-mss-guide-section]"))
     .filter((node): node is HTMLElement => node instanceof HTMLElement);
-  if (explicit.length >= 2) return explicit.sort((a,b) => Number(a.dataset.mssGuideOrder || 999) - Number(b.dataset.mssGuideOrder || 999));
+  if (explicit.length >= 2) return explicit.sort((a,b) => Number(a.dataset.mssGuideOrder ?? 999) - Number(b.dataset.mssGuideOrder ?? 999));
 
   const direct = Array.from(page.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
   let candidates = direct.filter((el, index) => !isPersistentNode(el, index));
@@ -66,6 +79,11 @@ function findStepNodes(host: HTMLElement): HTMLElement[] {
     }
   }
 
+  // Un guide sans étapes explicites peut déclarer un seul bloc de présentation Awena.
+  // Il devient la première étape, sans recopier ni déplacer son contenu React.
+  const awenaButton = page.querySelector("[data-mss-guide-awena-trigger], button[class*='awena-sidecard']") as HTMLElement | null;
+  const awenaIntro = (page.querySelector("[data-mss-guide-intro-card]") || awenaButton?.closest("section")) as HTMLElement | null;
+  if (awenaIntro && !candidates.includes(awenaIntro)) candidates = [awenaIntro, ...candidates.filter((el) => !awenaIntro.contains(el))];
   return candidates.filter((el) => {
     const text = (el.textContent || "").trim();
     return text.length > 0 || el.querySelector("button,input,select,img") != null;
@@ -94,15 +112,40 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
   const [steps, setSteps] = React.useState<string[]>([]);
   const [portalHost, setPortalHost] = React.useState<HTMLElement | null>(null);
   const [relatedHost, setRelatedHost] = React.useState<HTMLElement | null>(null);
+  const [hasAwenaVideo, setHasAwenaVideo] = React.useState(false);
 
   React.useEffect(() => {
     setStep(0);
   }, [route]);
 
+  // La configuration KILLER conserve une ancre React sous son ticker.
+  // Si React remplace cette ancre pendant la restauration d'une partie ou une
+  // modification des participants, rattacher le portail au nouveau noeud.
+  // Sans cela les commandes Guidée / Complète peuvent disparaître de l'écran.
+  React.useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const syncGuideAnchor = () => {
+      const page = getGuidePage(host);
+      const fresh = (page?.querySelector("[data-mss-config-guide-anchor]") ||
+        page?.querySelector(":scope > [data-mss-config-guide-toolbar]")) as HTMLElement | null;
+      if (fresh) setPortalHost((previous) => previous === fresh ? previous : fresh);
+    };
+    syncGuideAnchor();
+    const observer = new MutationObserver(() => {
+      // Les insertions du portail lui-même ne provoquent pas de mise à jour :
+      // on ne change d'hôte que lorsque le noeud courant a disparu.
+      if (!hostRef.current?.contains(portalHost as Node)) syncGuideAnchor();
+    });
+    observer.observe(host, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [route, portalHost]);
+
   React.useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const nodes = findStepNodes(host);
+    setHasAwenaVideo(!!host.querySelector("[data-mss-guide-awena-trigger],button[class*='awena-sidecard']"));
     // Un bloc de variantes n'est JAMAIS une étape de configuration.
     const firstStep = nodes[0];
     if (firstStep) {
@@ -118,15 +161,21 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
     setSteps(nodes.map(stepLabel));
     setStep((current) => Math.min(current, Math.max(0, nodes.length - 1)));
 
-    const page = (host.querySelector(":scope > .page") || host.firstElementChild) as HTMLElement | null;
+    const page = getGuidePage(host);
     if (page) {
-      let mount = page.querySelector(":scope > [data-mss-config-guide-toolbar]") as HTMLElement | null;
+      // Préférer une ancre rendue et conservée par React (ex. KILLER).
+      // Les insertions DOM dans une page React peuvent disparaître après un rerender.
+      let mount = page.querySelector("[data-mss-config-guide-anchor]") as HTMLElement | null;
       if (!mount) {
-        mount = document.createElement("div");
-        mount.setAttribute("data-mss-config-guide-toolbar", "1");
-        const first = page.firstElementChild;
-        if (first?.nextSibling) page.insertBefore(mount, first.nextSibling);
-        else page.appendChild(mount);
+        // Fallback historique pour les autres configurateurs non migrés.
+        mount = page.querySelector(":scope > [data-mss-config-guide-toolbar]") as HTMLElement | null;
+        if (!mount) {
+          mount = document.createElement("div");
+          mount.setAttribute("data-mss-config-guide-toolbar", "1");
+          const first = page.firstElementChild;
+          if (first?.nextSibling) page.insertBefore(mount, first.nextSibling);
+          else page.appendChild(mount);
+        }
       }
       setPortalHost(mount);
     }
@@ -211,6 +260,14 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
           ))}
         </div>
       </div>
+      {mode === "guided" && step > 0 && hasAwenaVideo && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 9 }}>
+          <MssAwenaExplainButton onClick={() => {
+            const target = hostRef.current?.querySelector("[data-mss-guide-awena-trigger],button[class*='awena-sidecard']") as HTMLButtonElement | null;
+            target?.click();
+          }} />
+        </div>
+      )}
       {mode === "guided" && steps.length ? <>
         <div style={{ marginTop: 9, height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}>
           <div style={{ width: `${((step + 1) / steps.length) * 100}%`, height: "100%", background: `linear-gradient(90deg,${accent},#ff4bd8)` }} />
@@ -224,8 +281,12 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
   );
 
   return <DartsGuideRelatedSlot.Provider value={relatedHost}>
-    <div ref={hostRef} className="mss-darts-config-guide-boundary" data-config-view={mode}>
-      {children}{portalHost ? createPortal(toolbar, portalHost) : null}
+    <div ref={hostRef} className="mss-darts-config-guide-boundary" data-config-view={mode} data-mss-guide-final-step={step >= maxStep && steps.length > 0 ? "true" : "false"}>
+      <style>{`
+        .mss-darts-config-guide-boundary[data-config-view="guided"] [data-mss-guide-launch="killer"] { display: none !important; }
+        .mss-darts-config-guide-boundary[data-config-view="guided"][data-mss-guide-final-step="true"] [data-mss-guide-launch="killer"][data-mss-guide-ready="true"] { display: block !important; }
+      `}</style>
+      {children}{portalHost && hostRef.current?.contains(portalHost) ? createPortal(toolbar, portalHost) : <div data-mss-config-guide-fallback="1">{toolbar}</div>}
     </div>
   </DartsGuideRelatedSlot.Provider>;
 }

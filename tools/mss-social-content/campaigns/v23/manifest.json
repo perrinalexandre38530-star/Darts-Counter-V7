@@ -1,0 +1,33 @@
+{
+  "schema": "mss.social.campaign.v23.v1",
+  "reference_project": "Darts-Counter-V7(23).zip",
+  "status": "REVIEW_REQUIRED_NOT_SCHEDULED_NOT_PUBLISHED",
+  "project_files_modified": 0,
+  "package_json_modified": false,
+  "timestamp": "2026-11-22",
+  "source_sha256": {
+    "src/assets/videos/x01_awena_rules.mp4": "cb94d2e859340e377a35e3b309490a5da10ece2fff08903cb58a165c27868e0b",
+    "src/assets/videos/killer_awena_rules.mp4": "d104bed5a1df4bd6365b31ba2eaf453c78ea7e746244fbd6eae6b0a478fadcc7",
+    "tools/mss-social-x/extension-chrome/assets/MSS_LOGO_OFFICIEL.jpg": "0245c4f4f59c52400f9b5294519710ece4a2ba6cdecaddd54fda5e2efee7c5bb",
+    "tools/mss-social-x/extension-chrome/assets/MSS_COUVERTURE_OFFICIELLE.jpg": "1c41389623e5772d3243d7daeddd41ac7ca197756d42802807c6ad3dee5d90c8"
+  },
+  "video_files": [
+    {
+      "file": "MSS_SHORT_03_PROMO_X01_KILLER_FR_9x16.mp4",
+      "sha256": "e57e42a32e0829b0ede81c3304f7f8ead0eb9c5e8662090aed0c9afdc8bdb170",
+      "size_bytes": 2994020,
+      "duration_seconds": 27.0,
+      "resolution": "720x1280",
+      "codec": "h264/aac"
+    },
+    {
+      "file": "MSS_SHORT_04_PROMO_X01_KILLER_EN_9x16.mp4",
+      "sha256": "fa9e97021041754f7dd0dd1af96e6ba7e47d7d211733d17add28668bf012543c",
+      "size_bytes": 2992635,
+      "duration_seconds": 27.0,
+      "resolution": "720x1280",
+      "codec": "h264/aac"
+    }
+  ],
+  "notes": "Official original MSS logo and footage. Promo segments muted; synthetic original music. YouTube connected to Metricool, no posting performed."
+}

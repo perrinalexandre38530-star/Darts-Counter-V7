@@ -1,0 +1,32 @@
+{
+  "schema": "mss.social.content-pack.v1",
+  "base": "Darts-Counter-V7(21).zip",
+  "status": "REVIEW_REQUIRED_NOT_PUBLISHED",
+  "date": "2026-11-22",
+  "channel": "https://www.youtube.com/@MultisportsScoring",
+  "official_site": "https://multisports-scoring.pages.dev/",
+  "videos": [
+    {
+      "file": "MSS_SHORT_01_X01_AWENA_9x16.mp4",
+      "mode": "X01",
+      "length_seconds": 40.6,
+      "sha256": "510546dbf1f1e15e5c942540f859c8d2f87e72cda550e12a47826aed8b4f5480",
+      "source_in_project": "src/assets/videos/x01_awena_rules.mp4",
+      "source_sha256": "cb94d2e859340e377a35e3b309490a5da10ece2fff08903cb58a165c27868e0b",
+      "size_bytes": 4771871,
+      "resolution": "720x1280",
+      "codec": "h264/aac"
+    },
+    {
+      "file": "MSS_SHORT_02_KILLER_AWENA_9x16.mp4",
+      "mode": "KILLER",
+      "length_seconds": 85.772,
+      "sha256": "81f2758f55830f295ae7585d79e876e964c563a78c4597e3f1f9fe4b969f5020",
+      "source_in_project": "src/assets/videos/killer_awena_rules.mp4",
+      "source_sha256": "d104bed5a1df4bd6365b31ba2eaf453c78ea7e746244fbd6eae6b0a478fadcc7",
+      "size_bytes": 9770667,
+      "resolution": "720x1280",
+      "codec": "h264/aac"
+    }
+  ]
+}

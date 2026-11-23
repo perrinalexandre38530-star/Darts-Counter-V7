@@ -507,6 +507,7 @@ export default function PlayerPagedSelector({
   loopPages = false,
   showListButton = true,
   toolbarExtra,
+  modalHeaderExtra,
   summaryExtra,
   showToolbar = true,
 }: any) {
@@ -666,7 +667,7 @@ export default function PlayerPagedSelector({
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {showToolbar ? <div data-mss-selector-toolbar="players" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
+      {showToolbar ? <div data-mss-selector-toolbar="players" style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "nowrap" }}>
         <MssSelectorIconButton icon="players" label={`Choisir joueurs (${selected.length})`} onClick={() => setOpen(true)} accent={accent} active={open} />
         {showListButton ? <MssSelectorIconButton icon="profiles" label="Liste des profils" onClick={() => setListOpen((v) => !v)} accent={accent} active={listOpen} /> : null}
         {toolbarExtra}
@@ -705,7 +706,10 @@ export default function PlayerPagedSelector({
                 <div style={{ fontWeight: 950, color: accent, textTransform: "uppercase", letterSpacing: 1.2, fontSize: 13 }}>{modalTitle}</div>
                 <div style={{ color: "#aab0cc", fontSize: 11, fontWeight: 800, marginTop: 4 }}>9 profils/page · page {safePage + 1}/{pages}</div>
               </div>
-              <button className="btn sm" type="button" onClick={closePicker}>✕</button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {modalHeaderExtra}
+                <button className="btn sm" type="button" onClick={closePicker}>✕</button>
+              </div>
             </div>
             <div style={{ padding: 14, overflowY: "auto" }} className="dc-scroll-thin">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>

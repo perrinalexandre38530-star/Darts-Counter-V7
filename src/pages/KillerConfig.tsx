@@ -34,11 +34,20 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
 import MssSelectorIconButton from "../components/MssSelectorIconButton";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+// Le sélecteur commun réellement employé par X01 (Manuel / Enregistrées / Brassage auto).
+import { TeamsSection, buildX01DartsBotTeams, X01_PRO_BOTS } from "./X01ConfigV3";
+import { findRememberedGeneratedTeam } from "../lib/teamAutoShuffle";
+import { loadTeamsBySport, createTeam, upsertTeam } from "../lib/petanqueTeamsStore";
+import { groupKillerTeamMembers } from "../lib/killerTeams";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
 import tickerKillerProgressiveFr from "../assets/tickers/ticker_killer_progressive_fr.webp";
 import tickerKillerProgressiveEn from "../assets/tickers/ticker_killer_progressive_en.webp";
+import teamGoldLogo from "../ui_assets/teams/team_gold.png";
+import teamPinkLogo from "../ui_assets/teams/team_pink.png";
+import teamBlueLogo from "../ui_assets/teams/team_blue.png";
+import teamGreenLogo from "../ui_assets/teams/team_green.png";
 import InfoDot from "../components/InfoDot";
 import KillerAwenaRulesVideo from "../components/KillerAwenaRulesVideo";
 import killerAwenaRulesPosterFr from "../assets/videos/killer_awena_rules_poster.webp";
@@ -63,6 +72,8 @@ export type KillerConfigPlayer = {
   isBot?: boolean;
   botLevel?: string;
   number: number; // 1..20 ; 0 si numberAssignMode === "throw"
+  teamId?: string;
+  teamMembers?: Array<{ id: string; name: string; avatarDataUrl?: string | null; isBot?: boolean; botLevel?: string }>;
 };
 
 export type KillerConfig = {
@@ -74,6 +85,16 @@ export type KillerConfig = {
   variantId?: "classic" | "progressive" | string;
   gameId?: "killer" | "killer_progressive" | string;
   progressiveTarget?: number;
+  participantMode?: "players" | "teams";
+  teamCount?: number;
+  teamSize?: number;
+  playerFormat?: "duel" | "multi";
+  teamAssignments?: Record<string, number>;
+  teamNames?: string[];
+  teamsSourceMode?: "manual" | "saved" | "auto";
+  selectedBotTeamIds?: string[];
+  savedTeamIds?: string[];
+  savedTeamMemberSelections?: Record<string, string[]>;
 
   lives: number;
   becomeRule: KillerBecomeRule;
@@ -156,6 +177,27 @@ const KILLER_BOTS: BotLite[] = DARTS_KILLER_BOTS.map((bot) => ({
   groupLabel: bot.groupLabel,
   source: bot.source,
 }));
+
+
+const KILLER_TEAM_LIMITS = { min: 2, max: 4 } as const;
+
+const KILLER_MANUAL_TEAM_PRESETS = [
+  { id: "gold", name: "Team Gold", short: "TG", color: "#f7c85c", ring: "#ffebad", logo: teamGoldLogo },
+  { id: "pink", name: "Team Pink", short: "TP", color: "#ff4fa2", ring: "#ffd0e8", logo: teamPinkLogo },
+  { id: "blue", name: "Team Blue", short: "TB", color: "#4fc3ff", ring: "#d0f1ff", logo: teamBlueLogo },
+  { id: "green", name: "Team Green", short: "TV", color: "#6dff7c", ring: "#dafedf", logo: teamGreenLogo },
+] as const;
+
+type KillerManualTeamPreset = (typeof KILLER_MANUAL_TEAM_PRESETS)[number];
+
+type StartOrderMode = "random" | "alternate" | "manual" | "bull";
+
+const KILLER_START_ORDER_OPTIONS: Array<{ id: StartOrderMode; icon: any; label: string; detail: string }> = [
+  { id: "random", icon: "random-order", label: "Aléatoire", detail: "Les participants sont mélangés automatiquement au lancement de la partie." },
+  { id: "alternate", icon: "alternate-order", label: "Alterné", detail: "Le premier départ respecte l'ordre actuel de sélection des participants." },
+  { id: "manual", icon: "manual-order", label: "Manuel", detail: "Tu choisis l'ordre exact des participants avant le début de la partie." },
+  { id: "bull", icon: "bull-order", label: "Bull", detail: "Après le lancer physique à la bull, classe les participants selon le résultat obtenu." },
+];
 
 function clampInt(n: any, min: number, max: number, fb: number) {
   const x = Math.floor(Number(n));
@@ -440,6 +482,52 @@ function getMostPlayedKillerPreference(progressive: boolean): KillerLaunchPrefer
   return best && best.count >= 2 ? best.value : null;
 }
 
+function KillerParticipantModeButton({
+  mode,
+  label,
+  active,
+  accent,
+  onClick,
+}: {
+  mode: "players" | "teams";
+  label: string;
+  active: boolean;
+  accent: string;
+  onClick: () => void;
+}) {
+  const icon = mode === "players"
+    ? <><circle cx="12" cy="7.5" r="3.2"/><path d="M5.5 20v-1.8A6.5 6.5 0 0 1 12 11.7a6.5 6.5 0 0 1 6.5 6.5V20"/></>
+    : <><circle cx="7" cy="8.5" r="2.4"/><circle cx="12" cy="6.4" r="2.8"/><circle cx="17" cy="8.5" r="2.4"/><path d="M2.5 19.5v-1a4.5 4.5 0 0 1 6.8-3.8"/><path d="M7.5 20v-1.7A5.4 5.4 0 0 1 12.9 12.9h.2a5.4 5.4 0 0 1 5.4 5.4V20"/><path d="M14.7 14.7a4.5 4.5 0 0 1 6.8 3.8v1"/></>;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={label}
+      style={{
+        minHeight: 86,
+        width: "100%",
+        borderRadius: 18,
+        border: active ? `1px solid ${accent}` : `1px solid ${accent}66`,
+        background: active ? `linear-gradient(135deg, ${accent}, #f7df9b)` : "rgba(255,255,255,.035)",
+        color: active ? "#383c47" : accent,
+        display: "grid",
+        placeItems: "center",
+        gap: 6,
+        padding: "10px 8px",
+        cursor: "pointer",
+        boxShadow: active ? `0 0 20px ${accent}33` : "none",
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="31" height="31" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {icon}
+      </svg>
+      <span style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 0.9, textTransform: "uppercase" }}>{label}</span>
+    </button>
+  );
+}
+
 export default function KillerConfigPage(props: Props) {
   const { store, go, onBack } = props;
 
@@ -473,6 +561,7 @@ export default function KillerConfigPage(props: Props) {
 
   // Création rapide dans une modale : ne jamais quitter le configurateur.
   const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
+  const [creationMenuOpen, setCreationMenuOpen] = React.useState(false);
   const [quickCreateKind, setQuickCreateKind] = React.useState<"profile" | "bot">("profile");
   const [quickCreateName, setQuickCreateName] = React.useState("");
   const [quickCreateLevel, setQuickCreateLevel] = React.useState<"easy" | "medium" | "strong" | "pro" | "legend">("medium");
@@ -481,7 +570,48 @@ export default function KillerConfigPage(props: Props) {
   const [quickCreateCountry, setQuickCreateCountry] = React.useState("");
   const [quickCreateBusy, setQuickCreateBusy] = React.useState(false);
   const [quickCreateError, setQuickCreateError] = React.useState("");
-  const [participantMode, setParticipantMode] = React.useState<"players" | "teams">("players");
+  const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(savedCfg?.participantMode === "teams" ? "teams" : "players");
+  const [teamCreateOpen, setTeamCreateOpen] = React.useState(false);
+  // Le type de l'équipe dépend du sélecteur d'origine ; ne jamais mélanger humains et CPU.
+  const [teamCreateKind, setTeamCreateKind] = React.useState<"players" | "bots">("players");
+  const [teamCreateName, setTeamCreateName] = React.useState("");
+  const [teamCreateLogo, setTeamCreateLogo] = React.useState<string | null>(null);
+  const [teamCreateMembers, setTeamCreateMembers] = React.useState<string[]>([]);
+  const [teamCreatePage, setTeamCreatePage] = React.useState(0);
+  const [teamCreateError, setTeamCreateError] = React.useState("");
+  const [teamStoreRevision, setTeamStoreRevision] = React.useState(0);
+  const [teamPickerOpen, setTeamPickerOpen] = React.useState(false);
+  const [teamPickerTab, setTeamPickerTab] = React.useState<"manual" | "saved" | "auto" | "bots">("manual");
+  const [teamInfoOpen, setTeamInfoOpen] = React.useState(false);
+  const [botTeamsPage, setBotTeamsPage] = React.useState(0);
+  const [botTeamEditing, setBotTeamEditing] = React.useState<any | null>(null);
+  const [editingBotInstanceId, setEditingBotInstanceId] = React.useState<string | null>(null);
+  const [botTeamMembersDraft, setBotTeamMembersDraft] = React.useState<string[]>([]);
+  const [botMemberPage, setBotMemberPage] = React.useState(0);
+  const [botMemberError, setBotMemberError] = React.useState("");
+  const teamPickerScrollRef = React.useRef<HTMLDivElement>(null);
+  const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>(() => Array.isArray(savedCfg?.selectedBotTeamIds) ? savedCfg.selectedBotTeamIds.map(String) : []);
+  // KILLER: 2 à 4 équipes, 2 à 5 membres chacune (20 participants au maximum).
+  // Les contraintes sont choisies AVANT les profils et vérifiées au lancement.
+  const [teamCount, setTeamCount] = React.useState<number>(clampInt(savedCfg?.teamCount, 2, KILLER_TEAM_LIMITS.max, 2));
+  const [teamSize, setTeamSize] = React.useState<number>(clampInt(savedCfg?.teamSize, 2, 5, 2));
+  const [playerFormat, setPlayerFormat] = React.useState<"duel" | "multi">(savedCfg?.playerFormat === "multi" ? "multi" : "duel");
+  const [teamAssignments, setTeamAssignments] = React.useState<Record<string, number>>(() => ({ ...(savedCfg?.teamAssignments || {}) }));
+  const [teamNames, setTeamNames] = React.useState<string[]>(() => Array.isArray(savedCfg?.teamNames) ? savedCfg.teamNames : ["Équipe A", "Équipe B", "Équipe C", "Équipe D"]);
+  // Le mode Teams utilise le même composant et les mêmes sources que X01.
+  const [teamsSourceMode, setTeamsSourceMode] = React.useState<"manual" | "saved" | "auto">(
+    savedCfg?.teamsSourceMode === "saved" || savedCfg?.teamsSourceMode === "auto" ? savedCfg.teamsSourceMode : "manual"
+  );
+  const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>(
+    () => Array.isArray(savedCfg?.savedTeamIds) ? savedCfg.savedTeamIds.map(String) : []
+  );
+  const [savedTeamMemberSelections, setSavedTeamMemberSelections] = React.useState<Record<string, string[]>>(
+    () => savedCfg?.savedTeamMemberSelections && typeof savedCfg.savedTeamMemberSelections === "object" ? { ...savedCfg.savedTeamMemberSelections } : {}
+  );
+  const storedDartsTeams = React.useMemo(() => {
+    try { return loadTeamsBySport("darts").filter((t: any) => Array.isArray(t?.playerIds) && t.playerIds.length > 0); }
+    catch { return []; }
+  }, [store, teamStoreRevision]);
   const openQuickCreate = (kind: "profile" | "bot") => {
     setQuickCreateKind(kind); setQuickCreateName(""); setQuickCreateAvatar(null); setQuickCreateCountry("");
     setQuickCreateLevel("medium"); setQuickCreateError(""); setQuickCreateOpen(true);
@@ -513,7 +643,13 @@ export default function KillerConfigPage(props: Props) {
         const profile = { id, name, avatarDataUrl: quickCreateAvatar, avatarUpdatedAt: Date.now(), privateInfo: quickCreateCountry.trim() ? { country: quickCreateCountry.trim() } : undefined } as Profile;
         props.update((current) => ({ ...current, profiles: [...(Array.isArray(current.profiles) ? current.profiles : []), profile] }));
       }
-      setSelectedIds((prev) => prev.includes(id) ? prev : [...prev, id].slice(0, 20));
+      if (teamCreateOpen) {
+        setTeamCreateMembers((prev) => prev.includes(id) || prev.length >= teamSize ? prev : [...prev, id]);
+      } else {
+        const max = participantMode === "teams" ? teamCount * teamSize : playerFormat === "duel" ? 2 : 20;
+        setSelectedIds((prev) => prev.includes(id) || prev.length >= max ? prev : [...prev, id]);
+      }
+      setTeamAssignments((prev) => ({ ...prev, [id]: Math.min(teamCount - 1, Math.max(0, Number(prev[id]) || 0)) }));
       setQuickCreateOpen(false); setQuickCreateName(""); setQuickCreateAvatar(null);
     } catch (error) { setQuickCreateError(error instanceof Error ? error.message : "Création impossible."); }
     finally { setQuickCreateBusy(false); }
@@ -613,6 +749,17 @@ export default function KillerConfigPage(props: Props) {
     return [...official, ...usr];
   }, [userBots]);
 
+  const allAvailableBots = React.useMemo(() => {
+    const merged = [...KILLER_BOTS, ...botProfiles, ...X01_PRO_BOTS];
+    const byId = new Map<string, any>();
+    for (const bot of merged) {
+      const id = String((bot as any)?.id || "").trim();
+      if (!id || byId.has(id)) continue;
+      byId.set(id, { ...bot, id, name: String((bot as any)?.name || "BOT"), avatarDataUrl: normalizeImgSrc((bot as any)?.avatarDataUrl) ?? ((bot as any)?.avatarDataUrl || null) });
+    }
+    return Array.from(byId.values());
+  }, [botProfiles]);
+
   // ------------------ state config ------------------
   const [lives, setLives] = React.useState<number>(isProgressive ? 5 : clampInt(savedCfg?.lives, 1, 9, 3));
   const [becomeRule, setBecomeRule] = React.useState<KillerBecomeRule>(savedCfg?.becomeRule === "double" ? "double" : "single");
@@ -620,7 +767,7 @@ export default function KillerConfigPage(props: Props) {
 
   const [numberAssignMode, setNumberAssignMode] = React.useState<KillerNumberAssignMode>(isProgressive ? "throw" : (["none", "random", "throw"].includes(String(savedCfg?.numberAssignMode)) ? savedCfg?.numberAssignMode! : "random"));
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(false);
-  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">((["random", "alternate", "manual", "bull"].includes(String(savedCfg?.startOrderMode)) ? savedCfg?.startOrderMode! : "alternate"));
+  const [startOrderMode, setStartOrderMode] = React.useState<StartOrderMode>((["random", "alternate", "manual", "bull"].includes(String(savedCfg?.startOrderMode)) ? savedCfg?.startOrderMode! : "alternate"));
 
   // ✅ variantes
   const [selfHitWhileKiller, setSelfHitWhileKiller] = React.useState<boolean>(!isProgressive && savedCfg?.selfHitWhileKiller === true);
@@ -819,8 +966,8 @@ export default function KillerConfigPage(props: Props) {
   const [botsPickerOpen, setBotsPickerOpen] = React.useState<boolean>(false);
   const selectedBotProfiles = React.useMemo(() => {
     const selected = new Set(selectedIds);
-    return botProfiles.filter((b) => selected.has(b.id));
-  }, [botProfiles, selectedIds]);
+    return allAvailableBots.filter((b) => selected.has(b.id));
+  }, [allAvailableBots, selectedIds]);
 
   const [killerNumberById, setKillerNumberById] = React.useState<Record<string, number>>(() =>
     savedLaunch?.numberById && typeof savedLaunch.numberById === "object" ? { ...savedLaunch.numberById } : {}
@@ -847,6 +994,16 @@ export default function KillerConfigPage(props: Props) {
       setDbullRotate(c.dbullRotate === true);
       setShieldTurns(clampInt(c.shieldTurns, 1, 5, 1));
       setSelectBonusShield(c.selectBonusShield === true);
+      setParticipantMode(c.participantMode === "teams" ? "teams" : "players");
+      setTeamCount(clampInt(c.teamCount, 2, KILLER_TEAM_LIMITS.max, 2));
+      setTeamSize(clampInt(c.teamSize, 2, 5, 2));
+      setPlayerFormat(c.playerFormat === "multi" ? "multi" : "duel");
+      setTeamAssignments({ ...(c.teamAssignments || {}) });
+      setTeamNames(Array.isArray(c.teamNames) ? [...c.teamNames] : ["Équipe A", "Équipe B", "Équipe C", "Équipe D"]);
+      setTeamsSourceMode(c.teamsSourceMode === "saved" || c.teamsSourceMode === "auto" ? c.teamsSourceMode : "manual");
+      setSelectedBotTeamIds(Array.isArray(c.selectedBotTeamIds) ? c.selectedBotTeamIds.map(String) : []);
+      setSelectedStoredTeamIds(Array.isArray(c.savedTeamIds) ? c.savedTeamIds.map(String) : []);
+      setSavedTeamMemberSelections(c.savedTeamMemberSelections && typeof c.savedTeamMemberSelections === "object" ? { ...c.savedTeamMemberSelections } : {});
       setMissAutoHit(c.missAutoHit === true);
       setResurrectionMode(["off", "one_player_once", "all_once", "all"].includes(String(c.resurrectionMode)) ? c.resurrectionMode! : "off");
       setResurrectionLives(clampInt(c.resurrectionLives, 1, 6, 1));
@@ -863,7 +1020,7 @@ export default function KillerConfigPage(props: Props) {
       ...humanProfiles.map((p: any) => String(p?.id || "")),
       ...botProfiles.map((b: any) => String(b?.id || "")),
     ]);
-  }, [humanProfiles, botProfiles]);
+  }, [humanProfiles, allAvailableBots]);
 
   React.useEffect(() => {
     // Attendre le chargement des bots ET celui des profils avant de supprimer une sélection restaurée.
@@ -892,8 +1049,9 @@ export default function KillerConfigPage(props: Props) {
 
   function togglePlayer(id: string) {
     const exists = selectedIds.includes(id);
-    if (!exists && selectedIds.length >= 20) {
-      alert("Killer utilise les numéros 1 à 20 : 20 participants maximum pour garantir un numéro unique à chacun.");
+    const maxPlayers = participantMode === "players" ? (playerFormat === "duel" ? 2 : 20) : teamCount * teamSize;
+    if (!exists && selectedIds.length >= maxPlayers) {
+      alert(`Ce format autorise ${maxPlayers} participant(s) maximum.`);
       return;
     }
     setSelectedIds((prev) => {
@@ -928,8 +1086,270 @@ export default function KillerConfigPage(props: Props) {
     cursor: "pointer",
   };
 
-  const canStart = participantMode === "players" && selectedIds.length >= 2 && selectedIds.length <= 20;
+  // L'ossature collective KILLER ne change pas : nous adaptons uniquement
+  // les sélections X01 à la liste d'équipes transmise au lancement.
+  // Un joueur nouvellement sélectionné n'ouvre pas une nouvelle équipe.
+  // Par défaut, on constitue Gold/Pink en alternance (2v2 pour 4 joueurs).
+  // Les affectations manuelles restent prioritaires, et Blue/Green sont disponibles
+  // uniquement si une vraie composition multi-équipes est choisie.
+  const manualTeamAssignments = React.useMemo(() => {
+    const counts = Array.from({ length: teamCount }, () => 0);
+    const assignment: Record<string, number> = {};
+    for (const id of selectedIds) {
+      const proposed = Number(teamAssignments[id]);
+      let team = Number.isInteger(proposed) && proposed >= 0 && proposed < teamCount && counts[proposed] < teamSize ? proposed : -1;
+      if (team < 0) team = counts.findIndex((count) => count < teamSize);
+      // En surnombre : ne pas inventer une équipe supplémentaire.
+      if (team < 0) continue;
+      assignment[id] = team;
+      counts[team]++;
+    }
+    return assignment;
+  }, [selectedIds, teamAssignments, teamCount, teamSize]);
+  const teamMembersByIndex = groupKillerTeamMembers(selectedIds.filter((id) => manualTeamAssignments[id] !== undefined), manualTeamAssignments, teamCount);
+  const botTeamsCatalog = React.useMemo(() => [
+    ...buildX01DartsBotTeams(X01_PRO_BOTS),
+    ...storedDartsTeams.filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length >= 2 &&
+      team.playerIds.every((id: string) => allAvailableBots.some((bot: any) => String(bot.id) === String(id)))).map((team: any) => ({
+      ...team,
+      members: (team.playerIds || []).map((id: string) => allAvailableBots.find((bot: any) => String(bot.id) === String(id))).filter(Boolean),
+    })),
+  ], [storedDartsTeams, allAvailableBots]);
+  const humanStoredDartsTeams = React.useMemo(() => storedDartsTeams.filter((team: any) =>
+    (team.playerIds || []).every((id: string) =>
+      humanProfiles.some((profile: any) => String(profile.id) === String(id))
+    )
+  ), [storedDartsTeams, humanProfiles]);
+  const teamProfiles = React.useMemo(() => {
+    const byId = new Map<string, any>();
+    for (const p of [...humanProfiles, ...allAvailableBots]) {
+      const id = String((p as any)?.id || "");
+      if (id && !byId.has(id)) byId.set(id, { ...p, id, name: String((p as any)?.name || "Joueur") });
+    }
+    return Array.from(byId.values());
+  }, [humanProfiles, allAvailableBots]);
+  const selectedBotTeamGroups = React.useMemo(() => selectedBotTeamIds.map((instanceId) => {
+    const baseId = String(instanceId).split("__slot_")[0];
+    const team = botTeamsCatalog.find((t: any) => String(t.id) === baseId);
+    const ids = (savedTeamMemberSelections[instanceId] || team?.playerIds || []).map(String);
+    return team ? { instanceId, team, ids: [...new Set(ids)] } : null;
+  }).filter(Boolean) as Array<{ instanceId: string; team: any; ids: string[] }>, [selectedBotTeamIds, botTeamsCatalog, savedTeamMemberSelections]);
+  const botTeamsForPicker = botTeamsCatalog;
+  const storedTeamSelection = React.useMemo(() => {
+    return selectedStoredTeamIds.map((instanceId) => {
+      const baseId = String(instanceId).split("__slot_")[0];
+      const team = storedDartsTeams.find((t: any) => String(t?.id) === baseId) || findRememberedGeneratedTeam(baseId);
+      const ids = (savedTeamMemberSelections[instanceId] || (team?.playerIds || [])).map(String);
+      return team ? { instanceId, team, ids: [...new Set(ids)] } : null;
+    }).filter(Boolean) as Array<{ instanceId: string; team: any; ids: string[] }>;
+  }, [selectedStoredTeamIds, savedTeamMemberSelections, storedDartsTeams]);
+  const activeTeamGroups = teamsSourceMode === "manual"
+    ? teamMembersByIndex.map((ids, idx) => {
+      const preset = KILLER_MANUAL_TEAM_PRESETS[idx] || KILLER_MANUAL_TEAM_PRESETS[0];
+      return {
+        ids,
+        name: preset.name,
+        short: preset.short,
+        color: preset.color,
+        ring: preset.ring,
+        teamId: `killer-team-${preset.id}`,
+        source: "manual" as const,
+        logo: preset.logo || null,
+      };
+    }).filter((group) => group.ids.length > 0)
+    : [...storedTeamSelection.map((item) => ({ ...item, source: "stored" as const })), ...selectedBotTeamGroups.map((item) => ({ ...item, source: "bot" as const }))].map((item, idx) => ({ ids: item.ids, source: item.source, name: String(item.team?.name || `Équipe ${idx + 1}`), short: String(item.team?.name || `Équipe ${idx + 1}`).slice(0, 2).toUpperCase(), teamId: item.instanceId, logo: item.team?.logoDataUrl || item.team?.logoUrl || item.team?.avatarDataUrl || null, color: primary, ring: primary }));
+  const validTeams = activeTeamGroups.length === teamCount && activeTeamGroups.every((g) =>
+    g.ids.length === teamSize && g.ids.every((id) => !!teamProfiles.find((p: any) => String(p.id) === id))
+  ) && new Set(activeTeamGroups.flatMap((g) => g.ids)).size === activeTeamGroups.reduce((sum, g) => sum + g.ids.length, 0)
+    && (teamsSourceMode !== "manual" || selectedIds.length === teamCount * teamSize);
+  const validPlayers = playerFormat === "duel" ? selectedIds.length === 2 : selectedIds.length >= 2 && selectedIds.length <= 20;
+  const canStart = participantMode === "teams" ? validTeams : validPlayers;
+  const selectedParticipantIds = participantMode === "teams"
+    ? [...new Set(activeTeamGroups.flatMap((g) => g.ids))] : selectedIds;
+  const teamCreateEligibleMembers = teamCreateKind === "bots" ? allAvailableBots : humanProfiles;
+  const teamCreatePageSize = 9;
+  const teamCreatePages = Math.max(1, Math.ceil(teamCreateEligibleMembers.length / teamCreatePageSize));
+  const safeTeamCreatePage = Math.min(teamCreatePages - 1, Math.max(0, teamCreatePage));
+  const teamCreatePageItems = teamCreateEligibleMembers.slice(safeTeamCreatePage * teamCreatePageSize, safeTeamCreatePage * teamCreatePageSize + teamCreatePageSize);
 
+  const x01ManualTeamKeys = ["gold", "pink", "blue", "green"] as const;
+  function setX01ManualTeam(id: string, x01Team: string) {
+    const index = x01ManualTeamKeys.findIndex((key) => key === String(x01Team).toLowerCase());
+    if (index < 0 || index >= teamCount) return;
+    const occupied = Object.entries(manualTeamAssignments).filter(([playerId, team]) => playerId !== id && team === index).length;
+    if (occupied >= teamSize) return;
+    setTeamAssignments((prev) => ({ ...prev, [id]: index }));
+  }
+  function addStoredTeamSelection(teamId: string, playerIds: string[]) {
+    const baseId = String(teamId || "").split("__slot_")[0];
+    const ids = [...new Set(playerIds.map(String))].filter((id) => teamProfiles.some((p: any) => p.id === id));
+    if (!baseId) return;
+    if (ids.length !== teamSize) { alert(`Sélectionne exactement ${teamSize} membres pour cette équipe.`); return; }
+    if (selectedStoredTeamIds.length + selectedBotTeamIds.length >= teamCount) { alert(`Maximum ${teamCount} équipes pour ce format.`); return; }
+    setSelectedStoredTeamIds((prev) => {
+      const existing = prev.filter((id) => id.split("__slot_")[0] === baseId).length;
+      const instanceId = existing ? `${baseId}__slot_${existing + 1}` : baseId;
+      setSavedTeamMemberSelections((old) => ({ ...old, [instanceId]: ids }));
+      return [...prev, instanceId].slice(0, KILLER_TEAM_LIMITS.max);
+    });
+  }
+  function removeStoredTeamSelection(instanceId: string) {
+    setSelectedStoredTeamIds((prev) => prev.filter((id) => id !== instanceId));
+    setSavedTeamMemberSelections((prev) => { const next = { ...prev }; delete next[instanceId]; return next; });
+  }
+  function toggleStoredTeam(teamId: string) {
+    const baseId = String(teamId || "");
+    const selected = selectedStoredTeamIds.find((id) => id.split("__slot_")[0] === baseId);
+    if (selected) removeStoredTeamSelection(selected);
+    else {
+      const team = humanStoredDartsTeams.find((item: any) => String(item?.id) === baseId);
+      if (team) addStoredTeamSelection(baseId, team.playerIds || []);
+    }
+  }
+  function addBotTeamMembers(teamId: string, memberIds: string[]): boolean {
+    const baseId = String(teamId || "");
+    const ids = [...new Set(memberIds.map(String))].filter((id) => teamProfiles.some((p: any) => p.id === id));
+    if (ids.length !== teamSize) {
+      setBotMemberError(`Sélectionne exactement ${teamSize} bots différents.`);
+      return false;
+    }
+    if (!editingBotInstanceId && selectedBotTeamIds.length + selectedStoredTeamIds.length >= teamCount) {
+      setBotMemberError(`Cette partie accepte ${teamCount} équipes maximum.`);
+      return false;
+    }
+    if (selectedBotTeamGroups.some((team) => team.instanceId !== editingBotInstanceId && team.ids.some((id) => ids.includes(id))) || storedTeamSelection.some((team) => team.ids.some((id) => ids.includes(id)))) {
+      setBotMemberError("Un de ces bots appartient déjà à une équipe sélectionnée.");
+      return false;
+    }
+    const instanceId = editingBotInstanceId || `${baseId}__slot_${Date.now()}`;
+    setSavedTeamMemberSelections((prev) => ({ ...prev, [instanceId]: ids }));
+    if (!editingBotInstanceId) setSelectedBotTeamIds((prev) => [...prev, instanceId]);
+    setTeamsSourceMode("saved");
+    setBotTeamEditing(null);
+    setEditingBotInstanceId(null);
+    setBotTeamMembersDraft([]);
+    setBotMemberPage(0);
+    setBotMemberError("");
+    if (teamPickerScrollRef.current) teamPickerScrollRef.current.scrollTop = 0;
+    return true;
+  }
+  function openBotTeamMembers(team: any, instanceId?: string) {
+    if (teamPickerScrollRef.current) teamPickerScrollRef.current.scrollTop = 0;
+    setBotTeamEditing(team);
+    setEditingBotInstanceId(instanceId || null);
+    const previous = instanceId ? selectedBotTeamGroups.find((g) => g.instanceId === instanceId) : null;
+    setBotTeamMembersDraft(previous?.ids.length === teamSize ? [...previous.ids] : []);
+    setBotMemberPage(0);
+    setBotMemberError("");
+  }
+  function chooseBotTeamMember(botId: string) {
+    if (!botTeamEditing) return;
+    const id = String(botId);
+    if (botTeamMembersDraft.includes(id)) {
+      setBotTeamMembersDraft((prev) => prev.filter((value) => value !== id));
+      setBotMemberError("");
+      return;
+    }
+    const next = [...botTeamMembersDraft, id];
+    if (next.length === teamSize) {
+      // Dernier avatar : validation immédiate, puis retour à la galerie des équipes.
+      if (!addBotTeamMembers(botTeamEditing.id, next)) setBotTeamMembersDraft(next.slice(0, 1));
+    } else {
+      setBotTeamMembersDraft(next);
+      setBotMemberError("");
+    }
+  }
+  function removeBotTeamMembers(instanceId: string) {
+    setSelectedBotTeamIds((prev) => prev.filter((id) => id !== instanceId));
+    setSavedTeamMemberSelections((prev) => { const next = { ...prev }; delete next[instanceId]; return next; });
+    if (editingBotInstanceId === instanceId) { setBotTeamEditing(null); setEditingBotInstanceId(null); setBotTeamMembersDraft([]); }
+  }
+  function removeSelectedTeam(group: (typeof activeTeamGroups)[number]) {
+    if (group.source === "bot") return removeBotTeamMembers(group.teamId);
+    if (group.source === "stored") return removeStoredTeamSelection(group.teamId);
+    setSelectedIds((prev) => prev.filter((id) => !group.ids.includes(id)));
+    setTeamAssignments((prev) => { const next = { ...prev }; group.ids.forEach((id) => delete next[id]); return next; });
+  }
+  function editSelectedTeam(group: (typeof activeTeamGroups)[number]) {
+    if (group.source === "bot") {
+      const selection = selectedBotTeamGroups.find((item) => item.instanceId === group.teamId);
+      if (selection) { openTeamPicker("bots"); openBotTeamMembers(selection.team, selection.instanceId); }
+    } else openTeamPicker(group.source === "manual" ? "manual" : "saved");
+  }
+  function openCreateTeam(kind: "players" | "bots" = teamPickerTab === "bots" ? "bots" : "players") {
+    setTeamCreateKind(kind);
+    setTeamPickerOpen(false);
+    setTeamCreateError("");
+    setTeamCreateName("");
+    setTeamCreateLogo(null);
+    setTeamCreateMembers([]);
+    setTeamCreatePage(0);
+    setTeamCreateOpen(true);
+  }
+  function runCreationChoice(kind: "profile" | "bot" | "team" | "bot-team") {
+    setCreationMenuOpen(false);
+    if (kind === "team" || kind === "bot-team") {
+      openCreateTeam(kind === "bot-team" ? "bots" : "players");
+      return;
+    }
+    openQuickCreate(kind);
+  }
+
+  function readTeamLogo(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
+      setTeamCreateError("Choisis une image de 2 Mo maximum.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setTeamCreateLogo(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => setTeamCreateError("Le logo n'a pas pu être importé.");
+    reader.readAsDataURL(file);
+  }
+  function saveNewTeam(event: React.FormEvent) {
+    event.preventDefault();
+    const name = teamCreateName.trim();
+    const eligibleMembers = teamCreateKind === "bots" ? allAvailableBots : humanProfiles;
+    const ids = [...new Set(teamCreateMembers)].filter((id) => eligibleMembers.some((p: any) => String(p.id) === id));
+    if (!name || ids.length !== teamSize) { setTeamCreateError(`Nomme l'équipe et sélectionne exactement ${teamSize} membres.`); return; }
+    if (selectedStoredTeamIds.length + selectedBotTeamIds.length >= teamCount) {
+      setTeamCreateError(`Maximum ${teamCount} équipes pour cette partie.`); return;
+    }
+    const alreadyUsed = new Set([...storedTeamSelection, ...selectedBotTeamGroups].flatMap((team) => team.ids));
+    if (ids.some((id) => alreadyUsed.has(id))) {
+      setTeamCreateError("Un membre appartient déjà à une autre équipe sélectionnée."); return;
+    }
+    try {
+      const newTeam = createTeam({ sport: "darts", name, logoDataUrl: teamCreateLogo, teamKind: "leisure" });
+      upsertTeam({ ...newTeam, playerIds: ids });
+      setTeamStoreRevision((v) => v + 1);
+      if (teamCreateKind === "bots") setSelectedBotTeamIds((prev) => [...prev, newTeam.id]);
+      else setSelectedStoredTeamIds((prev) => [...prev, newTeam.id]);
+      setSavedTeamMemberSelections((prev) => ({ ...prev, [newTeam.id]: ids }));
+      setTeamsSourceMode("saved");
+      setTeamPickerTab(teamCreateKind === "bots" ? "bots" : "saved");
+      setTeamCreateOpen(false);
+    } catch (error) {
+      setTeamCreateError(error instanceof Error ? error.message : "Impossible d'enregistrer cette équipe.");
+    }
+  }
+  function openTeamPicker(tab: "manual" | "saved" | "auto" | "bots") {
+    setBotTeamEditing(null);
+    setEditingBotInstanceId(null);
+    setBotTeamMembersDraft([]);
+    setBotMemberPage(0);
+    setBotMemberError("");
+    setTeamPickerTab(tab);
+    if (tab !== "bots") setTeamsSourceMode(tab);
+    else setTeamsSourceMode("saved");
+    setTeamPickerOpen(true);
+  }
+  function toggleSavedTeamMember(teamId: string, playerId: string) {
+    setSavedTeamMemberSelections((prev) => {
+      const current = prev[teamId] || [];
+      return { ...prev, [teamId]: current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < teamSize ? [...current, playerId] : current };
+    });
+  }
   function resolvePlayer(id: string) {
     const human = profiles.find((p) => p.id === id);
     if (human) {
@@ -941,7 +1361,7 @@ export default function KillerConfigPage(props: Props) {
         botLevel: (human as any).botLevel ?? undefined,
       };
     }
-    const bot = botProfiles.find((b) => b.id === id);
+    const bot = allAvailableBots.find((b) => b.id === id);
     if (bot) {
       return {
         id: bot.id,
@@ -955,19 +1375,26 @@ export default function KillerConfigPage(props: Props) {
   }
 
   function handleStart() {
-    if (participantMode === "teams") { alert("Le mode KILLER en équipes nécessite encore son moteur de jeu. Aucune partie individuelle ne sera lancée à sa place."); return; }
-    if (selectedIds.length < 2) {
+    if (participantMode === "teams" && !validTeams) {
+      alert(`Sélectionne exactement ${teamCount} équipes de ${teamSize} membres distincts.`);
+      return;
+    }
+    if (participantMode === "players" && !validPlayers) {
+      alert(playerFormat === "duel" ? "Le duel exige exactement 2 joueurs." : "Le Multi exige de 2 à 20 joueurs.");
+      return;
+    }
+    if (selectedParticipantIds.length < 2) {
       alert("Ajoute au moins 2 joueurs (profils locaux ou bots).");
       return;
     }
-    if (selectedIds.length > 20) {
+    if (selectedParticipantIds.length > 20) {
       alert("Killer est limité à 20 participants afin de conserver des numéros uniques de 1 à 20.");
       return;
     }
 
     const effectiveNumberAssignMode: KillerNumberAssignMode = isProgressive ? "throw" : numberAssignMode;
 
-    const players: KillerConfigPlayer[] = selectedIds
+    const players: KillerConfigPlayer[] = selectedParticipantIds
       .map((id) => {
         const base = resolvePlayer(id);
         if (!base) return null;
@@ -996,7 +1423,27 @@ export default function KillerConfigPage(props: Props) {
       }
     }
 
-    const finalPlayers = startOrderMode === "random" ? shuffleArray(players) : players;
+    // En équipes, le moteur KILLER conserve UNE entité de jeu par équipe :
+    // numéro, statut, boucliers, vies, éliminations et vainqueur sont collectifs.
+    // Les membres jouent à tour de rôle à chaque nouveau passage de leur équipe.
+    const playEntities: KillerConfigPlayer[] = participantMode === "teams"
+      ? activeTeamGroups.map((group, idx) => {
+          const members = group.ids.map((id) => players.find((p) => p.id === id)).filter(Boolean) as KillerConfigPlayer[];
+          const first = members.find((m) => !m.isBot) || members[0];
+          const orderedMembers = [first, ...members.filter((m) => m.id !== first.id)];
+          return {
+            id: `killer-team-${idx + 1}`,
+            teamId: group.teamId,
+            name: group.name,
+            avatarDataUrl: group.logo || first?.avatarDataUrl || null,
+            isBot: !!first?.isBot,
+            botLevel: first?.botLevel,
+            number: effectiveNumberAssignMode === "throw" ? 0 : Number(first?.number || idx + 1),
+            teamMembers: orderedMembers.map((m) => ({ id: m.id, name: m.name, avatarDataUrl: m.avatarDataUrl ?? null, isBot: !!m.isBot, botLevel: m.botLevel })),
+          };
+        })
+      : players;
+    const finalPlayers = startOrderMode === "random" ? shuffleArray(playEntities) : playEntities;
 
     const cfg: KillerConfig = {
       id: `${isProgressive ? "killer-progressive" : "killer"}-${Date.now()}`,
@@ -1005,6 +1452,16 @@ export default function KillerConfigPage(props: Props) {
       variantId: isProgressive ? "progressive" : "classic",
       gameId: isProgressive ? "killer_progressive" : "killer",
       progressiveTarget: isProgressive ? 5 : undefined,
+      participantMode,
+      teamCount: participantMode === "teams" ? activeTeamGroups.length : undefined,
+      teamSize: participantMode === "teams" ? teamSize : undefined,
+      playerFormat: participantMode === "players" ? playerFormat : undefined,
+      teamAssignments: participantMode === "teams" ? { ...manualTeamAssignments } : undefined,
+      teamNames: participantMode === "teams" ? [...teamNames] : undefined,
+      teamsSourceMode: participantMode === "teams" ? teamsSourceMode : undefined,
+      savedTeamIds: participantMode === "teams" ? [...selectedStoredTeamIds] : undefined,
+      selectedBotTeamIds: participantMode === "teams" ? [...selectedBotTeamIds] : undefined,
+      savedTeamMemberSelections: participantMode === "teams" ? { ...savedTeamMemberSelections } : undefined,
 
       lives: isProgressive ? 5 : clampInt(lives, 1, 9, 3),
       becomeRule: isProgressive ? "single" : becomeRule,
@@ -1044,7 +1501,7 @@ export default function KillerConfigPage(props: Props) {
     const { players: _participantDetails, id: _matchId, createdAt: _createdAt, ...persistentConfig } = cfg;
     const launchPreference: KillerLaunchPreference = {
       config: persistentConfig,
-      selectedIds: [...selectedIds],
+      selectedIds: [...selectedParticipantIds],
       numberById: effectiveNumberAssignMode === "none" ? { ...killerNumberById } : {},
     };
     if (startCb || typeof go === "function") {
@@ -1053,7 +1510,7 @@ export default function KillerConfigPage(props: Props) {
       setHasFrequentPreference(!!getMostPlayedKillerPreference(isProgressive));
     }
 
-    try { recordProfileUsageForMode(cfg.gameId || cfg.variantId || "killer", finalPlayers.map((p: any) => p.id)); } catch {}
+    try { recordProfileUsageForMode(cfg.gameId || cfg.variantId || "killer", participantMode === "teams" ? selectedParticipantIds : finalPlayers.map((p: any) => p.id)); } catch {}
 
     if (startCb) {
       startCb(cfg);
@@ -1134,6 +1591,9 @@ export default function KillerConfigPage(props: Props) {
   </div>
 </div>
 
+      {/* Ancre stable gérée par React : la barre Guidée / Complète reste présente après les rerenders. */}
+      <div data-mss-config-guide-anchor="1" style={{ flexShrink: 0 }} />
+
       <DartsRelatedModesPanel gameId={isProgressive ? "killer_progressive" : "killer"} accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
       {/* CONTENT */}
       <div ref={contentRef as any} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
@@ -1157,6 +1617,9 @@ export default function KillerConfigPage(props: Props) {
         )}
         {!isProgressive && (
           <section
+            data-mss-guide-section="awena-intro"
+            data-mss-guide-label="Awena vous explique"
+            data-mss-guide-order="0"
             className="killer-config-overview"
             style={{
               background: "rgba(10,12,24,0.94)",
@@ -1223,6 +1686,7 @@ export default function KillerConfigPage(props: Props) {
 
               <button
                 type="button"
+                data-mss-guide-awena-trigger="1"
                 className="killer-config-awena-sidecard"
                 onClick={() => setRulesVideoOpen(true)}
                 aria-label={killerRulesVideoIsFrench ? "Voir la vidéo Awena des règles du Killer" : "Watch Awena's Killer rules video"}
@@ -1326,22 +1790,43 @@ export default function KillerConfigPage(props: Props) {
           </div>
         )}
 
+        {creationMenuOpen && (
+          <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCreationMenuOpen(false); }}
+            style={{ position: "fixed", inset: 0, zIndex: 10110, background: "rgba(0,0,0,.82)", display: "grid", placeItems: "center", padding: 14 }}>
+            <div role="dialog" aria-modal="true" aria-label="Choisir le type de création"
+              style={{ width: "min(430px,100%)", boxSizing: "border-box", background: "#0b0e1b", border: `1px solid ${primary}88`, borderRadius: 18, padding: 15, display: "grid", gap: 17, boxShadow: "0 20px 60px rgba(0,0,0,.6)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8 }}>CRÉER</span>
+                <button type="button" onClick={() => setCreationMenuOpen(false)} aria-label="Fermer" style={{ border: 0, background: "transparent", color: primary, fontSize: 26, cursor: "pointer" }}>×</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${participantMode === "teams" ? 4 : 2}, minmax(0,1fr))`, gap: 6, alignItems: "start" }}>
+                {([
+                  { kind: "profile", icon: "players", label: "JOUEUR" },
+                  { kind: "bot", icon: "bots", label: "BOT CPU" },
+                  ...(participantMode === "teams" ? [
+                    { kind: "team", icon: "teams", label: "ÉQUIPE" },
+                    { kind: "bot-team", icon: "bot-teams", label: "TEAM BOT" },
+                  ] : []),
+                ] as Array<{ kind: "profile" | "bot" | "team" | "bot-team"; icon: any; label: string }>).map((choice) => (
+                  <div key={choice.kind} style={{ display: "grid", justifyItems: "center", gap: 7, minWidth: 0 }}>
+                    <MssSelectorIconButton icon={choice.icon} label={`Créer ${choice.label.toLowerCase()}`} accent={primary} onClick={() => runCreationChoice(choice.kind)} />
+                    <span style={{ fontSize: 10, fontWeight: 950, textAlign: "center", lineHeight: 1.25, color: primary }}>{choice.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {quickCreateOpen && (
           <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setQuickCreateOpen(false); }}
-            style={{ position: "fixed", inset: 0, zIndex: 10020, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.79)" }}>
+            style={{ position: "fixed", inset: 0, zIndex: 10120, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.79)" }}>
             <form onSubmit={createQuickParticipant} role="dialog" aria-modal="true" aria-label="Créer un participant"
               style={{ width: "min(460px, 100%)", maxHeight: "88dvh", overflowY: "auto", borderRadius: 18, padding: 14,
                 background: "#0c0e19", border: `1px solid ${primary}88`, display: "grid", gap: 12, boxShadow: "0 16px 60px #000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: primary, fontWeight: 900 }}>
-                <span>CRÉER UN PARTICIPANT</span>
+                <span>{quickCreateKind === "profile" ? "CRÉER UN JOUEUR" : "CRÉER UN BOT CPU"}</span>
                 <button type="button" onClick={() => setQuickCreateOpen(false)} aria-label="Fermer" style={{ color: primary, background: "none", border: 0, fontSize: 24, cursor: "pointer" }}>×</button>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {(["profile", "bot"] as const).map((kind) => <button key={kind} type="button" onClick={() => setQuickCreateKind(kind)}
-                  style={{ padding: 10, borderRadius: 12, border: `1px solid ${primary}${quickCreateKind === kind ? "" : "55"}`,
-                    background: quickCreateKind === kind ? `${primary}22` : "transparent", color: primary, fontWeight: 850, cursor: "pointer" }}>
-                  {kind === "profile" ? "PROFIL LOCAL" : "BOT CPU"}
-                </button>)}
               </div>
               <div style={{ border: `1px solid ${primary}44`, borderRadius: 14, padding: 10, background: "rgba(0,0,0,.22)" }}>
                 <div style={{ color: primary, fontSize: 11, letterSpacing: 1, marginBottom: 10, textTransform: "uppercase" }}>
@@ -1386,26 +1871,264 @@ export default function KillerConfigPage(props: Props) {
 
         {/* SÉLECTEUR UNIFIÉ MSS : une bande d’icônes et une zone de sélection commune. */}
         <section
-          data-mss-guide-section="killer-players"
-          data-mss-guide-label="Participants"
+          data-mss-guide-section="killer-participant-mode"
+          data-mss-guide-label="Mode participants"
+          data-mss-guide-order="1"
           style={{
             background: cardBg, borderRadius: 18, padding: "14px 12px",
             marginBottom: 14, boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
             border: "1px solid rgba(255,255,255,0.05)",
           }}
         >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Participants</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 14 }} role="group" aria-label="Type de partie">
-            <button type="button" onClick={() => setParticipantMode("players")}
-              aria-pressed={participantMode === "players"}
-              style={{ borderRadius: 14, padding: "11px 8px", color: primary, fontWeight: 900, cursor: "pointer", background: participantMode === "players" ? `${primary}24` : "rgba(255,255,255,.03)", border: `1px solid ${participantMode === "players" ? primary : `${primary}55`}` }}>JOUEURS</button>
-            <button type="button" onClick={() => setParticipantMode("teams")}
-              aria-pressed={participantMode === "teams"}
-              style={{ borderRadius: 14, padding: "11px 8px", color: primary, fontWeight: 900, cursor: "pointer", background: participantMode === "teams" ? `${primary}24` : "rgba(255,255,255,.03)", border: `1px solid ${participantMode === "teams" ? primary : `${primary}55`}` }}>ÉQUIPES</button>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>Participants</span>
+            <button type="button" onClick={() => setTeamInfoOpen(true)} aria-label="Informations sur les équipes KILLER"
+              title="Informations sur les équipes" style={{ width: 24, height: 24, borderRadius: 99, border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 900, cursor: "pointer" }}>i</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }} role="group" aria-label="Type de partie">
+            <KillerParticipantModeButton mode="players" label="Joueurs" accent={primary} active={participantMode === "players"} onClick={() => setParticipantMode("players")} />
+            <KillerParticipantModeButton mode="teams" label="Équipes" accent={primary} active={participantMode === "teams"} onClick={() => setParticipantMode("teams")} />
+          </div>
+        </section>
+
+        <section
+          data-mss-guide-section="killer-match-format"
+          data-mss-guide-label={participantMode === "teams" ? "Format des équipes" : "Format joueurs"}
+          data-mss-guide-order="2"
+          style={{ background: cardBg, borderRadius: 18, padding: "14px 12px", marginBottom: 14,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.05)" }}
+        >
+          <div style={{ color: primary, fontWeight: 900, fontSize: 13, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>
+            {participantMode === "teams" ? "FORMAT DES ÉQUIPES" : "FORMAT JOUEURS"}
+          </div>
+          {participantMode === "players" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {([ ["duel", "DUEL", "2 joueurs"], ["multi", "MULTI", "2 à 20 joueurs"] ] as const).map(([id, label, detail]) => (
+                <button key={id} type="button" aria-pressed={playerFormat === id} onClick={() => setPlayerFormat(id)}
+                  style={{ minWidth: 0, minHeight: 79, borderRadius: 14, background: playerFormat === id ? `${primary}2c` : "rgba(255,255,255,.03)", border: `1px solid ${playerFormat === id ? primary : `${primary}55`}`, color: playerFormat === id ? primary : "#fff", cursor: "pointer", display: "grid", placeContent: "center", gap: 4 }}>
+                  <strong style={{ fontSize: 16 }}>{label}</strong><span style={{ fontSize: 11, opacity: .82 }}>{detail}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ color: "#e5e7f1", fontSize: 12 }}>Nombre d'équipes</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                  {[2,3,4].map((n) => <button key={n} type="button" aria-pressed={teamCount === n} onClick={() => setTeamCount(n)}
+                    style={{ padding: 11, borderRadius: 12, border: `1px solid ${teamCount === n ? primary : `${primary}55`}`, background: teamCount === n ? `${primary}28` : "rgba(255,255,255,.03)", color: teamCount === n ? primary : "#fff", fontWeight: 900, cursor: "pointer" }}>{n}</button>)}
+                </div>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ color: "#e5e7f1", fontSize: 12 }}>Joueurs / bots par équipe</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>
+                  {[2,3,4,5].map((n) => <button key={n} type="button" aria-pressed={teamSize === n} onClick={() => setTeamSize(n)}
+                    style={{ padding: 11, borderRadius: 12, border: `1px solid ${teamSize === n ? primary : `${primary}55`}`, background: teamSize === n ? `${primary}28` : "rgba(255,255,255,.03)", color: teamSize === n ? primary : "#fff", fontWeight: 900, cursor: "pointer" }}>{n}</button>)}
+                </div>
+              </div>
+              <div style={{ textAlign: "center", color: primary, fontSize: 12, fontWeight: 800 }}>
+                {teamCount} équipes × {teamSize} membres = {teamCount * teamSize} participants
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section
+          data-mss-guide-section="killer-participant-selection"
+          data-mss-guide-label={participantMode === "teams" ? "Choix équipes" : "Choix joueurs"}
+          data-mss-guide-order="3"
+          style={{
+            background: cardBg, borderRadius: 18, padding: "14px 12px",
+            marginBottom: 14, boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+            border: "1px solid rgba(255,255,255,0.05)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>{participantMode === "teams" ? "Choix équipes" : "Choix joueurs"}</span>
+            {participantMode === "teams" ? <button type="button" onClick={() => setTeamInfoOpen(true)} aria-label="Informations sur les équipes KILLER"
+              title="Informations sur les équipes" style={{ width: 24, height: 24, borderRadius: 99, border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 900, cursor: "pointer" }}>i</button> : null}
           </div>
           {participantMode === "teams" ? (
-            <div style={{ border: `1px solid ${primary}55`, borderRadius: 14, padding: 14, color: "#e4e4f4", fontSize: 12, lineHeight: 1.5 }}>
-              Le moteur KILLER actuel ne prend pas encore en charge les équipes. Ce mode sera jouable après intégration des vies, éliminations et statistiques collectives. Reviens sur JOUEURS pour lancer une partie individuelle.
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                {([
+                  ["manual", "Composition manuelle", "teams"],
+                  ["saved", "Équipes enregistrées", "saved-teams"],
+                  ["auto", "Brassage automatique", "shuffle"],
+                  ["bots", "Équipes bots CPU", "bot-teams"],
+                ] as const).map(([tab, label, icon]) => (
+                  <MssSelectorIconButton key={tab} icon={icon} label={label} accent={primary}
+                    active={teamPickerOpen && teamPickerTab === tab} onClick={() => openTeamPicker(tab)} />
+                ))}
+                <MssSelectorIconButton icon="plus" label="Créer un participant ou une équipe" accent={primary} onClick={() => setCreationMenuOpen(true)} />
+              </div>
+              {activeTeamGroups.some((g) => g.ids.length > 0) && (
+                <div style={{ border: `1px solid ${primary}44`, borderRadius: 15, padding: 10, background: "rgba(255,255,255,.025)" }}>
+                  <div style={{ color: primary, fontSize: 12, fontWeight: 900, letterSpacing: .6, marginBottom: 9 }}>ÉQUIPES SÉLECTIONNÉES</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                    {activeTeamGroups.filter((g) => g.ids.length > 0).map((g, idx) => (
+                      <div key={g.teamId}
+                        style={{ display: "grid", justifyItems: "center", gap: 5, textAlign: "center", background: "rgba(255,255,255,.035)", border: `1px solid ${primary}55`, borderRadius: 13, padding: "10px 6px", color: "#fff", minWidth: 0 }}>
+                        <div style={{ width: 62, height: 62, borderRadius: "50%", border: `2px solid ${g.ring || primary}`, overflow: "hidden", display: "grid", placeItems: "center", background: g.logo ? "#141826" : `radial-gradient(circle at 30% 30%, ${g.ring || primary}55 0%, ${g.color || primary}55 40%, rgba(10,12,24,.95) 100%)`, color: g.ring || primary, fontWeight: 1000, fontSize: 18, boxShadow: `0 0 18px ${(g.color || primary)}55` }}>
+                          {g.logo ? <img src={g.logo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span>{g.short || String(g.name).slice(0,2).toUpperCase()}</span>}
+                        </div>
+                        <div style={{ color: g.color || primary, fontSize: 12, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", whiteSpace: "nowrap" }}>{g.name}</div>
+                        <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 5, width: "100%" }}>
+                          {g.ids.map((memberId) => {
+                            const member = teamProfiles.find((p: any) => String(p.id) === memberId);
+                            if (!member) return null;
+                            const avatar = pickAvatar(member);
+                            return <div key={memberId} title={member.name} style={{ display: "grid", justifyItems: "center", gap: 3, maxWidth: 54 }}>
+                              <div style={{ width: 30, height: 30, borderRadius: "50%", overflow: "hidden", background: "#232530", border: `1px solid ${primary}88`, display: "grid", placeItems: "center", color: primary, fontWeight: 900, fontSize: 10 }}>
+                                {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : String(member.name).slice(0,2).toUpperCase()}
+                              </div>
+                              <span style={{ fontSize: 9, maxWidth: 50, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>{member.name}</span>
+                            </div>;
+                          })}
+                        </div>
+                        <div style={{ display: "flex", gap: 9, justifyContent: "center", alignItems: "center", paddingTop: 5 }}>
+                          <button type="button" onClick={() => editSelectedTeam(g)} aria-label={`Modifier les membres de ${g.name}`} title="Modifier"
+                            style={{ width: 34, height: 34, display: "grid", placeItems: "center", border: `1px solid ${primary}88`, color: primary, background: `${primary}12`, borderRadius: 11, cursor: "pointer", fontSize: 18 }}>✎</button>
+                          <button type="button" onClick={() => removeSelectedTeam(g)} aria-label={`Retirer ${g.name}`} title="Retirer"
+                            style={{ width: 34, height: 34, display: "grid", placeItems: "center", border: "1px solid rgba(255,130,130,.55)", color: "#ffa29a", background: "rgba(180,35,35,.1)", borderRadius: 11, cursor: "pointer", fontSize: 21 }}>×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!validTeams && <div style={{ color: "#f29b92", fontSize: 11, textAlign: "center" }}>Sélectionne exactement {teamCount} équipes de {teamSize} membres chacune.</div>}
+              {teamCreateOpen && <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setTeamCreateOpen(false); }}
+                style={{ position: "fixed", inset: 0, zIndex: 10010, display: "grid", placeItems: "center", padding: 12, background: "rgba(0,0,0,.82)" }}>
+                <form onSubmit={saveNewTeam} role="dialog" aria-modal="true" aria-label="Créer une équipe"
+                  style={{ width: "min(510px,100%)", maxHeight: "88dvh", overflowY: "auto", boxSizing: "border-box", display: "grid", gap: 12, padding: 14, background: "#0c101c", border: `1px solid ${primary}88`, borderRadius: 17 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: primary, fontWeight: 900 }}>
+<span>CRÉER UNE ÉQUIPE {teamCreateKind === "bots" ? "BOTS CPU" : "JOUEURS"}</span><button type="button" onClick={() => setTeamCreateOpen(false)} aria-label="Fermer" style={{ color: primary, border: 0, background: "none", fontSize: 24, cursor: "pointer" }}>×</button>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <label title="Importer le logo de l'équipe" style={{ width: 72, height: 72, flexShrink: 0, border: `1px solid ${primary}`, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", cursor: "pointer", color: primary, fontSize: 12, textAlign: "center", background: `${primary}16` }}>
+                      {teamCreateLogo ? <img src={teamCreateLogo} alt="Logo de l'équipe" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "LOGO +"}
+                      <input type="file" accept="image/*" onChange={(e) => readTeamLogo(e.target.files?.[0])} style={{ display: "none" }} />
+                    </label>
+                    <input required maxLength={48} value={teamCreateName} onChange={(e) => setTeamCreateName(e.target.value)} placeholder="Nom de l'équipe" aria-label="Nom de l'équipe"
+                      style={{ flex: 1, minWidth: 0, padding: 12, borderRadius: 11, border: `1px solid ${primary}55`, background: "#151724", color: "#fff" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <strong style={{ color: primary, fontSize: 12 }}>MEMBRES ({teamCreateMembers.length})</strong>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {teamCreateKind === "players" && <button type="button" onClick={() => openQuickCreate("profile")} style={{ border: `1px solid ${primary}55`, color: primary, background: "transparent", borderRadius: 9, padding: "7px 9px", cursor: "pointer" }}>＋ JOUEUR</button>}
+                      {teamCreateKind === "bots" && <button type="button" onClick={() => openQuickCreate("bot")} style={{ border: `1px solid ${primary}55`, color: primary, background: "transparent", borderRadius: 9, padding: "7px 9px", cursor: "pointer" }}>＋ BOT</button>}
+                    </div>
+                  </div>
+                  <div style={{ color: "#aab0cc", fontSize: 11, fontWeight: 800 }}>{teamCreatePageSize} {teamCreateKind === "bots" ? "bots" : "profils"}/page · page {safeTeamCreatePage + 1}/{teamCreatePages}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                    {teamCreatePageItems.map((member: any) => {
+                      const id = String(member.id);
+                      const selected = teamCreateMembers.includes(id);
+                      const avatar = pickAvatar(member);
+                      return <button key={id} type="button" aria-pressed={selected} onClick={() => setTeamCreateMembers((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= teamSize ? prev : [...prev,id])}
+                        style={{ display: "grid", justifyItems: "center", gap: 4, minWidth: 0, padding: 8, borderRadius: 11, border: `1px solid ${selected ? primary : `${primary}44`}`, background: selected ? `${primary}24` : "rgba(255,255,255,.025)", color: selected ? primary : "#fff", cursor: "pointer", minHeight: 96 }}>
+                        <div style={{ width: 46, height: 46, borderRadius: "50%", overflow: "hidden", background: "#222", display: "grid", placeItems: "center" }}>{avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : String(member.name).slice(0,2).toUpperCase()}</div>
+                        <span style={{ fontSize: 10, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{member.name}</span>
+                      </button>;
+                    })}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "84px 1fr 84px", alignItems: "center", gap: 10 }}>
+                    <button type="button" onClick={() => setTeamCreatePage((p) => Math.max(0, p - 1))} disabled={safeTeamCreatePage <= 0} style={{ borderRadius: 999, border: `1px solid ${primary}55`, background: "rgba(255,255,255,.03)", color: primary, padding: "9px 0", cursor: safeTeamCreatePage <= 0 ? "default" : "pointer", opacity: safeTeamCreatePage <= 0 ? .4 : 1 }}>←</button>
+                    <div style={{ color: "#aab0cc", fontSize: 12, fontWeight: 900, textAlign: "center" }}>PAGE {safeTeamCreatePage + 1}/{teamCreatePages}</div>
+                    <button type="button" onClick={() => setTeamCreatePage((p) => Math.min(teamCreatePages - 1, p + 1))} disabled={safeTeamCreatePage >= teamCreatePages - 1} style={{ borderRadius: 999, border: `1px solid ${primary}55`, background: "rgba(255,255,255,.03)", color: primary, padding: "9px 0", cursor: safeTeamCreatePage >= teamCreatePages - 1 ? "default" : "pointer", opacity: safeTeamCreatePage >= teamCreatePages - 1 ? .4 : 1 }}>→</button>
+                  </div>
+                  {teamCreateError && <div role="alert" style={{ color: "#ff9288", fontSize: 12 }}>{teamCreateError}</div>}
+                  <button type="submit" disabled={!teamCreateName.trim() || teamCreateMembers.length !== teamSize} style={{ padding: 12, borderRadius: 12, border: `1px solid ${primary}`, background: `${primary}33`, color: primary, fontWeight: 900, opacity: !teamCreateName.trim() || teamCreateMembers.length !== teamSize ? .45 : 1, cursor: "pointer" }}>CRÉER ET SÉLECTIONNER</button>
+                </form>
+              </div>}
+              {teamInfoOpen && <div role="presentation" onClick={() => setTeamInfoOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 10070, background: "rgba(0,0,0,.78)", display: "grid", placeItems: "center", padding: 16 }}>
+                <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: "min(440px,100%)", background: "#0c101c", border: `1px solid ${primary}66`, borderRadius: 18, padding: 16, display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: primary, fontWeight: 900 }}>KILLER — CHOIX ÉQUIPES <button type="button" aria-label="Fermer" onClick={() => setTeamInfoOpen(false)} style={{ background: "none", color: primary, border: 0, cursor: "pointer", fontSize: 22 }}>×</button></div>
+                  <p style={{ margin: 0, fontSize: 13 }}>Chaque équipe possède un numéro, des vies, un statut KILLER et des boucliers communs. Ses membres jouent en alternance. Dans KILLER, choisis 2 à 4 équipes de 2 à 5 membres. Le nombre exact est défini à l'étape « Format des équipes » ; jusqu'à 20 participants au total.</p>
+                </div>
+              </div>}
+              {teamPickerOpen && (
+                <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setTeamPickerOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 10060, display: "grid", placeItems: "center", padding: 10, background: "rgba(0,0,0,.80)" }}>
+                  <div ref={teamPickerScrollRef} role="dialog" aria-modal="true" aria-label="Sélection des équipes" style={{ width: "min(600px,100%)", maxHeight: "88dvh", overflowY: "auto", background: "#0a0c18", borderRadius: 18, border: `1px solid ${primary}77`, padding: 12, boxSizing: "border-box" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ color: primary, fontWeight: 900, letterSpacing: 1, fontSize: 13 }}>{botTeamEditing && teamPickerTab === "bots" ? "CHOIX BOTS" : "CHOIX ÉQUIPES"}</div>
+                        <button type="button" aria-label="Infos équipes" onClick={() => setTeamInfoOpen(true)} style={{ width: 24, height: 24, borderRadius: "50%", border: `1px solid ${primary}77`, background: "rgba(255,255,255,.03)", color: primary, fontSize: 12, fontWeight: 900, cursor: "pointer" }}>i</button>
+                      </div>
+                      <button type="button" aria-label="Fermer" onClick={() => setTeamPickerOpen(false)} style={{ background: "none", border: 0, color: primary, fontSize: 26, cursor: "pointer" }}>×</button>
+                    </div>
+                    {!(botTeamEditing && teamPickerTab === "bots") && <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 12 }}>
+                      {(["manual", "saved", "auto", "bots"] as const).map((tab) => <MssSelectorIconButton key={tab} icon={tab === "manual" ? "teams" : tab === "saved" ? "saved-teams" : tab === "auto" ? "shuffle" : "bot-teams"}
+                        label={tab === "manual" ? "Manuel" : tab === "saved" ? "Enregistrées" : tab === "auto" ? "Brassage auto" : "Teams bots"} active={teamPickerTab === tab} accent={primary} onClick={() => openTeamPicker(tab)} />)}
+                      <MssSelectorIconButton icon="plus" label="Créer un joueur, un bot ou une équipe" accent={primary} onClick={() => setCreationMenuOpen(true)} />
+                    </div>}
+                    {teamPickerTab !== "saved" && teamPickerTab !== "bots" && <div style={{ marginBottom: 12, padding: "8px 10px", borderRadius: 12, border: `1px solid ${primary}33`, background: "rgba(255,255,255,.03)", color: "#c6c9dc", fontSize: 11, lineHeight: 1.45 }}>
+                      Format choisi : <b style={{ color: primary }}>{teamCount} équipes</b> de <b style={{ color: primary }}>{teamSize} membres</b>. Modifie ce format à l'étape précédente.
+                    </div>}
+                    {teamPickerTab === "bots" && botTeamEditing ? (
+                      <div style={{ display: "grid", gap: 12 }}>
+                        <button type="button" onClick={() => { setBotTeamEditing(null); setEditingBotInstanceId(null); setBotTeamMembersDraft([]); setBotMemberError(""); if (teamPickerScrollRef.current) teamPickerScrollRef.current.scrollTop = 0; }} style={{ justifySelf: "start", padding: "7px 12px", color: primary, borderRadius: 10, background: "rgba(255,255,255,.04)", border: `1px solid ${primary}66`, cursor: "pointer", fontWeight: 850 }}>← ÉQUIPES BOTS</button>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, textAlign: "center", color: primary, fontWeight: 900 }}>
+                          {botTeamEditing.logoDataUrl && <img src={botTeamEditing.logoDataUrl} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover" }} />}
+                          <span>{botTeamEditing.name}</span>
+                        </div>
+                        <div style={{ color: "#c9cfdf", textAlign: "center", fontSize: 12 }}>Choisis {teamSize} bots en touchant leurs avatars · {botTeamMembersDraft.length}/{teamSize}</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 9 }}>
+                          {(botTeamEditing.members || []).slice(botMemberPage * 9, botMemberPage * 9 + 9).map((bot: any) => {
+                            const selected = botTeamMembersDraft.includes(String(bot.id));
+                            const inOtherTeam = selectedBotTeamGroups.some((g) => g.instanceId !== editingBotInstanceId && g.ids.includes(String(bot.id))) || storedTeamSelection.some((g) => g.ids.includes(String(bot.id)));
+                            const avatar = bot.avatarDataUrl || bot.avatarUrl || null;
+                            return <button key={bot.id} type="button" disabled={inOtherTeam} onClick={() => chooseBotTeamMember(String(bot.id))} aria-pressed={selected} title={inOtherTeam ? "Bot déjà sélectionné dans une équipe" : bot.name}
+                              style={{ position: "relative", border: `1px solid ${selected ? primary : `${primary}66`}`, borderRadius: 14, background: selected ? `${primary}28` : "rgba(255,255,255,.035)", boxShadow: selected ? `0 0 12px ${primary}55` : "none", color: "#fff", minWidth: 0, minHeight: 108, padding: "10px 5px", cursor: inOtherTeam ? "not-allowed" : "pointer", opacity: inOtherTeam ? .35 : 1, display: "grid", alignContent: "center", justifyItems: "center", gap: 6 }}>
+                              <div style={{ width: 58, height: 58, borderRadius: "50%", border: `2px solid ${selected ? primary : `${primary}66`}`, overflow: "hidden", display: "grid", placeItems: "center", fontWeight: 900, background: `${primary}14`, color: primary }}>
+                                {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : String(bot.name || "BOT").slice(0, 2).toUpperCase()}
+                              </div>
+                              <span style={{ fontWeight: 800, fontSize: 11, textAlign: "center", overflowWrap: "anywhere" }}>{bot.name}</span>
+                              {selected && <span aria-hidden="true" style={{ position: "absolute", top: 6, right: 7, color: primary, fontWeight: 900 }}>✓</span>}
+                            </button>;
+                          })}
+                        </div>
+                        {(() => { const count = Math.max(1, Math.ceil((botTeamEditing.members || []).length / 9)); return <div style={{ display: "grid", gridTemplateColumns: "70px 1fr 70px", gap: 8, alignItems: "center" }}>
+                          <button type="button" aria-label="Page précédente" disabled={botMemberPage === 0} onClick={() => setBotMemberPage((p) => Math.max(0, p - 1))} style={{ borderRadius: 12, border: `1px solid ${primary}66`, background: "transparent", color: primary, padding: 9, opacity: botMemberPage === 0 ? .3 : 1 }}>←</button>
+                          <span style={{ textAlign: "center", color: primary, fontWeight: 900, fontSize: 12 }}>PAGE {botMemberPage + 1}/{count}</span>
+                          <button type="button" aria-label="Page suivante" disabled={botMemberPage + 1 >= count} onClick={() => setBotMemberPage((p) => Math.min(count - 1, p + 1))} style={{ borderRadius: 12, border: `1px solid ${primary}66`, background: "transparent", color: primary, padding: 9, opacity: botMemberPage + 1 >= count ? .3 : 1 }}>→</button>
+                        </div>; })()}
+                        {botMemberError && <div role="alert" style={{ textAlign: "center", color: "#ff9a91", fontSize: 12 }}>{botMemberError}</div>}
+                      </div>
+                    ) : teamPickerTab === "bots" ? (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                          {botTeamsForPicker.slice(botTeamsPage * 9, botTeamsPage * 9 + 9).map((team: any) => (
+                            <button key={team.id} type="button" onClick={() => openBotTeamMembers(team)}
+                              style={{ border: `1px solid ${primary}66`, borderRadius: 12, background: "rgba(255,255,255,.035)", color: "#fff", minWidth: 0, padding: 8, cursor: "pointer", display: "grid", justifyItems: "center", gap: 5 }}>
+                              {team.logoDataUrl ? <img src={team.logoDataUrl} alt="" style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover" }} /> : <span>🤖</span>}
+                              <span style={{ fontWeight: 850, fontSize: 11, textAlign: "center" }}>{team.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {botTeamsForPicker.length > 9 && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: primary, fontWeight: 800 }}>
+                          <button type="button" onClick={() => setBotTeamsPage(Math.max(0,botTeamsPage-1))} disabled={botTeamsPage===0}>←</button>
+                          PAGE {botTeamsPage+1}/{Math.ceil(botTeamsForPicker.length/9)}
+                          <button type="button" onClick={() => setBotTeamsPage(botTeamsPage+1)} disabled={(botTeamsPage+1)*9>=botTeamsForPicker.length}>→</button>
+                        </div>}
+                        {selectedBotTeamGroups.map((group) => <div key={group.instanceId} style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", color: primary }}><span>{group.team.name} · {group.ids.length} bots</span><button type="button" onClick={() => removeBotTeamMembers(group.instanceId)} aria-label={`Retirer ${group.team.name}`} style={{ background: "none", border: `1px solid ${primary}55`, borderRadius: 8, color: primary }}>×</button></div>)}
+                      </div>
+                    ) : (
+                      <TeamsSection
+                        profiles={teamProfiles} selectableProfiles={humanProfiles} allProfiles={teamProfiles} selectedIds={selectedIds}
+                        teamAssignments={Object.fromEntries(Object.entries(manualTeamAssignments).map(([pid, index]) => [pid, x01ManualTeamKeys[Math.max(0, Math.min(3, Number(index)||0))]]))}
+                        setPlayerTeam={setX01ManualTeam} togglePlayer={togglePlayer} sourceMode={teamsSourceMode} setSourceMode={setTeamsSourceMode}
+                        storedTeams={humanStoredDartsTeams} selectedStoredTeamIds={selectedStoredTeamIds} toggleStoredTeam={toggleStoredTeam}
+                        addStoredTeamSelection={addStoredTeamSelection} removeStoredTeamSelection={removeStoredTeamSelection}
+                        savedTeamMemberSelections={savedTeamMemberSelections} toggleSavedTeamMember={toggleSavedTeamMember}
+                        teamSizeOverride={teamSize} teamCountOverride={teamCount} primary={primary} primarySoft={primarySoft} compactContent
+                      />
+                    )}
+                    {!(botTeamEditing && teamPickerTab === "bots") && <button type="button" onClick={() => setTeamPickerOpen(false)} style={{ width: "100%", borderRadius: 12, padding: 12, marginTop: 12, border: `1px solid ${primary}`, background: `${primary}33`, color: primary, fontWeight: 900, cursor: "pointer" }}>TERMINER</button>}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (<>
 
@@ -1422,7 +2145,7 @@ export default function KillerConfigPage(props: Props) {
                   pageSize={9}
                   toolbarExtra={<>
                     <MssSelectorIconButton icon="bots" label="Choisir les bots IA" accent={primary} active={botsPickerOpen} onClick={() => setBotsPickerOpen(true)} />
-                    <MssSelectorIconButton icon="manage" label="Créer un profil local ou un bot CPU" accent={primary} onClick={() => openQuickCreate("profile")} />
+                    <MssSelectorIconButton icon="plus" label="Créer un joueur ou un bot CPU" accent={primary} onClick={() => setCreationMenuOpen(true)} />
                   </>}
                   summaryExtra={selectedBotProfiles.length > 0 ? (
                     <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.09)" }}>
@@ -1440,6 +2163,7 @@ export default function KillerConfigPage(props: Props) {
                     </div>
                   ) : null}
                   modalTitle="Choisir des joueurs"
+                  modalHeaderExtra={<MssSelectorIconButton icon="plus" label="Créer un joueur ou un bot CPU" accent={primary} onClick={() => setCreationMenuOpen(true)} />}
                   renderActions={numberAssignMode === "none" ? ((p: any) => {
                     const num = killerNumberById[p.id] ?? 20;
                     return (
@@ -1456,7 +2180,7 @@ export default function KillerConfigPage(props: Props) {
                   }) : undefined}
                 />
           <BotPagedSelector
-            bots={botProfiles}
+            bots={allAvailableBots}
             selectedIds={selectedIds}
             onToggle={togglePlayer}
             accent={primary}
@@ -1484,25 +2208,32 @@ export default function KillerConfigPage(props: Props) {
           }}
         >
           <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Options
+            Ordre de départ
           </div>
 
           {/* ✅ ORDRE DE DÉPART */}
           <div data-mss-guide-section="killer-start-order" data-mss-guide-label="Ordre de départ" style={{ marginTop: 2, marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Ordre de départ</div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-              {([['random','ALÉATOIRE'],['alternate','ALTERNÉ'],['manual','MANUEL'],['bull','BULL']] as const).map(([mode,label]) => (
-                <button key={mode} type="button" aria-pressed={startOrderMode === mode}
-                  onClick={() => { setStartOrderMode(mode); setRandomStartOrder(mode === "random"); }}
-                  style={{ padding: "10px 12px", borderRadius: 14, fontWeight: 850, border: startOrderMode === mode ? "1px solid #f6c44d" : "1px solid rgba(255,255,255,.15)", background: startOrderMode === mode ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)", color: "#fff", cursor: "pointer" }}>
-                  {label}
-                </button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 6, flexWrap: "nowrap" }}>
+              {KILLER_START_ORDER_OPTIONS.map((option) => (
+                <MssSelectorIconButton
+                  key={option.id}
+                  icon={option.icon as any}
+                  label={option.label}
+                  accent={primary}
+                  active={startOrderMode === option.id}
+                  onClick={() => { setStartOrderMode(option.id); setRandomStartOrder(option.id === "random"); }}
+                />
               ))}
             </div>
-            <div style={{ fontSize: 11, color: "#9da5b9", marginTop: 7 }}>
-              {startOrderMode === "bull" ? "Après le lancer physique à la bull, classe les participants avant de jouer." : startOrderMode === "manual" ? "Choisis l'ordre des participants avant la partie." : startOrderMode === "random" ? "Les joueurs seront mélangés au lancement." : "L'ordre de sélection est conservé pour le premier départ."}
-            </div>
+            {(() => {
+              const activeOption = KILLER_START_ORDER_OPTIONS.find((option) => option.id === startOrderMode) || KILLER_START_ORDER_OPTIONS[0];
+              return (
+                <div style={{ marginTop: 10, textAlign: "center", display: "grid", gap: 4 }}>
+                  <div style={{ color: primary, fontSize: 13, fontWeight: 950, textTransform: "uppercase", letterSpacing: .9 }}>{activeOption.label}</div>
+                  <div style={{ fontSize: 11, color: "#9da5b9", maxWidth: 420, margin: "0 auto", lineHeight: 1.45 }}>{activeOption.detail}</div>
+                </div>
+              );
+            })()}
           </div>
 
           {isProgressive ? (
@@ -2093,7 +2824,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
       </div>
 
       {/* CTA */}
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
+      <div data-mss-guide-launch="killer" data-mss-guide-ready={canStart ? "true" : "false"} style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
         <div style={{ pointerEvents: "auto" }}>
           <button
             type="button"
@@ -2114,14 +2845,14 @@ Active uniquement parmi les fonctions cochées ci-dessus.
               opacity: canStart ? 1 : 0.6,
               cursor: canStart ? "pointer" : "default",
             }}
-            title={canStart ? "Démarrer la partie" : "Ajoute au moins 2 joueurs"}
+            title={canStart ? "Démarrer la partie" : (participantMode === "teams" ? "Choisis deux équipes complètes" : "Ajoute au moins 2 joueurs")}
           >
             {isProgressive ? "Lancer Killer Progressif" : "Lancer la partie"}
           </button>
 
           {!canStart && (
             <div style={{ marginTop: 6, textAlign: "center", fontSize: 11, color: "#ff6b6b", fontWeight: 800 }}>
-              Ajoute au moins 2 joueurs pour démarrer
+              {participantMode === "teams" ? "Choisis au moins 2 équipes avec 2 membres chacune" : "Ajoute au moins 2 joueurs pour démarrer"}
             </div>
           )}
         </div>
