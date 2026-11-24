@@ -28,6 +28,14 @@ export default defineConfig({
     // 5174 n'utilisent PAS les mêmes données. On refuse désormais tout port
     // de secours silencieux pour éviter l'impression de "perte" des profils.
     strictPort: true,
+    // StackBlitz/WebContainer : ne pas réutiliser une transformation TSX de
+    // l'ancienne session HMR (notamment LangContext.tsx?t=...). Ces en-têtes
+    // ne concernent que le serveur de DEV, jamais la PWA en production.
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    },
     // Les anciennes images /media/* vivent encore sur le backend historique.
     // En dev on les fait passer par le même chemin /api/backend qu'en prod afin
     // de supprimer totalement les erreurs CORS navigateur.

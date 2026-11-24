@@ -62,7 +62,7 @@ export interface X01TeamV3 {
    Configuration du match
 ----------------------------------------------- */
 export interface X01ConfigV3 {
-  startScore: 301 | 501 | 701 | 901;
+  startScore: 301 | 501 | 701 | 901 | 1001;
   inMode: X01InMode;
   outMode: X01OutMode;
 
@@ -81,8 +81,8 @@ export interface X01ConfigV3 {
   setsToWin: number;
 
   // Contexte statistique X01 persistant.
-  // Permet de ne plus mélanger 301/501/701/901 ni Solo/Duo/Multi/Team.
-  x01StartScore?: 301 | 501 | 701 | 901;
+  // Permet de ne plus mélanger 301/501/701/901/1001 ni Solo/Duo/Multi/Team.
+  x01StartScore?: 301 | 501 | 701 | 901 | 1001;
   x01Variant?: "solo" | "duo" | "multi" | "team";
 
   // Type de victoire du match (niveau SETS) : formats rapides BO3/BO5/BO7 ou presets pros.

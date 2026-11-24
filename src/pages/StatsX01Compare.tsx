@@ -2160,7 +2160,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
           marginTop: 4,
         }}
       >
-        {(["all", 301, 501, 701, 901] as X01ScoreFilterKey[]).map((key) => {
+        {(["all", 301, 501, 701, 901, 1001] as X01ScoreFilterKey[]).map((key) => {
           const isActive = scoreFilter === key;
           return (
             <button

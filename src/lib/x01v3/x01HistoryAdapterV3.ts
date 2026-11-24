@@ -33,7 +33,7 @@ import type {
   
     // Résumé minimal de la config (pour affichage liste)
     configSummary: {
-      startScore: 301 | 501 | 701 | 901;
+      startScore: 301 | 501 | 701 | 901 | 1001;
       gameMode: string;         // "solo", "multi", "teams"
       inMode: string;           // "single", "double", "master"
       outMode: string;          // "

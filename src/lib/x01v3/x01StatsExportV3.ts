@@ -23,7 +23,7 @@ import type {
     startedAt: number;     // timestamp ms
     finishedAt: number;    // timestamp ms
   
-    startScore: 301 | 501 | 701 | 901;
+    startScore: 301 | 501 | 701 | 901 | 1001;
     gameMode: X01GameMode;
     inMode: X01InMode;
     outMode: X01OutMode;
@@ -46,7 +46,7 @@ import type {
     // Meta match
     startedAt: number;
     finishedAt: number;
-    startScore: 301 | 501 | 701 | 901;
+    startScore: 301 | 501 | 701 | 901 | 1001;
     gameMode: X01GameMode;
     inMode: X01InMode;
     outMode: X01OutMode;

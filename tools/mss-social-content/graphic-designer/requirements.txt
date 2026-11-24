@@ -1,0 +1,4 @@
+Pillow>=11,<13
+fonttools>=4.55,<5
+qrcode>=8,<9
+opencv-python-headless>=4.10,<5

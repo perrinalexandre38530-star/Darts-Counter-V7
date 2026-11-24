@@ -10,8 +10,11 @@
 
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
+import "../styles/mss-scoring-palette.css";
 import { MssGuidedConfigNav, MssParticipantTypeChoice } from "../components/config/MssGuidedConfigNav";
-import { MssConfigFact } from "../components/config/MssPremiumConfig";
+import { MssConfigFact, MssInputMethodChoice } from "../components/config/MssPremiumConfig";
+import MssMatchFormatPanel, { MssStartOrderSection } from "../components/config/MssMatchFormatPanel";
+import MssGuidedAudioPanel from "../components/config/MssGuidedAudioPanel";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
 import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { applyResolvedBotCountries } from "../lib/botCountries";
@@ -148,7 +151,85 @@ type Props = {
   voiceSetupRequestId?: number | string | null;
 };
 
-const START_SCORES: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
+type X01StartingScore = 301 | 501 | 701 | 901 | 1001;
+const START_SCORES: X01StartingScore[] = [301, 501, 701, 901, 1001];
+
+/**
+ * X01 — sélecteur de score / IN / OUT, commun aux configurations GUIDÉE et COMPLÈTE.
+ * S/D/Master reprennent les tokens S/D/T du keypad MSS ; MASTER = double ou triple.
+ * Ne pas recolorer les zones selon le thème : seule la sélection utilise l'accent du thème.
+ */
+function X01ScoreKeypadSettings({
+  startScore, inMode, outMode, onScoreChange, onInChange, onOutChange, accent,
+}: {
+  startScore: X01StartingScore;
+  inMode: InModeV3;
+  outMode: OutModeV3;
+  onScoreChange: (score: X01StartingScore) => void;
+  onInChange: (mode: InModeV3) => void;
+  onOutChange: (mode: OutModeV3) => void;
+  accent: string;
+}) {
+  const options: Array<{ id: InModeV3; label: string; keypadClass: string }> = [
+    { id: "simple", label: "SIMPLE", keypadClass: "mss-hit-s" },
+    { id: "double", label: "DOUBLE", keypadClass: "mss-hit-d" },
+    { id: "master", label: "MASTER", keypadClass: "mss-hit-t" },
+  ];
+  const headingStyle: React.CSSProperties = {
+    fontSize: 13, fontWeight: 850, color: "#c8cbe4", marginBottom: 8,
+  };
+  const keyBase: React.CSSProperties = {
+    minWidth: 0, width: "100%", height: 48, borderRadius: 12,
+    padding: "0 2px", border: "1px solid transparent", fontWeight: 900,
+    fontSize: "clamp(10px, 2.7vw, 14px)", whiteSpace: "nowrap",
+    cursor: "pointer", lineHeight: 1.15, transition: "opacity .15s, box-shadow .15s",
+  };
+  const modeRow = (
+    heading: string, suffix: "IN" | "OUT", value: InModeV3 | OutModeV3,
+    onChange: (mode: InModeV3) => void,
+  ) => (
+    <div>
+      <div style={headingStyle}>{heading}</div>
+      <div role="group" aria-label={heading} style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+        {options.map(({ id, label, keypadClass }) => {
+          const active = value === id;
+          return (
+            <button key={id} type="button" className={keypadClass}
+              aria-label={`${label} ${suffix}`} aria-pressed={active}
+              onClick={() => onChange(id)}
+              style={{ ...keyBase, opacity: active ? 1 : .78,
+                boxShadow: active ? `0 0 0 2px ${accent}bb, 0 0 17px ${accent}27` : "none" }}>
+              {label} {suffix}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+  return (
+    <div data-mss-x01-score-keypad="1" style={{ display: "grid", gap: 16 }}>
+      <div>
+        <div style={headingStyle}>Score de départ</div>
+        <div role="group" aria-label="Score de départ" style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 6 }}>
+          {START_SCORES.map((score) => {
+            const active = score === startScore;
+            return <button type="button" key={score} aria-pressed={active} onClick={() => onScoreChange(score)}
+              style={{ ...keyBase, fontSize: "clamp(11px, 2.8vw, 15px)",
+                background: active ? `${accent}2b` : "rgba(255,255,255,.045)",
+                borderColor: active ? accent : "rgba(255,255,255,.11)",
+                color: active ? "#fff" : "#d7dcec",
+                boxShadow: active ? `0 0 0 1px ${accent}66 inset,0 0 15px ${accent}21` : "none" }}>
+              {score}
+            </button>;
+          })}
+        </div>
+      </div>
+      {modeRow("Entrée", "IN", inMode, onInChange)}
+      {modeRow("Sortie", "OUT", outMode, onOutChange)}
+    </div>
+  );
+}
+
 
 // Grilles numériques : les boutons restent simples, mais toutes les valeurs utilisées
 // par les presets pros doivent rester visibles et sélectionnables.
@@ -357,16 +438,15 @@ type BotLite = {
 };
 
 type ResolvedPlayerPrefs = {
-  favX01: 301 | 501 | 701 | 901;
+  favX01: X01StartingScore;
   favDoubleOut: boolean;
   ttsVoice: string;
   sfxVolume: number;
 };
 
-function normalizeFavX01(input: unknown, fallback: 301 | 501 | 701 | 901 = 501): 301 | 501 | 701 | 901 {
-  const allowed: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
+function normalizeFavX01(input: unknown, fallback: X01StartingScore = 501): X01StartingScore {
   const n = Number(input);
-  return allowed.includes(n as any) ? (n as 301 | 501 | 701 | 901) : fallback;
+  return START_SCORES.includes(n as X01StartingScore) ? (n as X01StartingScore) : fallback;
 }
 
 function normalizeFavDoubleOut(input: unknown, fallback = true): boolean {
@@ -2241,12 +2321,13 @@ function x01VoiceNo(text: string) {
   return /\b(non|no|desactive|desactiver|coupe|couper|sans|change|modifier)\b/.test(t);
 }
 
-function x01VoiceStartScore(text: string): 301 | 501 | 701 | 901 | null {
+function x01VoiceStartScore(text: string): X01StartingScore | null {
   const t = x01VoiceNorm(text).replace(/\s+/g, " ");
   if (/\b(301|trois cent un|trois cent et un)\b/.test(t)) return 301;
   if (/\b(501|cinq cent un|cinq cent et un)\b/.test(t)) return 501;
   if (/\b(701|sept cent un|sept cent et un)\b/.test(t)) return 701;
   if (/\b(901|neuf cent un|neuf cent et un)\b/.test(t)) return 901;
+  if (/\b(1001|mille un|mille et un)\b/.test(t)) return 1001;
   return null;
 }
 
@@ -2488,7 +2569,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const outTouchedRef = React.useRef(false);
   const playersTouchedRef = React.useRef(false);
 
-  const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(501);
+  const [startScore, setStartScore] = React.useState<X01StartingScore>(501);
   const [inMode, setInMode] = React.useState<InModeV3>("simple");
   const [outMode, setOutMode] = React.useState<OutModeV3>("double");
   const [legsPerSet, setLegsPerSet] = React.useState<number>(3);
@@ -2669,6 +2750,86 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     // Une méthode manuelle ou preset coupe la commande vocale pour éviter deux moteurs actifs.
     setVoiceScoreEnabled(false);
   }, []);
+
+  // X01 garde ses 5 méthodes de saisie internes ; CAMÉRA et AUTODARTS
+  // utilisent le système de comptage externe existant, sans changer son type.
+  const guidedInputChoices = React.useMemo(() => ([
+    { id: "keypad", icon: "keypad", label: "KEYPAD", detail: "Saisie détaillée des fléchettes : simples, doubles et triples." },
+    { id: "visit_score", icon: "visit_score", label: "SCORE VOLÉE", detail: "Saisis le total d’une volée (0 à 180), sans détail S / D / T." },
+    { id: "dartboard", icon: "dartboard", label: "CIBLE", detail: "Saisie directe des impacts sur une cible interactive." },
+    { id: "presets", icon: "presets", label: "PRESETS", detail: "Raccourcis de volées avec détail des fléchettes." },
+    { id: "voice", icon: "voice", label: "VOCAL", detail: "Annonce les impacts au micro puis confirme la volée." },
+    { id: "camera", icon: "camera", label: "CAMÉRA", detail: "Comptage par caméra assistée, après autorisation et calibration." },
+    { id: "autodarts", icon: "autodarts", label: "AUTODARTS", detail: "Connexion via un bridge WebSocket de comptage externe." },
+    { id: "external_device", icon: "external_device", label: "AUTRE APPAREIL", detail: "Relie un téléphone, Scolia, Grandarts, un bridge réseau ou un périphérique Bluetooth." },
+  ]), []);
+  const externalDeviceChoices = React.useMemo(() => ([
+    { id: "phone_companion", icon: "phone", label: "TÉLÉPHONE", description: "Relie un téléphone qui filme la cible et renvoie les impacts vers X01.", cta: "RELIER LE TÉLÉPHONE", actionHint: "Le téléphone qui filme la cible doit être relié puis calibré avant le lancement." },
+    { id: "camera_assisted", icon: "camera", label: "CAMÉRA LOCALE", description: "Utilise la caméra de cet appareil pour assister le comptage.", cta: "CONFIGURER LA CAMÉRA", actionHint: "Autorise la caméra puis calibre la cible avant de jouer." },
+    { id: "websocket_bridge", icon: "bridge", label: "BRIDGE", description: "Connexion réseau à un bridge WebSocket qui transmet les fléchettes.", cta: "CONFIGURER LE BRIDGE", actionHint: "Renseigne l’adresse du bridge qui envoie les impacts à X01." },
+    { id: "scolia", icon: "scolia", label: "SCOLIA", description: "Connexion à une installation Scolia via une passerelle ou un bridge.", cta: "CONFIGURER SCOLIA", actionHint: "Renseigne l’adresse de la passerelle ou du bridge Scolia." },
+    { id: "grandarts", icon: "grandarts", label: "GRANDARTS", description: "Connexion à Grandarts via une passerelle réseau dédiée.", cta: "CONFIGURER GRANDARTS", actionHint: "Renseigne l’adresse de la passerelle Grandarts." },
+    { id: "bluetooth", icon: "bluetooth", label: "BLUETOOTH", description: "Connecte un périphérique Bluetooth qui transmet les impacts.", cta: "CONFIGURER LE BLUETOOTH", actionHint: "Option avancée : service et caractéristique à recevoir en notifications." },
+  ]), []);
+  const guidedInputSelection = externalScoringEnabled
+    ? externalDeviceMode === "camera_assisted"
+      ? "camera"
+      : externalDeviceMode === "websocket_bridge"
+      ? "autodarts"
+      : "external_device"
+    : scoreInputMethod;
+  const selectedGuidedInputChoice = React.useMemo(
+    () => guidedInputChoices.find((choice: any) => choice.id === guidedInputSelection) || guidedInputChoices[0],
+    [guidedInputChoices, guidedInputSelection]
+  );
+  const selectedExternalDeviceChoice = React.useMemo(
+    () => externalDeviceChoices.find((choice: any) => choice.id === externalDeviceMode) || externalDeviceChoices[0],
+    [externalDeviceChoices, externalDeviceMode]
+  );
+  const [showExtraScoringSources, setShowExtraScoringSources] = React.useState(false);
+  const [deviceSetupOpen, setDeviceSetupOpen] = React.useState(false);
+  const [deviceSetupStep, setDeviceSetupStep] = React.useState<1 | 2 | 3>(1);
+  const selectGuidedInput = React.useCallback((method: ScoreInputMethod | "camera" | "autodarts" | "external_device") => {
+    if (method === "camera" || method === "autodarts" || method === "external_device") {
+      selectScoreInputMethod("keypad");
+      if (method === "camera") setExternalDeviceMode("camera_assisted");
+      else if (method === "autodarts") setExternalDeviceMode("websocket_bridge");
+      else if (!["phone_companion", "scolia", "grandarts", "bluetooth"].includes(externalDeviceMode)) setExternalDeviceMode("phone_companion");
+      setExternalScoringEnabled(true);
+      setVoiceScoreEnabled(false);
+      if (method === "external_device") setShowExtraScoringSources(true);
+    } else {
+      setExternalScoringEnabled(false);
+      selectScoreInputMethod(method);
+    }
+  }, [externalDeviceMode, selectScoreInputMethod, setExternalDeviceMode]);
+  const openExternalDeviceSetup = React.useCallback((step: 1 | 2 | 3 = 1) => {
+    setExternalScoringEnabled(true);
+    if (!["phone_companion", "camera_assisted", "websocket_bridge", "scolia", "grandarts", "bluetooth"].includes(externalDeviceMode)) {
+      setExternalDeviceMode("phone_companion");
+    }
+    setShowExtraScoringSources(true);
+    setDeviceSetupStep(step);
+    setDeviceSetupOpen(true);
+  }, [externalDeviceMode, setExternalDeviceMode]);
+  const selectedVoiceOption = React.useMemo(
+    () => VOICE_OPTIONS.find((entry) => entry.id === voiceId) || VOICE_OPTIONS[0],
+    [voiceId]
+  );
+  const inputMethodSummaryLabel = React.useMemo(() => {
+    if (externalScoringEnabled) {
+      if (externalDeviceMode === "camera_assisted") return "CAMÉRA";
+      if (externalDeviceMode === "websocket_bridge") return "AUTODARTS";
+      return `AUTRE APPAREIL · ${selectedExternalDeviceChoice?.label || "TÉLÉPHONE"}`;
+    }
+    return ({
+      keypad: "KEYPAD",
+      visit_score: "SCORE VOLÉE",
+      dartboard: "CIBLE",
+      presets: "PRESETS",
+      voice: "VOCAL",
+    } as Record<string, string>)[scoreInputMethod] || String(scoreInputMethod || "KEYPAD").toUpperCase();
+  }, [externalScoringEnabled, externalDeviceMode, selectedExternalDeviceChoice, scoreInputMethod]);
 
   const [externalInfoOpen, setExternalInfoOpen] = React.useState<boolean>(false);
   const [externalInfoStep, setExternalInfoStep] = React.useState<1 | 2 | 3>(1);
@@ -3101,8 +3262,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   const guidedSteps = React.useMemo(() => (
     participantMode === "teams"
-      ? ["Awena", "Participants", "Format des équipes", "Choix équipes", "Score", "Format de match", "Saisie", "Récap"]
-      : ["Awena", "Participants", "Duel ou Multi", "Choix joueurs", "Score", "Format de match", "Saisie", "Récap"]
+      ? ["Awena", "Participants", "Format des équipes", "Choix équipes", "Ordre de départ", "Score", "Format de match", "Saisie", "Audio", "Récap"]
+      : ["Awena", "Participants", "Duel ou Multi", "Choix joueurs", "Ordre de départ", "Score", "Format de match", "Saisie", "Audio", "Récap"]
   ), [participantMode]);
   const guidedMaxStep = Math.max(0, guidedSteps.length - 1);
   React.useEffect(() => {
@@ -3506,9 +3667,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           playersTouchedRef.current = true;
           setSelectedIds(uniqueIds);
           setMatchMode(uniqueIds.length === 2 ? "solo" : "multi");
-          setGuidedStep(4);
+          setGuidedStep(5);
           const pickedNames = candidates.filter((p: any) => uniqueIds.includes(String(p?.id))).map((p: any) => p.__voiceName);
-          await awenaVoiceSpeak(`J'ai sélectionné ${pickedNames.join(", ")}. Quel score de départ veux-tu : 301, 501, 701 ou 901 ?`, "start-score");
+          await awenaVoiceSpeak(`J'ai sélectionné ${pickedNames.join(", ")}. Quel score de départ veux-tu : 301, 501, 701, 901 ou 1001 ?`, "start-score");
           return;
         }
 
@@ -3525,15 +3686,15 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           setParticipantMode("teams");
           setMatchMode("teams");
           setTeamsSourceMode("saved");
-          setGuidedStep(4);
-          await awenaVoiceSpeak(`Équipes sélectionnées : ${matched.map((team: any) => team.name).join(", ")}. Quel score de départ veux-tu : 301, 501, 701 ou 901 ?`, "start-score");
+          setGuidedStep(5);
+          await awenaVoiceSpeak(`Équipes sélectionnées : ${matched.map((team: any) => team.name).join(", ")}. Quel score de départ veux-tu : 301, 501, 701, 901 ou 1001 ?`, "start-score");
           return;
         }
 
         if (awenaVoiceStep === "start-score") {
           const value = x01VoiceStartScore(text);
           if (!value) {
-            await awenaVoiceSpeak("Je n'ai pas reconnu le score. Dis 301, 501, 701 ou 901.");
+            await awenaVoiceSpeak("Je n'ai pas reconnu le score. Dis 301, 501, 701, 901 ou 1001.");
             return;
           }
           startTouchedRef.current = true;
@@ -3561,7 +3722,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           }
           outTouchedRef.current = true;
           setOutMode(mode as OutModeV3);
-          setGuidedStep(5);
+          setGuidedStep(6);
           await awenaVoiceSpeak(`${mode} out. Veux-tu jouer un match directement en legs, ou un format en sets ?`, "format-unit");
           return;
         }
@@ -3620,7 +3781,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             await awenaVoiceSpeak("Dis alterné, ou aléatoire.");
             return;
           }
-          setGuidedStep(6);
+          setGuidedStep(7);
           await awenaVoiceSpeak("Quelle méthode de saisie veux-tu pendant la partie : keypad, cible, presets, ou voice pour annoncer les fléchettes ?", "score-input");
           return;
         }
@@ -3688,7 +3849,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         }
 
         if (awenaVoiceStep === "external" || awenaVoiceStep === "external-device") {
-          setGuidedStep(7);
+          setGuidedStep(9);
           const playerLabel = participantMode === "teams"
             ? `${selectedSavedTeamsCount || selectedStoredTeamIds.length} équipes`
             : (selectedParticipantProfiles || []).map((p: any) => p?.name).filter(Boolean).join(", ") || `${selectedIds.length} joueurs`;
@@ -4553,161 +4714,352 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             {guidedStep === 3 && renderMssPremiumParticipantSelector()}
 
             {guidedStep === 4 && (
-              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>Score et sortie</h3>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Score de départ</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {START_SCORES.map((s) => <PillButton key={s} label={String(s)} active={startScore === s} onClick={() => { startTouchedRef.current = true; setStartScore(s); }} primary={primary} primarySoft={primarySoft} />)}
-                  </div>
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Mode d’entrée</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <PillButton label="Simple IN" active={inMode === "simple"} onClick={() => setInMode("simple")} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="Double IN" active={inMode === "double"} onClick={() => setInMode("double")} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="Master IN" active={inMode === "master"} onClick={() => setInMode("master")} primary={primary} primarySoft={primarySoft} />
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Mode de sortie</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <PillButton label="Simple OUT" active={outMode === "simple"} onClick={() => { outTouchedRef.current = true; setOutMode("simple"); }} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="Double OUT" active={outMode === "double"} onClick={() => { outTouchedRef.current = true; setOutMode("double"); }} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="Master OUT" active={outMode === "master"} onClick={() => { outTouchedRef.current = true; setOutMode("master"); }} primary={primary} primarySoft={primarySoft} />
-                  </div>
-                </div>
+              <section data-mss-guide-section="x01-start-order" style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <MssStartOrderSection accent={primary} value={serveMode} onChange={setServeMode} />
               </section>
             )}
 
             {guidedStep === 5 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>Format</h3>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Format des legs</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                    <PillButton label="Best Of" active={legVictoryMode === "best_of"} onClick={() => selectLegVictoryMode("best_of")} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="First To" active={legVictoryMode === "first_to"} onClick={() => selectLegVictoryMode("first_to")} primary={primary} primarySoft={primarySoft} />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {legVictoryOptions.map((n) => <PillButton key={`leg-${legVictoryMode}-${n}`} label={String(n)} active={legVictoryTarget === n} onClick={() => selectLegVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}
-                  </div>
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Format des sets</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                    <PillButton label="Best Of" active={matchVictoryMode === "best_of"} onClick={() => selectSetVictoryMode("best_of")} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="First To" active={matchVictoryMode === "first_to"} onClick={() => selectSetVictoryMode("first_to")} primary={primary} primarySoft={primarySoft} />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {setVictoryOptions.map((n) => <PillButton key={`set-${matchVictoryMode}-${n}`} label={String(n)} active={setVictoryTarget === n} onClick={() => selectSetVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}
-                  </div>
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
-                    <div style={{ fontSize: 12, color: "#c8cbe4" }}>Formats Pro / avancés</div>
-                    <PillButton label={showProFormats ? "Masquer" : "Afficher"} active={showProFormats} onClick={() => setShowProFormats((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
-                  </div>
-                  {showProFormats && (
-                    <ProFormatsTable
-                      presets={PRO_VICTORY_PRESETS}
-                      activePresetId={activeProPresetId}
-                      onSelect={applyProVictoryPreset}
-                      primary={primary}
-                    />
-                  )}
-                </div>
-                <div style={{ fontSize: 11.5, color: "#aeb3d3", lineHeight: 1.35, marginBottom: 14 }}>
-                  Sélection actuelle : <b style={{ color: "#f7d774" }}>{formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet)}</b>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Ordre de départ</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <PillButton label="Alterné" active={serveMode === "alternate"} onClick={() => setServeMode("alternate")} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="Aléatoire" active={serveMode === "random"} onClick={() => setServeMode("random")} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="Manuel" active={serveMode === "manual"} onClick={() => setServeMode("manual")} primary={primary} primarySoft={primarySoft} />
-                    <PillButton label="Bull" active={serveMode === "bull"} onClick={() => setServeMode("bull")} primary={primary} primarySoft={primarySoft} />
-                  </div>
-                </div>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 15px" }}>Score et sortie</h3>
+                <X01ScoreKeypadSettings startScore={startScore} inMode={inMode} outMode={outMode} accent={primary}
+                  onScoreChange={(score) => { startTouchedRef.current = true; setStartScore(score); }}
+                  onInChange={setInMode}
+                  onOutChange={(mode) => { outTouchedRef.current = true; setOutMode(mode); }} />
               </section>
             )}
 
             {guidedStep === 6 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>Saisie et audio</h3>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Méthode de saisie</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => selectScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} compact />
-                    <PillButton label="SCORE VOLÉE" active={scoreInputMethod === "visit_score"} onClick={() => selectScoreInputMethod("visit_score")} primary={primary} primarySoft={primarySoft} compact />
-                    <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => selectScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} compact />
-                    <PillButton label="PRESETS" active={scoreInputMethod === "presets"} onClick={() => selectScoreInputMethod("presets")} primary={primary} primarySoft={primarySoft} compact />
-                    <PillButton label="VOICE" active={scoreInputMethod === "voice"} onClick={() => selectScoreInputMethod("voice")} primary={primary} primarySoft={primarySoft} compact />
-                  </div>
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Audio</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <PillButton label={`Arcade ${arcadeEnabled ? "ON" : "OFF"}`} active={arcadeEnabled} onClick={() => setArcadeEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
-                    <PillButton label={`Bruitages ${hitEnabled ? "ON" : "OFF"}`} active={hitEnabled} onClick={() => setHitEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
-                    <PillButton label={`Voix ${voiceEnabled ? "ON" : "OFF"}`} active={voiceEnabled} onClick={() => setVoiceEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Comptage externe vidéo</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <PillButton label="OFF" active={!externalScoringEnabled} onClick={() => setExternalScoringEnabled(false)} primary={primary} primarySoft={primarySoft} compact />
-                    <PillButton label="ON" active={externalScoringEnabled} onClick={() => { setExternalScoringEnabled(true); setVoiceScoreEnabled(false); }} primary={primary} primarySoft={primarySoft} compact />
-                  </div>
-                  {externalScoringEnabled && (
-                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <PillButton label="TÉLÉPHONE" active={externalDeviceMode === "phone_companion"} onClick={() => setExternalDeviceMode("phone_companion")} primary={primary} primarySoft={primarySoft} compact />
-                        <PillButton label="CAMÉRA LOCALE" active={externalDeviceMode === "camera_assisted"} onClick={() => setExternalDeviceMode("camera_assisted")} primary={primary} primarySoft={primarySoft} compact />
-                        <PillButton label="BRIDGE" active={externalDeviceMode === "websocket_bridge"} onClick={() => setExternalDeviceMode("websocket_bridge")} primary={primary} primarySoft={primarySoft} compact />
-                        <PillButton label="SCOLIA" active={externalDeviceMode === "scolia"} onClick={() => setExternalDeviceMode("scolia")} primary={primary} primarySoft={primarySoft} compact />
-                        <PillButton label="GRANDARTS" active={externalDeviceMode === "grandarts"} onClick={() => setExternalDeviceMode("grandarts")} primary={primary} primarySoft={primarySoft} compact />
-                        <PillButton label="BLUETOOTH" active={externalDeviceMode === "bluetooth"} onClick={() => setExternalDeviceMode("bluetooth")} primary={primary} primarySoft={primarySoft} compact />
-                      </div>
-                      {externalDeviceMode === "phone_companion" && (
-                        <button type="button" onClick={() => go?.("camera_scoring_setup", { returnTab: "x01_config_v3" })} style={{ borderRadius: 12, padding: "9px 11px", border: `1px solid ${primary}55`, background: `${primary}22`, color: "#fff", fontWeight: 900, cursor: "pointer" }}>Relier / calibrer le téléphone</button>
-                      )}
-                      {(externalDeviceMode === "websocket_bridge" || externalDeviceMode === "scolia" || externalDeviceMode === "grandarts") && (
-                        <input
-                          value={externalBridgeUrl}
-                          onChange={(e) => setExternalBridgeUrl(e.target.value)}
-                          placeholder="ws://IP_DU_BRIDGE:8765"
-                          style={{ height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.30)", color: "#fff", padding: "0 10px", fontWeight: 800 }}
-                        />
-                      )}
-                    </div>
-                  )}
-                  <div style={{ marginTop: 8, fontSize: 11, color: "#8f94b5" }}>En guidée, choisis l'appareil ici. Les réglages détaillés restent dans la configuration complète.</div>
-                </div>
+                <MssMatchFormatPanel
+                  accent={primary}
+                  legMode={legVictoryMode}
+                  legValue={legVictoryTarget}
+                  legOptions={legVictoryOptions}
+                  setMode={matchVictoryMode}
+                  setValue={setVictoryTarget}
+                  setOptions={setVictoryOptions}
+                  startOrder={serveMode}
+                  showStartOrder={false}
+                  selectedSummary={formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet)}
+                  onLegMode={selectLegVictoryMode}
+                  onLegValue={selectLegVictoryTarget}
+                  onSetMode={selectSetVictoryMode}
+                  onSetValue={selectSetVictoryTarget}
+                  onStartOrder={setServeMode}
+                  proExpanded={showProFormats}
+                  onTogglePro={() => setShowProFormats(v => !v)}
+                  proContent={<ProFormatsTable presets={PRO_VICTORY_PRESETS} activePresetId={activeProPresetId} onSelect={applyProVictoryPreset} primary={primary} />}
+                />
               </section>
             )}
 
             {guidedStep === 7 && (
-              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: `1px solid ${canStart ? primary + "66" : "rgba(255,255,255,0.08)"}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 10px" }}>Récapitulatif</h3>
-                <div style={{ display: "grid", gap: 1, background: "rgba(0,0,0,.20)", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", padding: "5px 12px" }}>
-                  <MssConfigFact label="Mode" value={participantMode === "teams" ? "Équipes" : matchMode === "multi" ? "Multi" : "Duel 1v1"} />
-                  <MssConfigFact label="Participants" value={guidedSelectionLabel} />
-                  {participantMode === "teams" && <MssConfigFact label="Format équipes" value={`${teamFormatCount} équipes × ${teamFormatSize} membres`} />}
-                  <MssConfigFact label="Score" value={`${startScore} · ${inMode.toUpperCase()} IN · ${outMode.toUpperCase()} OUT`} />
-                  <MssConfigFact label="Format" value={formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet)} />
-                  <MssConfigFact label="Saisie" value={scoreInputMethod} />
+              <>
+                <section data-mss-guide-section="x01-input-mode" style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                  <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 14px" }}>MODE DE SAISIE</h3>
+                  <div role="group" aria-label="Choix du mode de saisie" style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 9 }}>
+                    {(guidedInputChoices as any[]).map((method) => (
+                      <MssInputMethodChoice
+                        key={method.id}
+                        icon={method.icon}
+                        label={method.label}
+                        accent={primary}
+                        active={guidedInputSelection === method.id}
+                        onClick={() => selectGuidedInput(method.id as any)}
+                      />
+                    ))}
+                  </div>
+
+                  <div aria-live="polite" style={{ textAlign: "center", margin: "12px auto 0", display: "grid", gap: 4, maxWidth: 430 }}>
+                    <strong style={{ fontSize: 13, color: primary, letterSpacing: .7 }}>{selectedGuidedInputChoice?.label || "KEYPAD"}</strong>
+                    <span style={{ color: "#aab4cb", fontSize: 11, lineHeight: 1.35 }}>{selectedGuidedInputChoice?.detail}</span>
+                  </div>
+
+                  {(guidedInputSelection === "camera" || guidedInputSelection === "autodarts") && (
+                    <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeviceSetupOpen(true);
+                          setDeviceSetupStep(2);
+                        }}
+                        style={{ border: `1px solid ${primary}70`, borderRadius: 12, background: `${primary}18`, color: primary, padding: "10px 14px", fontWeight: 900, cursor: "pointer" }}
+                      >
+                        {guidedInputSelection === "camera" ? "CONFIGURER LA CAMÉRA" : "CONFIGURER LE BRIDGE"}
+                      </button>
+                    </div>
+                  )}
+
+                  {(guidedInputSelection === "external_device" || (showExtraScoringSources && externalScoringEnabled)) && (
+                    <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 12, marginTop: 14, display: "grid", gap: 10 }}>
+                      <div style={{ textAlign: "center", color: primary, fontSize: 11, fontWeight: 950, letterSpacing: 1 }}>AUTRES APPAREILS</div>
+                      <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 9 }}>
+                        {(externalDeviceChoices as any[]).map((device) => (
+                          <MssInputMethodChoice
+                            key={device.id}
+                            icon={device.icon}
+                            label={device.label}
+                            accent={primary}
+                            active={externalScoringEnabled && externalDeviceMode === device.id}
+                            onClick={() => {
+                              setExternalScoringEnabled(true);
+                              setExternalDeviceMode(device.id);
+                              setShowExtraScoringSources(true);
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div style={{ textAlign: "center", display: "grid", gap: 4, maxWidth: 420, margin: "0 auto" }}>
+                        <strong style={{ fontSize: 13, color: primary, letterSpacing: .7 }}>{selectedExternalDeviceChoice?.label}</strong>
+                        <span style={{ color: "#aab4cb", fontSize: 11, lineHeight: 1.35 }}>{selectedExternalDeviceChoice?.description}</span>
+                        <span style={{ color: "#8d96b1", fontSize: 10.5, lineHeight: 1.4 }}>La configuration détaillée s’ouvre dans un bloc flottant sans quitter cette étape.</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => openExternalDeviceSetup(1)} style={{ border: `1px solid ${primary}70`, borderRadius: 12, background: `${primary}18`, color: primary, padding: "10px 14px", fontWeight: 900, cursor: "pointer" }}>{selectedExternalDeviceChoice?.cta || "CONFIGURER"}</button>
+                        <button type="button" onClick={() => { setExternalScoringEnabled(false); setShowExtraScoringSources(false); }} style={{ border: `1px solid ${primary}35`, borderRadius: 12, background: "rgba(255,255,255,.03)", color: "#d8deee", padding: "10px 14px", fontWeight: 900, cursor: "pointer" }}>DÉSACTIVER</button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                {deviceSetupOpen && (
+                  <div role="dialog" aria-modal="true" aria-label="Configuration appareil externe X01" onClick={() => setDeviceSetupOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 1350, background: "rgba(2,4,10,.74)", backdropFilter: "blur(6px)", display: "grid", placeItems: "center", padding: 18 }}>
+                    <div onClick={(e) => e.stopPropagation()} style={{ width: "min(94vw, 520px)", maxHeight: "88vh", overflowY: "auto", borderRadius: 24, border: `1px solid ${primary}55`, background: "linear-gradient(180deg, rgba(10,13,25,.98), rgba(4,6,13,.98))", boxShadow: "0 24px 72px rgba(0,0,0,.72)", padding: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+                        <button type="button" onClick={() => { if (deviceSetupStep > 1) setDeviceSetupStep((prev) => Math.max(1, prev - 1) as 1 | 2 | 3); else setDeviceSetupOpen(false); }} style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${primary}45`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 18, cursor: "pointer" }}>←</button>
+                        <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
+                          <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8 }}>COMPTAGE EXTERNE X01</div>
+                          <div style={{ color: "#aeb7cb", fontSize: 11, marginTop: 4 }}>Configuration guidée de l’appareil sans quitter la page X01.</div>
+                        </div>
+                        <button type="button" onClick={() => setDeviceSetupOpen(false)} style={{ width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 900, fontSize: 18, cursor: "pointer" }}>×</button>
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                        {([
+                          [1, "SOURCE"],
+                          [2, "CONFIG"],
+                          [3, "TERMINER"],
+                        ] as const).map(([stepNumber, label]) => (
+                          <button
+                            key={stepNumber}
+                            type="button"
+                            onClick={() => setDeviceSetupStep(stepNumber as 1 | 2 | 3)}
+                            style={{
+                              borderRadius: 999,
+                              padding: "7px 11px",
+                              border: `1px solid ${deviceSetupStep === stepNumber ? primary : "rgba(255,255,255,.14)"}`,
+                              background: deviceSetupStep === stepNumber ? `${primary}18` : "rgba(255,255,255,.03)",
+                              color: deviceSetupStep === stepNumber ? primary : "#dce2f0",
+                              fontSize: 10.5,
+                              fontWeight: 900,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {stepNumber} · {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {deviceSetupStep === 1 && (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          <div style={{ borderRadius: 16, border: `1px solid ${primary}25`, background: "rgba(255,255,255,.03)", padding: 12 }}>
+                            <div style={{ color: primary, fontWeight: 950, fontSize: 12, marginBottom: 8 }}>1 · SOURCE DE COMPTAGE</div>
+                            <div style={{ display: "flex", justifyContent: "center", gap: 9, flexWrap: "wrap" }}>
+                              {(externalDeviceChoices as any[]).map((device) => (
+                                <MssInputMethodChoice
+                                  key={device.id}
+                                  icon={device.icon}
+                                  label={device.label}
+                                  accent={primary}
+                                  active={externalDeviceMode === device.id}
+                                  onClick={() => {
+                                    setExternalScoringEnabled(true);
+                                    setExternalDeviceMode(device.id);
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "center", display: "grid", gap: 4 }}>
+                            <strong style={{ color: primary, fontSize: 13, letterSpacing: .7 }}>{selectedExternalDeviceChoice?.label}</strong>
+                            <span style={{ color: "#d7deef", fontSize: 12 }}>{selectedExternalDeviceChoice?.description}</span>
+                            <span style={{ color: "#98a2bd", fontSize: 10.5, lineHeight: 1.4 }}>{selectedExternalDeviceChoice?.actionHint}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {deviceSetupStep === 2 && (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 14 }}>
+                            <div style={{ color: primary, fontWeight: 950, fontSize: 12, marginBottom: 8 }}>2 · CONFIGURATION</div>
+                            <div style={{ color: "#eef1fb", fontSize: 12.5, fontWeight: 900, marginBottom: 4 }}>{selectedExternalDeviceChoice?.label}</div>
+                            <div style={{ color: "#aeb7cb", fontSize: 11, lineHeight: 1.45 }}>{selectedExternalDeviceChoice?.actionHint}</div>
+
+                            {externalDeviceMode === "phone_companion" && (
+                              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.16)", padding: 12, color: "#dbe2f4", fontSize: 11.5, lineHeight: 1.45 }}>
+                                  Relie d’abord le téléphone qui va filmer la cible. Ensuite, autorise la caméra et fais la calibration depuis ce téléphone.
+                                </div>
+                                <button type="button" onClick={() => go?.("camera_scoring_setup", { returnTab: "x01_config_v3" })} style={{ borderRadius: 12, padding: "11px 13px", border: `1px solid ${primary}60`, background: `${primary}18`, color: "#fff", fontWeight: 900, cursor: "pointer" }}>OUVRIR L’ASSISTANT DE LIAISON</button>
+                                <div style={{ color: externalPollingUrl ? primary : "#a0aac3", fontSize: 10.5 }}>{externalPollingUrl ? `URL de polling détectée : ${externalPollingUrl}` : "Aucune URL de polling enregistrée pour le moment."}</div>
+                              </div>
+                            )}
+
+                            {externalDeviceMode === "camera_assisted" && (
+                              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.16)", padding: 12, color: "#dbe2f4", fontSize: 11.5, lineHeight: 1.45 }}>
+                                  La caméra locale sera utilisée pour analyser la cible. Vérifie le cadrage puis lance l’assistant pour calibrer proprement la zone de jeu.
+                                </div>
+                                <button type="button" onClick={() => go?.("camera_scoring_setup", { returnTab: "x01_config_v3" })} style={{ borderRadius: 12, padding: "11px 13px", border: `1px solid ${primary}60`, background: `${primary}18`, color: "#fff", fontWeight: 900, cursor: "pointer" }}>OUVRIR L’ASSISTANT CAMÉRA</button>
+                              </div>
+                            )}
+
+                            {(["websocket_bridge", "scolia", "grandarts"] as string[]).includes(externalDeviceMode) && (
+                              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                                <label htmlFor="x01-guided-bridge-url" style={{ color: "#dbe2f4", fontSize: 11, fontWeight: 900 }}>Adresse du bridge / point d’accès</label>
+                                <input id="x01-guided-bridge-url" value={externalBridgeUrl} onChange={(e) => setExternalBridgeUrl(e.target.value)} placeholder="ws://adresse-du-bridge:8765" style={{ width: "100%", height: 40, borderRadius: 12, border: `1px solid ${primary}55`, background: "rgba(0,0,0,.24)", color: "#fff", padding: "0 11px", fontSize: 12.5, outline: "none" }} />
+                                <div style={{ color: "#99a4bf", fontSize: 10.5 }}>L’adresse sera réutilisée automatiquement au lancement de la partie.</div>
+                              </div>
+                            )}
+
+                            {externalDeviceMode === "bluetooth" && (
+                              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                                <label htmlFor="x01-guided-bt-service" style={{ color: "#dbe2f4", fontSize: 11, fontWeight: 900 }}>UUID du service Bluetooth</label>
+                                <input id="x01-guided-bt-service" value={externalBluetoothServiceUuid} onChange={(e) => setExternalBluetoothServiceUuid(e.target.value)} placeholder="UUID service (optionnel)" style={{ width: "100%", height: 40, borderRadius: 12, border: `1px solid ${primary}55`, background: "rgba(0,0,0,.24)", color: "#fff", padding: "0 11px", fontSize: 12.5, outline: "none" }} />
+                                <label htmlFor="x01-guided-bt-char" style={{ color: "#dbe2f4", fontSize: 11, fontWeight: 900 }}>UUID de la caractéristique</label>
+                                <input id="x01-guided-bt-char" value={externalBluetoothCharacteristicUuid} onChange={(e) => setExternalBluetoothCharacteristicUuid(e.target.value)} placeholder="UUID caractéristique notifications" style={{ width: "100%", height: 40, borderRadius: 12, border: `1px solid ${primary}55`, background: "rgba(0,0,0,.24)", color: "#fff", padding: "0 11px", fontSize: 12.5, outline: "none" }} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {deviceSetupStep === 3 && (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          <div style={{ borderRadius: 18, border: `1px solid ${primary}28`, background: "rgba(255,255,255,.03)", padding: 14 }}>
+                            <div style={{ color: primary, fontWeight: 950, fontSize: 12, marginBottom: 8 }}>3 · TERMINER</div>
+                            <div style={{ display: "grid", gap: 1, background: "rgba(0,0,0,.18)", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", padding: "5px 12px" }}>
+                              <MssConfigFact label="Source" value={selectedExternalDeviceChoice?.label} />
+                              <MssConfigFact label="Comptage externe" value={externalScoringEnabled ? "ON" : "OFF"} />
+                              {(["websocket_bridge", "scolia", "grandarts"] as string[]).includes(externalDeviceMode) && <MssConfigFact label="Bridge" value={externalBridgeUrl || "Non renseigné"} />}
+                              {externalDeviceMode === "phone_companion" && <MssConfigFact label="Téléphone" value={externalPollingUrl ? "Liaison détectée" : "Liaison à finaliser"} />}
+                              {externalDeviceMode === "bluetooth" && <MssConfigFact label="Bluetooth" value={externalBluetoothServiceUuid || externalBluetoothCharacteristicUuid ? "UUID renseignés" : "UUID à renseigner"} />}
+                            </div>
+                            <div style={{ marginTop: 10, color: "#aeb7cb", fontSize: 11, lineHeight: 1.45 }}>Une fois validé, tu reviens automatiquement à l’étape de saisie X01, sans repartir au début de la configuration.</div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 14 }}>
+                        <button type="button" onClick={() => { if (deviceSetupStep > 1) setDeviceSetupStep((prev) => Math.max(1, prev - 1) as 1 | 2 | 3); else setDeviceSetupOpen(false); }} style={{ flex: 1, minHeight: 46, borderRadius: 14, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.03)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>← Précédent</button>
+                        {deviceSetupStep < 3 ? (
+                          <button type="button" onClick={() => setDeviceSetupStep((prev) => Math.min(3, prev + 1) as 1 | 2 | 3)} style={{ flex: 1, minHeight: 46, borderRadius: 14, border: `1px solid ${primary}60`, background: `${primary}18`, color: primary, fontWeight: 900, cursor: "pointer" }}>Suivant →</button>
+                        ) : (
+                          <button type="button" onClick={() => setDeviceSetupOpen(false)} style={{ flex: 1, minHeight: 46, borderRadius: 14, border: `1px solid ${primary}60`, background: `${primary}18`, color: primary, fontWeight: 900, cursor: "pointer" }}>Terminé</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {guidedStep === 8 && (
+              <section data-mss-guide-section="x01-audio" style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <MssGuidedAudioPanel accent={primary} arcade={arcadeEnabled} hits={hitEnabled} voice={voiceEnabled}
+                  onArcadeChange={setArcadeEnabled} onHitsChange={setHitEnabled} onVoiceChange={setVoiceEnabled}
+                  voiceId={voiceId} voices={VOICE_OPTIONS} onVoiceIdChange={value => { voiceTouchedRef.current = true; setVoiceId(value); }} />
+              </section>
+            )}
+
+            {guidedStep === 9 && (
+              <section
+                style={{ border: `1px solid ${primary}55`, borderRadius: 16, background: "linear-gradient(155deg,rgba(25,26,37,.9),rgba(9,11,21,.94))", padding: "12px 12px 10px", display: "grid", gap: 12, minWidth: 0, marginBottom: 14 }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+                    <strong style={{ fontSize: 14, fontWeight: 1000, letterSpacing: .65, color: primary }}>FICHE DE PARTIE</strong>
+                    <span style={{ color: "#afb8cb", fontSize: 11 }}>
+                      {participantMode === "teams"
+                        ? `${premiumSelectedTeamCards.length} équipes · ${teamFormatSize} membres / équipe`
+                        : `${selectedParticipantProfiles.length} profils · ${matchMode === "multi" ? "Multi" : "Duel"}`}
+                    </span>
+                  </div>
+                  <span role="status" style={{ border: `1px solid ${canStart ? primary : "#fb7185"}55`, borderRadius: 20, padding: "5px 9px", fontWeight: 950, fontSize: 10, whiteSpace: "nowrap", color: canStart ? primary : "#fb7185" }}>
+                    {canStart ? "✓ PRÊT" : "À COMPLÉTER"}
+                  </span>
                 </div>
-                {!canStart && (
-                  <div style={{ marginTop: 12, borderRadius: 14, padding: 10, background: "rgba(255,90,90,0.10)", border: "1px solid rgba(255,90,90,0.25)", color: "#ffc9c9", fontSize: 12, fontWeight: 800 }}>
-                    La configuration n’est pas encore complète. Reviens aux étapes précédentes pour sélectionner les participants nécessaires.
+
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 9 }}>
+                  <div style={{ fontWeight: 950, fontSize: 11, letterSpacing: .9, color: primary, textTransform: "uppercase", marginBottom: 7 }}>
+                    {participantMode === "teams" ? "ÉQUIPES EN JEU" : "JOUEURS EN JEU"}
                   </div>
-                )}
-                {canStart && (
-                  <div style={{ marginTop: 12, borderRadius: 14, padding: 10, background: `${primary}18`, border: `1px solid ${primary}44`, color: "#fff4ce", fontSize: 12, fontWeight: 800 }}>
-                    Tout est prêt. Tu peux lancer la partie avec le bouton en bas.
+                  <div style={{ display: "grid", gap: 5 }}>
+                    {participantMode === "teams" ? premiumSelectedTeamCards.map((group: any, index: number) => (
+                      <div key={`${group.id}-${index}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 8px", borderRadius: 10, minWidth: 0, background: "rgba(255,255,255,.025)", borderLeft: `2px solid ${primary}` }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 12, overflow: "hidden", border: `1px solid ${primary}55`, background: "rgba(255,255,255,.05)", display: "grid", placeItems: "center", flex: "0 0 40px" }}>
+                          {group.logo ? <img src={group.logo} alt={group.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: primary, fontWeight: 900 }}>{String(group.name || "Équipe").slice(0, 1).toUpperCase()}</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 950, color: primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.name}</div>
+                          <div style={{ fontSize: 10, color: "#bbc2d3", overflowWrap: "anywhere", lineHeight: 1.3 }}>{(group.members || []).map((member: any) => member?.name || member?.displayName || "Joueur").join(" · ")}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
+                          {(group.members || []).slice(0, 4).map((member: any) => {
+                            const avatar = member?.avatarDataUrl || member?.avatarUrl || member?.avatar || null;
+                            const name = member?.name || member?.displayName || "J";
+                            return <div key={String(member?.id || name)} style={{ width: 24, height: 24, borderRadius: "50%", overflow: "hidden", border: `1px solid ${primary}55`, background: "rgba(255,255,255,.04)", display: "grid", placeItems: "center" }}>
+                              {avatar ? <img src={avatar} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 10, fontWeight: 900, color: "#fff" }}>{String(name).slice(0, 1).toUpperCase()}</span>}
+                            </div>;
+                          })}
+                        </div>
+                      </div>
+                    )) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+                        {selectedParticipantProfiles.map((entry: any) => {
+                          const profile = entry?.profile || {};
+                          const avatar = profile?.avatarDataUrl || profile?.avatarUrl || profile?.avatar || null;
+                          const name = entry?.name || profile?.name || "Joueur";
+                          return (
+                            <div key={String(entry?.id || name)} style={{ display: "flex", alignItems: "center", minWidth: 0, gap: 7, padding: 5 }}>
+                              <div style={{ width: 30, height: 30, borderRadius: "50%", overflow: "hidden", border: `1px solid ${primary}55`, background: "rgba(255,255,255,.04)", display: "grid", placeItems: "center", flex: "0 0 30px" }}>
+                                {avatar ? <img src={avatar} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 11, fontWeight: 900, color: "#fff" }}>{String(name).slice(0, 1).toUpperCase()}</span>}
+                              </div>
+                              <span style={{ overflowWrap: "anywhere", fontWeight: 850, fontSize: 11, minWidth: 0 }}>{name}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 8 }}>
+                  <div style={{ fontWeight: 950, fontSize: 11, letterSpacing: .9, color: primary, textTransform: "uppercase", marginBottom: 7 }}>PARAMÈTRES ESSENTIELS</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", columnGap: 13, rowGap: 0 }}>
+                    <MssConfigFact label="Mode" value={participantMode === "teams" ? "Équipes" : matchMode === "multi" ? "Multi" : "Duel 1v1"} />
+                    <MssConfigFact label="Participants" value={guidedSelectionLabel} />
+                    <MssConfigFact label="Score" value={`${startScore} · ${inMode.toUpperCase()} IN · ${outMode.toUpperCase()} OUT`} />
+                    <MssConfigFact label="Format" value={formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet)} />
+                    <MssConfigFact label="Ordre" value={{ alternate: "Alterné", random: "Aléatoire", manual: "Manuel", bull: "Bull" }[serveMode]} />
+                    <MssConfigFact label="Voix" value={selectedVoiceOption?.label || "Défaut"} />
+                  </div>
+                </div>
+
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 8 }}>
+                  <div style={{ fontWeight: 950, fontSize: 11, letterSpacing: .9, color: primary, textTransform: "uppercase", marginBottom: 7 }}>SAISIE & AUDIO</div>
+                  <MssConfigFact label="Saisie" value={inputMethodSummaryLabel} />
+                  <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, borderRadius: 20, padding: "4px 8px", border: `1px solid ${primary}4d`, color: "#e2e5ee", background: `${primary}11` }}>{arcadeEnabled ? "Arcade ON" : "Arcade OFF"}</span>
+                    <span style={{ fontSize: 10, borderRadius: 20, padding: "4px 8px", border: `1px solid ${primary}4d`, color: "#e2e5ee", background: `${primary}11` }}>{hitEnabled ? "Bruitages ON" : "Bruitages OFF"}</span>
+                    <span style={{ fontSize: 10, borderRadius: 20, padding: "4px 8px", border: `1px solid ${primary}4d`, color: "#e2e5ee", background: `${primary}11` }}>{voiceEnabled ? `Voix ON · ${selectedVoiceOption?.label || "Défaut"}` : "Voix OFF"}</span>
+                    {externalScoringEnabled && selectedExternalDeviceChoice?.label ? <span style={{ fontSize: 10, borderRadius: 20, padding: "4px 8px", border: `1px solid ${primary}4d`, color: "#e2e5ee", background: `${primary}11` }}>Appareil · {selectedExternalDeviceChoice.label}</span> : null}
+                  </div>
+                </div>
+
+                {!canStart && <p style={{ fontSize: 10.5, margin: 0, color: "#fca5a5" }}>Complète les choix requis avant de lancer la partie.</p>}
+                {canStart && <div style={{ borderRadius: 14, padding: 10, background: `${primary}18`, border: `1px solid ${primary}44`, color: "#fff4ce", fontSize: 12, fontWeight: 800 }}>Tout est prêt. Tu peux lancer la partie avec le bouton en bas.</div>}
               </section>
             )}
 
@@ -4741,86 +5093,14 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             {t("x01v3.baseParams", "Paramètres de base")}
           </h3>
 
-          {/* Score de départ */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
-              {t("x01v3.startScore", "Score de départ")}
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {START_SCORES.map((s) => (
-                <PillButton
-                  key={s}
-                  label={String(s)}
-                  active={startScore === s}
-                  onClick={() => { startTouchedRef.current = true; setStartScore(s); }}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                />
-              ))}
-            </div>
+          {/* X01 : même rendu Keypad en mode guidé et en mode complet. */}
+          <div style={{ marginBottom: 16 }}>
+            <X01ScoreKeypadSettings startScore={startScore} inMode={inMode} outMode={outMode} accent={primary}
+              onScoreChange={(score) => { startTouchedRef.current = true; setStartScore(score); }}
+              onInChange={setInMode}
+              onOutChange={(mode) => { outTouchedRef.current = true; setOutMode(mode); }} />
           </div>
 
-          {/* Mode d'entrée */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
-              {t("x01v3.inMode", "Mode d'entrée")}
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label={t("x01v3.in.simple", "Simple IN")}
-                active={inMode === "simple"}
-                onClick={() => setInMode("simple")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label={t("x01v3.in.double", "Double IN")}
-                active={inMode === "double"}
-                onClick={() => setInMode("double")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label={t("x01v3.in.master", "Master IN")}
-                active={inMode === "master"}
-                onClick={() => setInMode("master")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-            </div>
-          </div>
-
-          {/* Mode de sortie */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
-              {t("x01v3.outMode", "Mode de sortie")}
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label={t("x01v3.out.simple", "Simple OUT")}
-                active={outMode === "simple"}
-                onClick={() => { outTouchedRef.current = true; setOutMode("simple"); }}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label={t("x01v3.out.double", "Double OUT")}
-                active={outMode === "double"}
-                onClick={() => { outTouchedRef.current = true; setOutMode("double"); }}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label={t("x01v3.out.master", "Master OUT")}
-                active={outMode === "master"}
-                onClick={() => { outTouchedRef.current = true; setOutMode("master"); }}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-            </div>
-          </div>
-
-          
           {/* ✅ FORMAT DU MATCH (intégré dans Paramètres de base) */}
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div

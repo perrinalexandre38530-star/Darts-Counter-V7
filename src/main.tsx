@@ -384,6 +384,28 @@ function isDynImportFail(x: any) {
 }
 
 
+// WebContainer/Firefox : certains modules HMR restent servis avec un ancien
+// cache-buster et provoquent un SyntaxError alors que les sources TSX locales
+// sont valides. Un SEUL nouvel essai d'URL en DEV, sans effacer les données.
+const DC_DEV_SYNTAX_RECOVERY_KEY = "dc_dev_syntax_retry_v51";
+function isDevModuleSyntaxError(error: any): boolean {
+  if (!import.meta.env.DEV) return false;
+  const message = String(error?.message || error || "");
+  return (error?.name === "SyntaxError" || /syntaxerror/i.test(message)) &&
+    /(expected expression|unexpected token|unexpected identifier|invalid or unexpected token|got ['"`}]|doesn't provide an export named)/i.test(message);
+}
+function recoverDevModuleSyntaxOnce(error: any): boolean {
+  if (!isDevModuleSyntaxError(error)) return false;
+  try {
+    if (sessionStorage.getItem(DC_DEV_SYNTAX_RECOVERY_KEY) === "1") return false;
+    sessionStorage.setItem(DC_DEV_SYNTAX_RECOVERY_KEY, "1");
+    const url = new URL(window.location.href);
+    url.searchParams.set("sb", String(Date.now()));
+    window.location.replace(url.toString());
+    return true;
+  } catch { return false; }
+}
+
 async function recoverDynamicImportOnce() {
   try {
     // OFFLINE-FIRST V161 FIX: en mode avion, ne jamais déclencher de reload
@@ -490,7 +512,12 @@ async function recoverDynamicImportOnce() {
 
   const show = (title: string, err: any) => {
     try {
+      // Le logger reste actif, mais une erreur non fatale ne doit pas masquer
+      // toute l'application déjà rendue par un écran noir permanent.
+      if (document.getElementById("root")?.childElementCount) return;
+      if (document.getElementById("dc-fatal-error-overlay")) return;
       const el = document.createElement("pre");
+      el.id = "dc-fatal-error-overlay";
       el.style.cssText =
         "position:fixed;inset:0;z-index:999999;background:#0b0b0f;color:#fff;padding:12px;white-space:pre-wrap;overflow:auto;font:12px/1.35 ui-monospace,Menlo,Consolas;";
       el.textContent =
@@ -510,6 +537,10 @@ async function recoverDynamicImportOnce() {
     if (_isDynImportFail(payload)) {
       try { e.preventDefault?.(); } catch {}
       void hardRecoverFromChunkFailure(payload);
+      return;
+    }
+    if (recoverDevModuleSyntaxOnce(payload)) {
+      try { e.preventDefault?.(); } catch {}
       return;
     }
     show("window.error", payload);
@@ -552,21 +583,75 @@ function isSafeMode(): boolean {
 const CONTENT_PACK_CACHE_NAME = "mss-content-packs-v3";
 const NATIVE_CONTENT_PACK_SW_URL = "/content-packs-sw.js";
 
+// Supprimer uniquement les caches de CODE. Les caches de packs médias et les
+// tuiles cartographiques doivent survivre à une réparation technique / HMR.
+// Ces préfixes sont alignés sur public/sw.js et content-packs-sw.js.
+function isAppCodeCacheName(name: string): boolean {
+  return name.startsWith("dc-sw-") || name.startsWith("dc-app-") ||
+    name.startsWith("dc-precache-") || name.startsWith("workbox-precache-");
+}
+
+async function clearAppCodeCachesOnly() {
+  try {
+    if (typeof caches !== "undefined" && typeof caches.keys === "function") {
+      const names = await caches.keys();
+      await Promise.all(names.filter(isAppCodeCacheName).map((name) => caches.delete(name).catch(() => false)));
+    }
+  } catch {}
+}
+
 async function disableAllServiceWorkersAndCaches() {
-  // Réparation forte uniquement : cette fonction reste volontairement destructive.
   try {
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+      await Promise.all(regs.map((r) => r.unregister().catch(() => false)));
     }
   } catch {}
+  // Ne jamais effacer mss-content-packs-* / mss-map-tiles-* ou les données IndexedDB.
+  await clearAppCodeCachesOnly();
+}
 
+// Le bouton « Mode sans cache » doit agir AVANT import("./App") : auparavant
+// le Service Worker n'était arrêté qu'APRÈS un rendu React déjà impossible.
+const DC_SAFE_BOOT_RETRY_KEY = "dc_safe_boot_sw_retry_v52";
+async function prepareSafeBootBeforeAppImport(): Promise<boolean> {
+  if (!isSafeMode()) return false;
+  let controlled = false;
+  try { controlled = !!navigator.serviceWorker?.controller; } catch {}
+  await disableAllServiceWorkersAndCaches();
+  if (!controlled) return false;
   try {
-    if (typeof caches !== "undefined" && (caches as any).keys) {
-      const keys = await (caches as any).keys();
-      await Promise.all(keys.map((k: string) => caches.delete(k)));
-    }
-  } catch {}
+    if (sessionStorage.getItem(DC_SAFE_BOOT_RETRY_KEY) === "1") return false;
+    sessionStorage.setItem(DC_SAFE_BOOT_RETRY_KEY, "1");
+    const url = new URL(window.location.href);
+    url.searchParams.set("sb", String(Date.now()));
+    window.location.replace(url.toString());
+    return true;
+  } catch { return false; }
+}
+
+// En développement StackBlitz, un ancien /sw.js peut intercepter les fichiers
+// TSX/Vite avant que React ait rendu la première frame. La désinscription qui se
+// produisait APRÈS le rendu arrivait alors trop tard. Une seule reprise de page
+// est nécessaire si ce Service Worker contrôle effectivement l'onglet.
+const DC_DEV_SW_BOOT_RETRY_KEY = "dc_dev_sw_boot_retry_v52";
+async function recoverDevServiceWorkerBeforeAppImport(): Promise<boolean> {
+  if (!import.meta.env.DEV || isCapacitorNativeRuntime() || !shouldAttemptRemoteWork()) return false;
+  if (!("serviceWorker" in navigator)) return false;
+  let controller: ServiceWorker | null = null;
+  try { controller = navigator.serviceWorker.controller; } catch {}
+  if (!controller) return false;
+  try {
+    const script = new URL(controller.scriptURL, window.location.href);
+    if (script.origin !== window.location.origin || !/\/sw\.js$/i.test(script.pathname)) return false;
+    if (sessionStorage.getItem(DC_DEV_SW_BOOT_RETRY_KEY) === "1") return false;
+    sessionStorage.setItem(DC_DEV_SW_BOOT_RETRY_KEY, "1");
+    await disableAllServiceWorkersAndCaches();
+    const url = new URL(window.location.href);
+    url.searchParams.set("sb", String(Date.now()));
+    window.location.replace(url.toString());
+    return true;
+  } catch { return false; }
 }
 
 async function prepareNativeContentPackServiceWorker() {
@@ -660,92 +745,78 @@ async function purgeSWAndCachesOnce() {
 /* ============================================================
    UI boot screens
 ============================================================ */
-function appRepairInlineScript() {
-  return `(async function(){
-    try { localStorage.setItem("dc_safe_mode_v1","1"); } catch {}
-    try {
-      [
-        "dc-history-v1",
-        "dc_last_store_size_v1",
-        "dc_memory_diag_v1",
-        "dc_last_memory_warning_v1",
-        "dc_last_runtime_error_v1",
-        "dc_last_boot_crash_v1",
-        "dc_last_chunk_error_v1",
-        "dc_force_purge_sw",
-        "dc_sw_purge_once_v1",
-        "dc_dyn_import_fail_count_v1",
-        "dc_dyn_import_recover_once_v1",
-        "dc_last_crash_report_v1",
-        "dc_resume_index_v1",
-        "dc_current_match_v1",
-        "dc_bots_v1",
-        "dc_dart_sets_v1"
-      ].forEach((k) => { try { localStorage.removeItem(k); } catch {} });
-    } catch {}
-    try { sessionStorage.clear(); } catch {}
-    try {
-      await Promise.all([
-        "darts-counter-v5",
-        "dc-store-v1",
-        "dc-events-v1",
-        "dc_kv",
-        "dc-indexeddb",
-        "dc_tournaments_db_v1"
-      ].map((name) => new Promise((resolve) => {
-        try {
-          const req = indexedDB.deleteDatabase(name);
-          req.onsuccess = req.onerror = req.onblocked = () => resolve(true);
-        } catch { resolve(true); }
-      })));
-    } catch {}
-    try {
-      if ("serviceWorker" in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
-      }
-    } catch {}
-    try {
-      if (typeof caches !== "undefined" && caches.keys) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      }
-    } catch {}
-    location.reload();
-  })();`;
+// MSS V7(51) — écran de récupération sans HTML exécutable ni purge de données.
+// Ne JAMAIS effacer History V4, profils, réglages, bots ou bases IndexedDB
+// pour récupérer une erreur de module/syntaxe au démarrage.
+function escapeBootText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
+
+async function recoverBootCodeCacheOnly() {
+  // Réparation volontaire : n'affecte ni les profils, ni les historiques,
+  // ni IndexedDB, ni les caches médias/tuiles hors ligne.
+  await disableAllServiceWorkersAndCaches();
+  setSafeMode(false);
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("sb", String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
+function bindBootScreenActions(el: HTMLElement) {
+  // addEventListener au lieu d'injecter des scripts dans onclick="..." :
+  // l'ancien script contenait des guillemets qui rompaient l'attribut HTML,
+  // laissant apparaître du JavaScript à l'écran.
+  el.querySelectorAll<HTMLElement>("[data-msc-boot-action]").forEach((control) => {
+    control.addEventListener("click", () => {
+      const action = control.dataset.mscBootAction;
+      if (action === "retry") {
+        setSafeMode(false);
+        window.location.reload();
+      } else if (action === "copy") {
+        // Copier le rapport n'ouvre aucune page et n'altère aucune donnée.
+        const text = String(el.querySelector<HTMLElement>("[data-msc-boot-report]")?.textContent || "");
+        if (text && navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(text).catch(() => {});
+        }
+      } else if (action === "safe") {
+        setSafeMode(true);
+        window.location.reload();
+      } else if (action === "cache") {
+        control.setAttribute("aria-busy", "true");
+        void recoverBootCodeCacheOnly();
+      }
+    });
+  });
+}
+
+const BOOT_BUTTON_STYLE = `
+  display:inline-flex;justify-content:center;align-items:center;
+  margin:8px 8px 0 0;border-radius:999px;padding:10px 14px;
+  border:1px solid rgba(255,255,255,.14);font-weight:850;
+  background:linear-gradient(180deg,#ffc63a,#ffaf00);
+  color:#1b1508;cursor:pointer;`;
 
 function bootScreen(title: string, msg: string) {
   const el = document.getElementById("root") || document.body;
   el.innerHTML = `
-    <div style="
-      min-height:100vh;
-      padding:14px;
-      background:#0b0b10;
-      color:#fff;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
-      <div style="font-size:18px;font-weight:900;margin-bottom:10px;">${title}</div>
-      <div style="opacity:.85;font-size:13px;margin-bottom:10px;">${msg}</div>
-      <button onclick="localStorage.setItem('${SAFE_MODE_KEY}','0');location.reload()" style="
-        margin-top:10px;
-        border-radius:999px;
-        padding:10px 12px;
-        border:none;
-        font-weight:900;
-        background:linear-gradient(180deg,#ffc63a,#ffaf00);
-        color:#1b1508;
-        cursor:pointer;">Recharger (mode normal)</button>
-      <button onclick="${appRepairInlineScript()}" style="
-        margin-top:10px; margin-left:8px;
-        border-radius:999px;
-        padding:10px 12px;
-        border:none;
-        font-weight:900;
-        background:linear-gradient(180deg,#ff8d8d,#ff5252);
-        color:#2a0e0e;
-        cursor:pointer;">Réparer le stockage local</button>
-    </div>
-  `;
+    <div style="min-height:100vh;padding:14px;background:#0b0b10;color:#fff;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">
+      <div style="font-size:18px;font-weight:900;margin-bottom:10px;">${escapeBootText(title)}</div>
+      <div style="opacity:.85;font-size:13px;margin-bottom:10px;">${escapeBootText(msg)}</div>
+      <button type="button" data-msc-boot-action="retry" style="${BOOT_BUTTON_STYLE}">Recharger (mode normal)</button>
+      <button type="button" data-msc-boot-action="cache" style="${BOOT_BUTTON_STYLE}">Relancer sans cache technique</button>
+      <div style="font-size:12px;opacity:.7;margin-top:12px;">Profils, historique et réglages conservés.</div>
+    </div>`;
+  bindBootScreenActions(el);
 }
 
 function bootCrashScreen(payload: any) {
@@ -760,68 +831,36 @@ function bootCrashScreen(payload: any) {
       return String(e);
     }
   };
-
-  const msg = format(payload);
-
-  // ✅ on force SAFE MODE au prochain boot
-  setSafeMode(true);
-
+  // Conserver le NOM et le MESSAGE distinctement. Sous Firefox, une stack
+  // peut ne contenir que "@.../LangContext.tsx:ligne:colonne" : auparavant
+  // cette adresse masquait la vraie raison de l'erreur.
+  const errorName = String(payload?.name || "Error");
+  const errorMessage = String(payload?.message || (typeof payload === "string" ? payload : "Erreur sans message"));
+  const errorStack = format(payload);
+  const msg = `${errorName}: ${errorMessage}${errorStack && errorStack !== errorMessage ? `\n\n${errorStack}` : ""}`;
+  // Un SyntaxError (ou un import Vite transitoire) ne doit pas activer
+  // automatiquement SAFE MODE : cela masquerait la page après correction.
   try {
-    localStorage.setItem(
-      "dc_last_boot_crash_v1",
-      JSON.stringify({ at: Date.now(), msg }, null, 2)
-    );
+    localStorage.setItem("dc_last_boot_crash_v1", JSON.stringify({ at: Date.now(), msg }, null, 2));
   } catch {}
 
   const el = document.getElementById("root") || document.body;
   el.innerHTML = `
-    <div style="
-      min-height:100vh;
-      padding:14px;
-      background:#0b0b10;
-      color:#fff;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+    <div style="min-height:100vh;padding:14px;background:#0b0b10;color:#fff;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">
       <div style="font-size:18px;font-weight:900;margin-bottom:10px;">💥 CRASH CAPTURÉ (BOOT)</div>
       <div style="opacity:.85;font-size:13px;margin-bottom:10px;">
-        Safe mode sera activé au prochain démarrage pour couper le Service Worker / caches.
-        Fais une capture de cet écran.
+        Erreur au chargement. Un rechargement ne supprime aucune donnée de jeu.
       </div>
-      <pre style="
-        white-space:pre-wrap;
-        word-break:break-word;
-        background:rgba(255,255,255,.06);
-        padding:12px;
-        border-radius:12px;
-        border:1px solid rgba(255,255,255,.12);">${msg}</pre>
-      <button onclick="location.reload()" style="
-        margin-top:10px;
-        border-radius:999px;
-        padding:10px 12px;
-        border:none;
-        font-weight:900;
-        background:linear-gradient(180deg,#ffc63a,#ffaf00);
-        color:#1b1508;
-        cursor:pointer;">Recharger</button>
-      <button onclick="localStorage.setItem('dc_safe_mode_v1','1');location.reload()" style="
-        margin-top:10px; margin-left:8px;
-        border-radius:999px;
-        padding:10px 12px;
-        border:none;
-        font-weight:900;
-        background:linear-gradient(180deg,#ff8d8d,#ff5252);
-        color:#2a0e0e;
-        cursor:pointer;">Forcer le safe mode</button>
-      <button onclick="${appRepairInlineScript()}" style="
-        margin-top:10px; margin-left:8px;
-        border-radius:999px;
-        padding:10px 12px;
-        border:none;
-        font-weight:900;
-        background:linear-gradient(180deg,#ff8d8d,#ff5252);
-        color:#2a0e0e;
-        cursor:pointer;">Réparer le stockage local</button>
-    </div>
-  `;
+      <pre data-msc-boot-report="1" style="white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,.06);
+        padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);">${escapeBootText(msg)}</pre>
+      <button type="button" data-msc-boot-action="copy" style="${BOOT_BUTTON_STYLE}">Copier le rapport</button>
+      <button type="button" data-msc-boot-action="retry" style="${BOOT_BUTTON_STYLE}">Recharger</button>
+      <button type="button" data-msc-boot-action="safe" style="${BOOT_BUTTON_STYLE}">Mode sans cache (safe mode)</button>
+      <button type="button" data-msc-boot-action="cache" style="${BOOT_BUTTON_STYLE}">Réparer le cache technique</button>
+      <div style="font-size:12px;opacity:.7;margin-top:12px;">Aucune suppression des profils, historiques, parties ou bases locales.</div>
+    </div>`;
+  bindBootScreenActions(el);
 }
 
 /* ============================================================
@@ -928,6 +967,9 @@ async function devUnregisterSW() {
 (async () => {
   try {
     if (await startupHardResetIfRequested()) return;
+    const safeBootRequested = isSafeMode();
+    if (await prepareSafeBootBeforeAppImport()) return;
+    if (!safeBootRequested && await recoverDevServiceWorkerBeforeAppImport()) return;
 
     // ✅ FIX: NE PLUS purger automatiquement au boot
     // (Stackblitz "Open in new tab" change d'origine → purge+reload → écran blanc/perçu comme gel)
@@ -983,6 +1025,9 @@ async function devUnregisterSW() {
     // critique. Capacitor contient déjà l'application complète dans l'APK/AAB.
     // Les SW (packs natifs / PWA) sont initialisés APRES le premier rendu.
     const schedulePostRenderServiceWorkerBootstrap = () => {
+      // Une session demandée en mode sans cache n'enregistre pas de nouveau SW
+      // immédiatement après l'avoir désinstallé.
+      if (safeBootRequested) return;
       window.setTimeout(() => {
         void (async () => {
           try {
@@ -1059,14 +1104,24 @@ async function devUnregisterSW() {
     // ensuite sans pouvoir retarder l'accès aux jeux, profils, historique ou stats.
     schedulePostRenderServiceWorkerBootstrap();
 
-    // ✅ si ça render, on peut enlever safe mode + reset compteurs recovery
+    // Une fois un premier rendu réussi, on peut autoriser le prochain
+    // démarrage normal. La session courante ne recrée pas le SW si elle était safe.
     setSafeMode(false);
+    try { sessionStorage.removeItem(DC_SAFE_BOOT_RETRY_KEY); } catch {}
     setDynImportFailCount(0);
-    try {
-      sessionStorage.removeItem(DC_DYN_IMPORT_RECOVER_KEY);
-    } catch {}
+    try { sessionStorage.removeItem(DC_DYN_IMPORT_RECOVER_KEY); } catch {}
+    // Ne pas lever le garde-fou SyntaxError avant les imports React lazy :
+    // un second crash dans la même seconde ne doit pas relancer une boucle.
+    window.setTimeout(() => {
+      try { sessionStorage.removeItem(DC_DEV_SYNTAX_RECOVERY_KEY); } catch {}
+    }, 30_000);
   } catch (e) {
     console.error("[BOOT CRASH]", e);
+
+    // SyntaxError transitoire sous Vite/WebContainer : un seul essai sans purge.
+    // Si l'erreur persiste, afficher NOM + MESSAGE + STACK pour un diagnostic
+    // vérifiable : ne pas accuser LangContext.tsx sur la seule adresse de stack.
+    if (recoverDevModuleSyntaxOnce(e)) return;
 
     // ✅ If the crash is a stale Vite chunk / dynamic import failure, try an automatic one-shot recovery.
     if (isDynImportFail(e)) {

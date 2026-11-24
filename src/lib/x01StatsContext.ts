@@ -1,10 +1,10 @@
 // ============================================================
 // src/lib/x01StatsContext.ts
-// Contexte X01 unifié pour éviter de mélanger les stats 301/501/701/901
+// Contexte X01 unifié pour éviter de mélanger les stats 301/501/701/901/1001
 // et DUO / MULTI / TEAM dans Home, Profils et Centre de stats.
 // ============================================================
 
-export type X01StartScoreKey = 301 | 501 | 701 | 901;
+export type X01StartScoreKey = 301 | 501 | 701 | 901 | 1001;
 export type X01VariantKey = "solo" | "duo" | "multi" | "team" | "training" | "unknown";
 export type X01VictoryModeKey = "best_of" | "first_to";
 export type X01InModeKey = "simple" | "double" | "master" | "unknown";
@@ -31,7 +31,7 @@ export type X01StatsContextFilter = {
   outMode?: X01OutModeKey | "all" | null;
 };
 
-const START_SCORES: X01StartScoreKey[] = [301, 501, 701, 901];
+const START_SCORES: X01StartScoreKey[] = [301, 501, 701, 901, 1001];
 
 function norm(v: any): string {
   return String(v ?? "")

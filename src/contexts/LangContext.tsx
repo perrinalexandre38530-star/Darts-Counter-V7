@@ -11,6 +11,7 @@ import {
   getUiLiteralSourceLanguage,
   hydrateUiLiteralTranslationCache,
   looksFrenchUiText,
+  registerUiLiteralTranslation,
   registerUiLiteralTranslationSource,
   rememberUiLiteralTranslation,
   translateUiLiteralWithBrowser,

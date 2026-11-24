@@ -52,7 +52,7 @@ export type X01PlayerSample = {
   coSuccess: number;
 
   // Contexte X01 pour filtrer correctement les stats
-  // 301/501/701/901 + Solo/Duo/Multi/Team + BO/First To
+  // 301/501/701/901/1001 + Solo/Duo/Multi/Team + BO/First To
   x01StartScore?: X01StartScoreKey | null;
   x01Variant?: X01VariantKey;
   matchVictoryMode?: X01VictoryModeKey;
@@ -91,7 +91,7 @@ export type X01Agg = {
   coSuccess: number;
 
   // Contexte X01 pour filtrer correctement les stats
-  // 301/501/701/901 + Solo/Duo/Multi/Team + BO/First To
+  // 301/501/701/901/1001 + Solo/Duo/Multi/Team + BO/First To
   x01StartScore?: X01StartScoreKey | null;
   x01Variant?: X01VariantKey;
   matchVictoryMode?: X01VictoryModeKey;
@@ -242,7 +242,7 @@ export function isX01Record(rec: any): boolean {
   if (/x01|x01v3|x01_online|training_x01|training-x01/.test(bag)) return true;
   const startScore = deepFirst(rec, ["startScore", "startscore", "x01StartScore"]);
   const n = num(startScore);
-  return [301, 501, 701, 901].includes(n);
+  return [301, 501, 701, 901, 1001].includes(n);
 }
 
 export function isTrainingRecord(rec: any): boolean {

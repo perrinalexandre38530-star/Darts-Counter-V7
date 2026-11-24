@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+output/approvals.json
+output/*.tmp
+/output/publication-plan.json
+/overrides/

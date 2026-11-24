@@ -1,0 +1,1415 @@
+{
+  "schema": "mss.graphic.catalog.v2",
+  "entries": [
+    {
+      "id": "ar/campaign_01",
+      "locale": "ar",
+      "campaign": "campaign_01",
+      "file": "ar/campaign_01.png",
+      "sha256": "56a9404d59b056583c719bae6d2aaa300186f68f035d70830f0e72ed123bb356",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 وضع لعب • 94 روبوت ذكاء اصطناعي • مركز التدريب • تحليل الإحصائيات ومشاركتها • إحصائيات X01 حسب مجموعة السهام • الأندية والجمعيات والدوريات • عالم وأجواء الآركيد\nحمّل التطبيق : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "العب.",
+          "تطوّر.",
+          "تحدَّ نفسك."
+        ],
+        "subtitle": "لعبة السهام بشكل مختلف.",
+        "cta": "حمّل التطبيق"
+      }
+    },
+    {
+      "id": "ar/campaign_02",
+      "locale": "ar",
+      "campaign": "campaign_02",
+      "file": "ar/campaign_02.png",
+      "sha256": "1bb77c0b2c5d81c49006a9587efd7b8ab8acffe7be9f7bd0e1ce193f0bb5217c",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 وضع لعب • 94 روبوت ذكاء اصطناعي • مركز التدريب • تحليل الإحصائيات ومشاركتها • إحصائيات X01 حسب مجموعة السهام • الأندية والجمعيات والدوريات • عالم وأجواء الآركيد\nحمّل التطبيق : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "العب.",
+          "تطوّر.",
+          "هيمن."
+        ],
+        "subtitle": "التطبيق الكامل للعب والتدريب وتحدي النفس وتنظيم المنافسات.",
+        "cta": "حمّل التطبيق"
+      }
+    },
+    {
+      "id": "ar/campaign_03",
+      "locale": "ar",
+      "campaign": "campaign_03",
+      "file": "ar/campaign_03.png",
+      "sha256": "646c252600e099b291464833e519b9a80a9bca88d88b068613065e82b7d12128",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 وضع لعب • 94 روبوت ذكاء اصطناعي • مركز التدريب • تحليل الإحصائيات ومشاركتها • إحصائيات X01 حسب مجموعة السهام • الأندية والجمعيات والدوريات • عالم وأجواء الآركيد\nحمّله الآن! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "التطبيق الذي يفعل كل شيء."
+        ],
+        "subtitle": "العالم الكامل للسهام.",
+        "cta": "حمّله الآن!"
+      }
+    },
+    {
+      "id": "cs/campaign_01",
+      "locale": "cs",
+      "campaign": "campaign_01",
+      "file": "cs/campaign_01.png",
+      "sha256": "19d9396a581fc028b965f8cfbe146c7fae1515acaa026fb0839840f4d9b957c3",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 herních režimů • 94 AI botů • Tréninkové centrum • Analýza a sdílení statistik • Statistiky X01 podle sady šipek • Kluby, spolky a ligy • Arcade svět a atmosféra\nSTÁHNOUT APLIKACI : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "HRAJ.",
+          "ZLEPŠUJ SE.",
+          "VYZVI SÁM SEBE."
+        ],
+        "subtitle": "Šipky jinak.",
+        "cta": "STÁHNOUT APLIKACI"
+      }
+    },
+    {
+      "id": "cs/campaign_02",
+      "locale": "cs",
+      "campaign": "campaign_02",
+      "file": "cs/campaign_02.png",
+      "sha256": "17f46dc9ae1801f9451a18a87e4103eb9d7d185ff886fc1f5a3ae7500b6463af",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 herních režimů • 94 AI botů • Tréninkové centrum • Analýza a sdílení statistik • Statistiky X01 podle sady šipek • Kluby, spolky a ligy • Arcade svět a atmosféra\nSTÁHNOUT APLIKACI : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "HRAJ.",
+          "ZLEPŠUJ SE.",
+          "OVLÁDNI TO."
+        ],
+        "subtitle": "Kompletní aplikace pro hraní, trénink, výzvy a organizaci soutěží.",
+        "cta": "STÁHNOUT APLIKACI"
+      }
+    },
+    {
+      "id": "cs/campaign_03",
+      "locale": "cs",
+      "campaign": "campaign_03",
+      "file": "cs/campaign_03.png",
+      "sha256": "c326604ec133cee6f637fa50b686ed8f4cb03962c15194b6565ae1b357a956ff",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 herních režimů • 94 AI botů • Tréninkové centrum • Analýza a sdílení statistik • Statistiky X01 podle sady šipek • Kluby, spolky a ligy • Arcade svět a atmosféra\nSTÁHNOUT NYNÍ! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APLIKACE, KTERÁ ZVLÁDNE VŠE."
+        ],
+        "subtitle": "Kompletní svět šipek.",
+        "cta": "STÁHNOUT NYNÍ!"
+      }
+    },
+    {
+      "id": "da/campaign_01",
+      "locale": "da",
+      "campaign": "campaign_01",
+      "file": "da/campaign_01.png",
+      "sha256": "4b69f33dac808e349a5a9e600f40c97e77bb04819686655238b94dab7feb959c",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spiltilstande • 94 AI-bots • Træningscenter • Analysér og del statistik • X01-statistik pr. dart-sæt • Klubber, foreninger og ligaer • Arcade-univers og stemning\nDOWNLOAD APPEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPIL.",
+          "UDVIKL DIG.",
+          "UDFORDR DIG SELV."
+        ],
+        "subtitle": "Dart på en anden måde.",
+        "cta": "DOWNLOAD APPEN"
+      }
+    },
+    {
+      "id": "da/campaign_02",
+      "locale": "da",
+      "campaign": "campaign_02",
+      "file": "da/campaign_02.png",
+      "sha256": "e2dd6b45963e4721ef1ac04488b04502db55580e9903514340ce812e41e93c9a",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spiltilstande • 94 AI-bots • Træningscenter • Analysér og del statistik • X01-statistik pr. dart-sæt • Klubber, foreninger og ligaer • Arcade-univers og stemning\nDOWNLOAD APPEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPIL.",
+          "UDVIKL DIG.",
+          "DOMINÉR."
+        ],
+        "subtitle": "Den komplette app til at spille, træne, udfordre dig selv og organisere dine konkurrencer.",
+        "cta": "DOWNLOAD APPEN"
+      }
+    },
+    {
+      "id": "da/campaign_03",
+      "locale": "da",
+      "campaign": "campaign_03",
+      "file": "da/campaign_03.png",
+      "sha256": "ce454bdb6bddce85df128b76cd35a8c723c06d73f601adc38150b27e7b49d261",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spiltilstande • 94 AI-bots • Træningscenter • Analysér og del statistik • X01-statistik pr. dart-sæt • Klubber, foreninger og ligaer • Arcade-univers og stemning\nDOWNLOAD NU! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APPEN DER GØR DET HELE."
+        ],
+        "subtitle": "Det komplette dart-univers.",
+        "cta": "DOWNLOAD NU!"
+      }
+    },
+    {
+      "id": "de/campaign_01",
+      "locale": "de",
+      "campaign": "campaign_01",
+      "file": "de/campaign_01.png",
+      "sha256": "d37045f1138a69a41f827130f521f0f6498270500545b877466609c3cfdb2a3e",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 Spielmodi • 94 KI-Bots • Trainingszentrum • Statistiken analysieren und teilen • X01-Statistiken nach Dartset • Clubs, Vereine und Ligen • Arcade-Universum und Arcade-Atmosphäre\nAPP HERUNTERLADEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPIELEN.",
+          "FORTSCHRITT.",
+          "FORDERE DICH HERAUS."
+        ],
+        "subtitle": "Darts neu gedacht.",
+        "cta": "APP HERUNTERLADEN"
+      }
+    },
+    {
+      "id": "de/campaign_02",
+      "locale": "de",
+      "campaign": "campaign_02",
+      "file": "de/campaign_02.png",
+      "sha256": "e9c057d8b785b0bd0aacf68386d4993806b1f8f9ad0153592034a1ced3aa0391",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 Spielmodi • 94 KI-Bots • Trainingszentrum • Statistiken analysieren und teilen • X01-Statistiken nach Dartset • Clubs, Vereine und Ligen • Arcade-Universum und Arcade-Atmosphäre\nAPP HERUNTERLADEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPIELEN.",
+          "FORTSCHRITT.",
+          "DOMINIEREN."
+        ],
+        "subtitle": "Die komplette App zum Spielen, Trainieren, Fordern und Organisieren deiner Wettbewerbe.",
+        "cta": "APP HERUNTERLADEN"
+      }
+    },
+    {
+      "id": "de/campaign_03",
+      "locale": "de",
+      "campaign": "campaign_03",
+      "file": "de/campaign_03.png",
+      "sha256": "446c34d0ae69232b4d869a9b941429824643084ad4e26630b594968a55d75a23",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 Spielmodi • 94 KI-Bots • Trainingszentrum • Statistiken analysieren und teilen • X01-Statistiken nach Dartset • Clubs, Vereine und Ligen • Arcade-Universum und Arcade-Atmosphäre\nJETZT HERUNTERLADEN! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "DIE APP, DIE ALLES KANN."
+        ],
+        "subtitle": "Das komplette Darts-Universum.",
+        "cta": "JETZT HERUNTERLADEN!"
+      }
+    },
+    {
+      "id": "en/campaign_01",
+      "locale": "en",
+      "campaign": "campaign_01",
+      "file": "en/campaign_01.png",
+      "sha256": "b9b88eca91a71169d02716630124ff201d34b42ea514a0ae3786a25d4a2094e2",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 game modes • 94 AI bots • Training center • Analyze and share statistics • X01 stats by dart set • Clubs, associations and leagues • Arcade universe and atmosphere\nDOWNLOAD THE APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #DartsApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "PLAY.",
+          "PROGRESS.",
+          "CHALLENGE YOURSELF."
+        ],
+        "subtitle": "Darts, reimagined.",
+        "cta": "DOWNLOAD THE APP"
+      }
+    },
+    {
+      "id": "en/campaign_02",
+      "locale": "en",
+      "campaign": "campaign_02",
+      "file": "en/campaign_02.png",
+      "sha256": "f44e09d699e7c736974f7a84d72a55741e3dc920eace3a48a1daadbdf8492c7a",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 game modes • 94 AI bots • Training center • Analyze and share statistics • X01 stats by dart set • Clubs, associations and leagues • Arcade universe and atmosphere\nDOWNLOAD THE APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #DartsApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "PLAY.",
+          "PROGRESS.",
+          "DOMINATE."
+        ],
+        "subtitle": "The complete app to play, train, challenge yourself and organize your competitions.",
+        "cta": "DOWNLOAD THE APP"
+      }
+    },
+    {
+      "id": "en/campaign_03",
+      "locale": "en",
+      "campaign": "campaign_03",
+      "file": "en/campaign_03.png",
+      "sha256": "8503c90ba3f790d3f4b35cb02d05cef86c4290e9197a6dec00e6f27fb19bd26b",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 game modes • 94 AI bots • Training center • Analyze and share statistics • X01 stats by dart set • Clubs, associations and leagues • Arcade universe and atmosphere\nDOWNLOAD NOW! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #DartsApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "THE APP THAT DOES IT ALL."
+        ],
+        "subtitle": "The complete darts universe.",
+        "cta": "DOWNLOAD NOW!"
+      }
+    },
+    {
+      "id": "es/campaign_01",
+      "locale": "es",
+      "campaign": "campaign_01",
+      "file": "es/campaign_01.png",
+      "sha256": "4e8e113a306a1fe162c046e39d7e9147c656c52dc000a34afe4b21bcd897ff01",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modos de juego • 94 bots IA • Centro de entrenamiento • Análisis y uso compartido de estadísticas • Estadísticas X01 por juego de dardos • Clubes, asociaciones y ligas • Universo y ambiente Arcade\nDESCARGA LA APLICACIÓN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JUEGA.",
+          "PROGRESA.",
+          "SUPÉRATE."
+        ],
+        "subtitle": "El juego de dardos, de otra manera.",
+        "cta": "DESCARGA LA APLICACIÓN"
+      }
+    },
+    {
+      "id": "es/campaign_02",
+      "locale": "es",
+      "campaign": "campaign_02",
+      "file": "es/campaign_02.png",
+      "sha256": "bbc9f1f3a2f80eb6e9de527c62416787c36121293ff423c5f418360ca5d31c4e",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modos de juego • 94 bots IA • Centro de entrenamiento • Análisis y uso compartido de estadísticas • Estadísticas X01 por juego de dardos • Clubes, asociaciones y ligas • Universo y ambiente Arcade\nDESCARGA LA APLICACIÓN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JUEGA.",
+          "PROGRESA.",
+          "DOMINA."
+        ],
+        "subtitle": "La aplicación completa para jugar, entrenar, superarte y organizar tus competiciones.",
+        "cta": "DESCARGA LA APLICACIÓN"
+      }
+    },
+    {
+      "id": "es/campaign_03",
+      "locale": "es",
+      "campaign": "campaign_03",
+      "file": "es/campaign_03.png",
+      "sha256": "772d66f76f9f3daa8c715613dfa45427dc567107b6461a85c05e29cee1c20aa0",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modos de juego • 94 bots IA • Centro de entrenamiento • Análisis y uso compartido de estadísticas • Estadísticas X01 por juego de dardos • Clubes, asociaciones y ligas • Universo y ambiente Arcade\n¡DESCÁRGALA AHORA! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "LA APLICACIÓN QUE LO HACE TODO."
+        ],
+        "subtitle": "El universo completo de los dardos.",
+        "cta": "¡DESCÁRGALA AHORA!"
+      }
+    },
+    {
+      "id": "fr/campaign_01",
+      "locale": "fr",
+      "campaign": "campaign_01",
+      "file": "fr/campaign_01.png",
+      "sha256": "12d12d3aea0726043b80104275467b2488bbf05097a2beb8cd43ab477bc1fa57",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modes de jeu • 94 bots IA • Centre d’entraînement • Analyse et partage des statistiques • Statistiques X01 par jeu de fléchettes • Clubs, associations et ligues • Univers et ambiance Arcade\nTÉLÉCHARGEZ L’APPLICATION : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Fléchettes #Arcade #DartsApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JOUEZ.",
+          "PROGRESSEZ.",
+          "DÉFIEZ-VOUS."
+        ],
+        "subtitle": "Le jeu de fléchettes, autrement.",
+        "cta": "TÉLÉCHARGEZ L’APPLICATION"
+      }
+    },
+    {
+      "id": "fr/campaign_02",
+      "locale": "fr",
+      "campaign": "campaign_02",
+      "file": "fr/campaign_02.png",
+      "sha256": "e74463c992c58f292114baec80597e7a94e327784fea8a8f2692889df48f0b42",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modes de jeu • 94 bots IA • Centre d’entraînement • Analyse et partage des statistiques • Statistiques X01 par jeu de fléchettes • Clubs, associations et ligues • Univers et ambiance Arcade\nTÉLÉCHARGEZ L’APPLICATION : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Fléchettes #Arcade #DartsApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JOUEZ.",
+          "PROGRESSEZ.",
+          "DOMINEZ."
+        ],
+        "subtitle": "L’application complète pour jouer, vous entraîner, vous challenger et organiser vos compétitions.",
+        "cta": "TÉLÉCHARGEZ L’APPLICATION"
+      }
+    },
+    {
+      "id": "fr/campaign_03",
+      "locale": "fr",
+      "campaign": "campaign_03",
+      "file": "fr/campaign_03.png",
+      "sha256": "13413d50ed5e83b524cdf74b617f549889e1ab2645461581dcd07a5e99d212f9",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modes de jeu • 94 bots IA • Centre d’entraînement • Analyse et partage des statistiques • Statistiques X01 par jeu de fléchettes • Clubs, associations et ligues • Univers et ambiance Arcade\nTÉLÉCHARGEZ DÈS MAINTENANT ! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Fléchettes #Arcade #DartsApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "L’APPLICATION QUI FAIT TOUT."
+        ],
+        "subtitle": "L’univers complet des fléchettes.",
+        "cta": "TÉLÉCHARGEZ DÈS MAINTENANT !"
+      }
+    },
+    {
+      "id": "hi/campaign_01",
+      "locale": "hi",
+      "campaign": "campaign_01",
+      "file": "hi/campaign_01.png",
+      "sha256": "50ca079bc273cb05e7cf277a8dd1c4644b91b81b805bb2ce1f4d238ba02b105f",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 गेम मोड • 94 AI बॉट्स • प्रशिक्षण केंद्र • आँकड़ों का विश्लेषण और साझा करना • डार्ट सेट के अनुसार X01 आँकड़े • क्लब, संघ और लीग • आर्केड दुनिया और माहौल\nऐप डाउनलोड करें : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "खेलो।",
+          "बेहतर बनो।",
+          "खुद को चुनौती दो।"
+        ],
+        "subtitle": "डार्ट्स, एक नए अंदाज़ में।",
+        "cta": "ऐप डाउनलोड करें"
+      }
+    },
+    {
+      "id": "hi/campaign_02",
+      "locale": "hi",
+      "campaign": "campaign_02",
+      "file": "hi/campaign_02.png",
+      "sha256": "81e91fe01d6a90a3fa7167fb9e0f3923d7bf9fec97626586d01b5946ab8f3c31",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 गेम मोड • 94 AI बॉट्स • प्रशिक्षण केंद्र • आँकड़ों का विश्लेषण और साझा करना • डार्ट सेट के अनुसार X01 आँकड़े • क्लब, संघ और लीग • आर्केड दुनिया और माहौल\nऐप डाउनलोड करें : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "खेलो।",
+          "आगे बढ़ो।",
+          "दबदबा बनाओ।"
+        ],
+        "subtitle": "खेलने, अभ्यास करने, खुद को चुनौती देने और प्रतियोगिताएँ आयोजित करने के लिए संपूर्ण ऐप।",
+        "cta": "ऐप डाउनलोड करें"
+      }
+    },
+    {
+      "id": "hi/campaign_03",
+      "locale": "hi",
+      "campaign": "campaign_03",
+      "file": "hi/campaign_03.png",
+      "sha256": "f1f8f6948bd335e9fd0faf991f3284ff762b81597cf0075e92592600715a446b",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 गेम मोड • 94 AI बॉट्स • प्रशिक्षण केंद्र • आँकड़ों का विश्लेषण और साझा करना • डार्ट सेट के अनुसार X01 आँकड़े • क्लब, संघ और लीग • आर्केड दुनिया और माहौल\nअभी डाउनलोड करें! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "वह ऐप जो सब कुछ करता है।"
+        ],
+        "subtitle": "डार्ट्स की पूरी दुनिया।",
+        "cta": "अभी डाउनलोड करें!"
+      }
+    },
+    {
+      "id": "hr/campaign_01",
+      "locale": "hr",
+      "campaign": "campaign_01",
+      "file": "hr/campaign_01.png",
+      "sha256": "adacf4f6cdd1b2595a7fe6c83a1436aa4ae24fe68acf7675c7ade9838ca799b7",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 načina igre • 94 AI bota • Centar za trening • Analiza i dijeljenje statistike • X01 statistika prema setu strelica • Klubovi, udruge i lige • Arcade svemir i atmosfera\nPREUZMI APLIKACIJU : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "IGRAJ.",
+          "NAPREDUJ.",
+          "IZAZOVI SE."
+        ],
+        "subtitle": "Pikado na drugačiji način.",
+        "cta": "PREUZMI APLIKACIJU"
+      }
+    },
+    {
+      "id": "hr/campaign_02",
+      "locale": "hr",
+      "campaign": "campaign_02",
+      "file": "hr/campaign_02.png",
+      "sha256": "c3a09e9a9f745e6c6ac267ba01f86a92fc214012a451bd7d2d062a87704d9ac5",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 načina igre • 94 AI bota • Centar za trening • Analiza i dijeljenje statistike • X01 statistika prema setu strelica • Klubovi, udruge i lige • Arcade svemir i atmosfera\nPREUZMI APLIKACIJU : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "IGRAJ.",
+          "NAPREDUJ.",
+          "DOMINIRAJ."
+        ],
+        "subtitle": "Potpuna aplikacija za igranje, trening, izazove i organiziranje natjecanja.",
+        "cta": "PREUZMI APLIKACIJU"
+      }
+    },
+    {
+      "id": "hr/campaign_03",
+      "locale": "hr",
+      "campaign": "campaign_03",
+      "file": "hr/campaign_03.png",
+      "sha256": "3aa375e964e2125a54e61f66ac2bc2f2d508736d682b531c4e926d651c7ea578",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 načina igre • 94 AI bota • Centar za trening • Analiza i dijeljenje statistike • X01 statistika prema setu strelica • Klubovi, udruge i lige • Arcade svemir i atmosfera\nPREUZMI ODMAH! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APLIKACIJA KOJA RADI SVE."
+        ],
+        "subtitle": "Potpuni svijet pikada.",
+        "cta": "PREUZMI ODMAH!"
+      }
+    },
+    {
+      "id": "is/campaign_01",
+      "locale": "is",
+      "campaign": "campaign_01",
+      "file": "is/campaign_01.png",
+      "sha256": "875a752ed36d5aefdc2e328374309b2a9b6ba1f17cfedb7ef9493f588d220661",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 leikhamir • 94 gervigreindarbotar • Æfingamiðstöð • Greindu og deildu tölfræði • X01-tölfræði eftir pílusetti • Klúbbar, félög og deildir • Arcade-heimur og stemning\nSÆKJA FORRITIÐ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPILAÐU.",
+          "BÆTTU ÞIG.",
+          "SKORAÐU Á SJÁLFAN ÞIG."
+        ],
+        "subtitle": "Pílukast á annan hátt.",
+        "cta": "SÆKJA FORRITIÐ"
+      }
+    },
+    {
+      "id": "is/campaign_02",
+      "locale": "is",
+      "campaign": "campaign_02",
+      "file": "is/campaign_02.png",
+      "sha256": "8a6e281a34fb7072c690fa9b18fc13a146eae7da1d4192bdb11e4e98c9788951",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 leikhamir • 94 gervigreindarbotar • Æfingamiðstöð • Greindu og deildu tölfræði • X01-tölfræði eftir pílusetti • Klúbbar, félög og deildir • Arcade-heimur og stemning\nSÆKJA FORRITIÐ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPILAÐU.",
+          "BÆTTU ÞIG.",
+          "RÁÐAÐU RÍKJUM."
+        ],
+        "subtitle": "Heildarlausnin til að spila, æfa, skora á sjálfan þig og skipuleggja keppnir.",
+        "cta": "SÆKJA FORRITIÐ"
+      }
+    },
+    {
+      "id": "is/campaign_03",
+      "locale": "is",
+      "campaign": "campaign_03",
+      "file": "is/campaign_03.png",
+      "sha256": "69ac83298046859a244f6550f41f84a7ce69c2377265ebd6754c4d2ae8e82703",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 leikhamir • 94 gervigreindarbotar • Æfingamiðstöð • Greindu og deildu tölfræði • X01-tölfræði eftir pílusetti • Klúbbar, félög og deildir • Arcade-heimur og stemning\nSÆKJA NÚNA! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "FORRITIÐ SEM GERIR ALLT."
+        ],
+        "subtitle": "Heildarheimur pílukasts.",
+        "cta": "SÆKJA NÚNA!"
+      }
+    },
+    {
+      "id": "it/campaign_01",
+      "locale": "it",
+      "campaign": "campaign_01",
+      "file": "it/campaign_01.png",
+      "sha256": "5beb86c4a6a57cc3f7b8f7730227988ca2fea8749c57126a50dc9282bb075281",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modalità di gioco • 94 bot IA • Centro di allenamento • Analisi e condivisione delle statistiche • Statistiche X01 per set di freccette • Club, associazioni e leghe • Universo e atmosfera Arcade\nSCARICA L’APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "GIOCA.",
+          "PROGREDISCI.",
+          "METTITI ALLA PROVA."
+        ],
+        "subtitle": "Il gioco delle freccette, in un altro modo.",
+        "cta": "SCARICA L’APP"
+      }
+    },
+    {
+      "id": "it/campaign_02",
+      "locale": "it",
+      "campaign": "campaign_02",
+      "file": "it/campaign_02.png",
+      "sha256": "3b5054eb23653b1c943c09670a04f2f5cae03426acd163137b0781297092fe7c",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modalità di gioco • 94 bot IA • Centro di allenamento • Analisi e condivisione delle statistiche • Statistiche X01 per set di freccette • Club, associazioni e leghe • Universo e atmosfera Arcade\nSCARICA L’APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "GIOCA.",
+          "PROGREDISCI.",
+          "DOMINA."
+        ],
+        "subtitle": "L’app completa per giocare, allenarti, metterti alla prova e organizzare le tue competizioni.",
+        "cta": "SCARICA L’APP"
+      }
+    },
+    {
+      "id": "it/campaign_03",
+      "locale": "it",
+      "campaign": "campaign_03",
+      "file": "it/campaign_03.png",
+      "sha256": "590d6b55cd77458af08ed7edd20f180ab9b3ddfd980dfd202027b7d7520cdaf6",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modalità di gioco • 94 bot IA • Centro di allenamento • Analisi e condivisione delle statistiche • Statistiche X01 per set di freccette • Club, associazioni e leghe • Universo e atmosfera Arcade\nSCARICA ORA! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "L’APP CHE FA TUTTO."
+        ],
+        "subtitle": "L’universo completo delle freccette.",
+        "cta": "SCARICA ORA!"
+      }
+    },
+    {
+      "id": "ja/campaign_01",
+      "locale": "ja",
+      "campaign": "campaign_01",
+      "file": "ja/campaign_01.png",
+      "sha256": "a4f0eac1837656b86c19890da01aca868c5f78c15e78385a1b0bff6dec747da7",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 のゲームモード • 94 体の AI ボット • トレーニングセンター • 統計の分析と共有 • ダーツセット別 X01 統計 • クラブ・協会・リーグ • アーケードの世界観と雰囲気\nアプリをダウンロード : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "遊ぶ。",
+          "上達する。",
+          "自分に挑む。"
+        ],
+        "subtitle": "新しいダーツ体験。",
+        "cta": "アプリをダウンロード"
+      }
+    },
+    {
+      "id": "ja/campaign_02",
+      "locale": "ja",
+      "campaign": "campaign_02",
+      "file": "ja/campaign_02.png",
+      "sha256": "13d3ade951af01ba4b495c593d42eaf5df9699dd0cc85299e4b4f1e3fa709ea6",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 のゲームモード • 94 体の AI ボット • トレーニングセンター • 統計の分析と共有 • ダーツセット別 X01 統計 • クラブ・協会・リーグ • アーケードの世界観と雰囲気\nアプリをダウンロード : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "遊ぶ。",
+          "上達する。",
+          "支配する。"
+        ],
+        "subtitle": "プレイ、練習、挑戦、そして大会運営までこなせる完全アプリ。",
+        "cta": "アプリをダウンロード"
+      }
+    },
+    {
+      "id": "ja/campaign_03",
+      "locale": "ja",
+      "campaign": "campaign_03",
+      "file": "ja/campaign_03.png",
+      "sha256": "002055553540468319f4ff6ffe5e3e3609488016bcb17ed5fc8cf9e705e00db4",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 のゲームモード • 94 体の AI ボット • トレーニングセンター • 統計の分析と共有 • ダーツセット別 X01 統計 • クラブ・協会・リーグ • アーケードの世界観と雰囲気\n今すぐダウンロード！ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "すべてをこなすアプリ。"
+        ],
+        "subtitle": "ダーツの完全なユニバース。",
+        "cta": "今すぐダウンロード！"
+      }
+    },
+    {
+      "id": "nl/campaign_01",
+      "locale": "nl",
+      "campaign": "campaign_01",
+      "file": "nl/campaign_01.png",
+      "sha256": "5867379165c2640c7d0d25d74476bd6df74f4950b94df1de9136d550458c4d17",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spelmodi • 94 AI-bots • Trainingscentrum • Statistieken analyseren en delen • X01-statistieken per dartset • Clubs, verenigingen en competities • Arcade-universum en -sfeer\nDOWNLOAD DE APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPEEL.",
+          "GROEI.",
+          "DAAG JEZELF UIT."
+        ],
+        "subtitle": "Darts, op een andere manier.",
+        "cta": "DOWNLOAD DE APP"
+      }
+    },
+    {
+      "id": "nl/campaign_02",
+      "locale": "nl",
+      "campaign": "campaign_02",
+      "file": "nl/campaign_02.png",
+      "sha256": "529d513ee2c0a6bc9c4cbf2eb2e18541effe2900f2c891f37c892afd4ffd734a",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spelmodi • 94 AI-bots • Trainingscentrum • Statistieken analyseren en delen • X01-statistieken per dartset • Clubs, verenigingen en competities • Arcade-universum en -sfeer\nDOWNLOAD DE APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPEEL.",
+          "GROEI.",
+          "DOMINEER."
+        ],
+        "subtitle": "De complete app om te spelen, trainen, jezelf uit te dagen en je competities te organiseren.",
+        "cta": "DOWNLOAD DE APP"
+      }
+    },
+    {
+      "id": "nl/campaign_03",
+      "locale": "nl",
+      "campaign": "campaign_03",
+      "file": "nl/campaign_03.png",
+      "sha256": "7d49fa65632c1c74431ac688627a1666d2aca0a92dc4321fb9dd3d4f6922c1ec",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spelmodi • 94 AI-bots • Trainingscentrum • Statistieken analyseren en delen • X01-statistieken per dartset • Clubs, verenigingen en competities • Arcade-universum en -sfeer\nDOWNLOAD NU! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "DE APP DIE ALLES DOET."
+        ],
+        "subtitle": "Het complete darts-universum.",
+        "cta": "DOWNLOAD NU!"
+      }
+    },
+    {
+      "id": "no/campaign_01",
+      "locale": "no",
+      "campaign": "campaign_01",
+      "file": "no/campaign_01.png",
+      "sha256": "5a0f2b2cd2671a10c7931ef3c160a62e9b634171b49e3da8aac61e78532601e6",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spillmoduser • 94 AI-boter • Treningssenter • Analyser og del statistikk • X01-statistikk per dartsett • Klubber, foreninger og ligaer • Arcade-univers og stemning\nLAST NED APPEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPILL.",
+          "UTVIKLE DEG.",
+          "UTFORDRE DEG SELV."
+        ],
+        "subtitle": "Dart, på en annen måte.",
+        "cta": "LAST NED APPEN"
+      }
+    },
+    {
+      "id": "no/campaign_02",
+      "locale": "no",
+      "campaign": "campaign_02",
+      "file": "no/campaign_02.png",
+      "sha256": "1ba457f8f1b5d7f73fc53663971ed2e4332bcaa068256f69e51128e3de7e2921",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spillmoduser • 94 AI-boter • Treningssenter • Analyser og del statistikk • X01-statistikk per dartsett • Klubber, foreninger og ligaer • Arcade-univers og stemning\nLAST NED APPEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPILL.",
+          "UTVIKLE DEG.",
+          "DOMINER."
+        ],
+        "subtitle": "Den komplette appen for å spille, trene, utfordre deg selv og organisere konkurranser.",
+        "cta": "LAST NED APPEN"
+      }
+    },
+    {
+      "id": "no/campaign_03",
+      "locale": "no",
+      "campaign": "campaign_03",
+      "file": "no/campaign_03.png",
+      "sha256": "f2a398e7ea44c618c999fb153facd45846ab397bf033a010c1265eb5069f64ce",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spillmoduser • 94 AI-boter • Treningssenter • Analyser og del statistikk • X01-statistikk per dartsett • Klubber, foreninger og ligaer • Arcade-univers og stemning\nLAST NED NÅ! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APPEN SOM GJØR ALT."
+        ],
+        "subtitle": "Det komplette darts-universet.",
+        "cta": "LAST NED NÅ!"
+      }
+    },
+    {
+      "id": "pl/campaign_01",
+      "locale": "pl",
+      "campaign": "campaign_01",
+      "file": "pl/campaign_01.png",
+      "sha256": "45219d580802ea56f364d2392d4fb99d6bc617e96aa7836b4625e687d752990b",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 trybów gry • 94 boty SI • Centrum treningowe • Analiza i udostępnianie statystyk • Statystyki X01 według zestawu rzutek • Kluby, stowarzyszenia i ligi • Świat i klimat Arcade\nPOBIERZ APLIKACJĘ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "GRAJ.",
+          "ROZWIJAJ SIĘ.",
+          "PODEJMUJ WYZWANIA."
+        ],
+        "subtitle": "Rzutki w nowym wydaniu.",
+        "cta": "POBIERZ APLIKACJĘ"
+      }
+    },
+    {
+      "id": "pl/campaign_02",
+      "locale": "pl",
+      "campaign": "campaign_02",
+      "file": "pl/campaign_02.png",
+      "sha256": "1932390cdb3aad46a536a140a7528457645605e04dda55a1db266bb3cff0dab7",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 trybów gry • 94 boty SI • Centrum treningowe • Analiza i udostępnianie statystyk • Statystyki X01 według zestawu rzutek • Kluby, stowarzyszenia i ligi • Świat i klimat Arcade\nPOBIERZ APLIKACJĘ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "GRAJ.",
+          "ROZWIJAJ SIĘ.",
+          "DOMINUJ."
+        ],
+        "subtitle": "Kompletna aplikacja do gry, treningu, podejmowania wyzwań i organizowania zawodów.",
+        "cta": "POBIERZ APLIKACJĘ"
+      }
+    },
+    {
+      "id": "pl/campaign_03",
+      "locale": "pl",
+      "campaign": "campaign_03",
+      "file": "pl/campaign_03.png",
+      "sha256": "c6c40a6bcfbdf9797fefc2e60e7c0978a333fb064c1d50c79ae9cb3a9084b158",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 trybów gry • 94 boty SI • Centrum treningowe • Analiza i udostępnianie statystyk • Statystyki X01 według zestawu rzutek • Kluby, stowarzyszenia i ligi • Świat i klimat Arcade\nPOBIERZ TERAZ! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APLIKACJA, KTÓRA ROBI WSZYSTKO."
+        ],
+        "subtitle": "Kompletny świat rzutek.",
+        "cta": "POBIERZ TERAZ!"
+      }
+    },
+    {
+      "id": "pt/campaign_01",
+      "locale": "pt",
+      "campaign": "campaign_01",
+      "file": "pt/campaign_01.png",
+      "sha256": "7859f397214a6f2d7d68cceade665dd77d1c2b3aeff041acdfeb3f34903facb7",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modos de jogo • 94 bots IA • Centro de treino • Análise e partilha de estatísticas • Estatísticas X01 por conjunto de dardos • Clubes, associações e ligas • Universo e ambiente Arcade\nDESCARREGUE A APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JOGUE.",
+          "PROGRIDA.",
+          "SUPERE-SE."
+        ],
+        "subtitle": "O jogo de dardos, de outra forma.",
+        "cta": "DESCARREGUE A APP"
+      }
+    },
+    {
+      "id": "pt/campaign_02",
+      "locale": "pt",
+      "campaign": "campaign_02",
+      "file": "pt/campaign_02.png",
+      "sha256": "1c28972b097c2c7653ae8bf5f2a079262d23c423b4db80e6e504e2ddca20c083",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modos de jogo • 94 bots IA • Centro de treino • Análise e partilha de estatísticas • Estatísticas X01 por conjunto de dardos • Clubes, associações e ligas • Universo e ambiente Arcade\nDESCARREGUE A APP : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JOGUE.",
+          "PROGRIDA.",
+          "DOMINE."
+        ],
+        "subtitle": "A app completa para jogar, treinar, desafiar-se e organizar as suas competições.",
+        "cta": "DESCARREGUE A APP"
+      }
+    },
+    {
+      "id": "pt/campaign_03",
+      "locale": "pt",
+      "campaign": "campaign_03",
+      "file": "pt/campaign_03.png",
+      "sha256": "d9cc7b6bb80208d1fce6d38418850da5d444403b0d562916b24ba098b5778c41",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 modos de jogo • 94 bots IA • Centro de treino • Análise e partilha de estatísticas • Estatísticas X01 por conjunto de dardos • Clubes, associações e ligas • Universo e ambiente Arcade\nDESCARREGUE AGORA! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "A APP QUE FAZ TUDO."
+        ],
+        "subtitle": "O universo completo dos dardos.",
+        "cta": "DESCARREGUE AGORA!"
+      }
+    },
+    {
+      "id": "ro/campaign_01",
+      "locale": "ro",
+      "campaign": "campaign_01",
+      "file": "ro/campaign_01.png",
+      "sha256": "01ac1cdb8a3d61514be2228e0bc5154da1eba03b92e931ab3985ed99ba69467c",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 moduri de joc • 94 de boți IA • Centru de antrenament • Analiza și partajarea statisticilor • Statistici X01 după setul de săgeți • Cluburi, asociații și ligi • Univers și atmosferă Arcade\nDESCARCĂ APLICAȚIA : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JOACĂ.",
+          "PROGRESEAZĂ.",
+          "PROVOACĂ-TE."
+        ],
+        "subtitle": "Jocul de darts, altfel.",
+        "cta": "DESCARCĂ APLICAȚIA"
+      }
+    },
+    {
+      "id": "ro/campaign_02",
+      "locale": "ro",
+      "campaign": "campaign_02",
+      "file": "ro/campaign_02.png",
+      "sha256": "fd55a52b3ad72e76ae848543a6da2e534083be5cf3341e73131d2b62229a7eeb",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 moduri de joc • 94 de boți IA • Centru de antrenament • Analiza și partajarea statisticilor • Statistici X01 după setul de săgeți • Cluburi, asociații și ligi • Univers și atmosferă Arcade\nDESCARCĂ APLICAȚIA : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "JOACĂ.",
+          "PROGRESEAZĂ.",
+          "DOMINĂ."
+        ],
+        "subtitle": "Aplicația completă pentru a juca, a te antrena, a te provoca și a-ți organiza competițiile.",
+        "cta": "DESCARCĂ APLICAȚIA"
+      }
+    },
+    {
+      "id": "ro/campaign_03",
+      "locale": "ro",
+      "campaign": "campaign_03",
+      "file": "ro/campaign_03.png",
+      "sha256": "38d2b1afbb06b0c856776b1dbb299dcf39cc6c666980c7e0b95f39fd9d7544da",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 moduri de joc • 94 de boți IA • Centru de antrenament • Analiza și partajarea statisticilor • Statistici X01 după setul de săgeți • Cluburi, asociații și ligi • Univers și atmosferă Arcade\nDESCARCĂ ACUM! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APLICAȚIA CARE FACE TOTUL."
+        ],
+        "subtitle": "Universul complet al dartsului.",
+        "cta": "DESCARCĂ ACUM!"
+      }
+    },
+    {
+      "id": "ru/campaign_01",
+      "locale": "ru",
+      "campaign": "campaign_01",
+      "file": "ru/campaign_01.png",
+      "sha256": "f564282b925204615872935b432d97da0f2455901d118c475c24cd2f5a3437e0",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 игровых режимов • 94 ИИ-бота • Тренировочный центр • Анализ и обмен статистикой • Статистика X01 по набору дротиков • Клубы, ассоциации и лиги • Вселенная и атмосфера Arcade\nСКАЧАТЬ ПРИЛОЖЕНИЕ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "ИГРАЙ.",
+          "РАСТИ.",
+          "БРОСЬ ВЫЗОВ СЕБЕ."
+        ],
+        "subtitle": "Дартс по‑новому.",
+        "cta": "СКАЧАТЬ ПРИЛОЖЕНИЕ"
+      }
+    },
+    {
+      "id": "ru/campaign_02",
+      "locale": "ru",
+      "campaign": "campaign_02",
+      "file": "ru/campaign_02.png",
+      "sha256": "bf892f0ff50414e4006255b69a6ef1da89e14c76963947422922e82304c63ed4",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 игровых режимов • 94 ИИ-бота • Тренировочный центр • Анализ и обмен статистикой • Статистика X01 по набору дротиков • Клубы, ассоциации и лиги • Вселенная и атмосфера Arcade\nСКАЧАТЬ ПРИЛОЖЕНИЕ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "ИГРАЙ.",
+          "РАСТИ.",
+          "ДОМИНИРУЙ."
+        ],
+        "subtitle": "Полноценное приложение для игры, тренировок, вызовов и организации соревнований.",
+        "cta": "СКАЧАТЬ ПРИЛОЖЕНИЕ"
+      }
+    },
+    {
+      "id": "ru/campaign_03",
+      "locale": "ru",
+      "campaign": "campaign_03",
+      "file": "ru/campaign_03.png",
+      "sha256": "2a1ef6e48a0da2b5119ef367879486954d29a4f16f6e6296a1d0619964d3091a",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 игровых режимов • 94 ИИ-бота • Тренировочный центр • Анализ и обмен статистикой • Статистика X01 по набору дротиков • Клубы, ассоциации и лиги • Вселенная и атмосфера Arcade\nСКАЧАТЬ СЕЙЧАС! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "ПРИЛОЖЕНИЕ, КОТОРОЕ УМЕЕТ ВСЁ."
+        ],
+        "subtitle": "Полная вселенная дартса.",
+        "cta": "СКАЧАТЬ СЕЙЧАС!"
+      }
+    },
+    {
+      "id": "sr/campaign_01",
+      "locale": "sr",
+      "campaign": "campaign_01",
+      "file": "sr/campaign_01.png",
+      "sha256": "87efc0c4648075b1c88dbe7de6db58b3bd41d054dc19b705129e6e25b5bed542",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 režima igre • 94 AI bota • Trening centar • Analiza i deljenje statistike • X01 statistika po setu strelica • Klubovi, udruženja i lige • Arcade univerzum i atmosfera\nPREUZMI APLIKACIJU : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "IGRAJ.",
+          "NAPREDUJ.",
+          "IZAZOVI SEBE."
+        ],
+        "subtitle": "Pikado na drugačiji način.",
+        "cta": "PREUZMI APLIKACIJU"
+      }
+    },
+    {
+      "id": "sr/campaign_02",
+      "locale": "sr",
+      "campaign": "campaign_02",
+      "file": "sr/campaign_02.png",
+      "sha256": "0c44d5bb8e2b30f702eeacc1e813e3d010f0c23008217f0a81dd8c4edc36be56",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 režima igre • 94 AI bota • Trening centar • Analiza i deljenje statistike • X01 statistika po setu strelica • Klubovi, udruženja i lige • Arcade univerzum i atmosfera\nPREUZMI APLIKACIJU : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "IGRAJ.",
+          "NAPREDUJ.",
+          "DOMINIRAJ."
+        ],
+        "subtitle": "Kompletna aplikacija za igru, trening, izazove i organizovanje takmičenja.",
+        "cta": "PREUZMI APLIKACIJU"
+      }
+    },
+    {
+      "id": "sr/campaign_03",
+      "locale": "sr",
+      "campaign": "campaign_03",
+      "file": "sr/campaign_03.png",
+      "sha256": "c91b9a061124470df7b897b618343e2566ecd12c3ec69df93d2be02d454a3b7d",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 režima igre • 94 AI bota • Trening centar • Analiza i deljenje statistike • X01 statistika po setu strelica • Klubovi, udruženja i lige • Arcade univerzum i atmosfera\nPREUZMI ODMAH! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APLIKACIJA KOJA RADI SVE."
+        ],
+        "subtitle": "Kompletan svet pikada.",
+        "cta": "PREUZMI ODMAH!"
+      }
+    },
+    {
+      "id": "sv/campaign_01",
+      "locale": "sv",
+      "campaign": "campaign_01",
+      "file": "sv/campaign_01.png",
+      "sha256": "7e22b59350d1020d2dc1678cb327be2fe6092dcf2fd2ed485d4a00d280feabae",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spellägen • 94 AI-botar • Träningscenter • Analysera och dela statistik • X01-statistik per dartset • Klubbar, föreningar och ligor • Arcade-universum och atmosfär\nLADDA NER APPEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPELA.",
+          "UTVECKLAS.",
+          "UTMANA DIG SJÄLV."
+        ],
+        "subtitle": "Dart på ett nytt sätt.",
+        "cta": "LADDA NER APPEN"
+      }
+    },
+    {
+      "id": "sv/campaign_02",
+      "locale": "sv",
+      "campaign": "campaign_02",
+      "file": "sv/campaign_02.png",
+      "sha256": "2a78c11f6fb8d320fb55bdc80c53c949a203ab3fd1dad65cabf908a8dcc0f6b8",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spellägen • 94 AI-botar • Träningscenter • Analysera och dela statistik • X01-statistik per dartset • Klubbar, föreningar och ligor • Arcade-universum och atmosfär\nLADDA NER APPEN : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "SPELA.",
+          "UTVECKLAS.",
+          "DOMINERA."
+        ],
+        "subtitle": "Den kompletta appen för att spela, träna, utmana dig själv och organisera dina tävlingar.",
+        "cta": "LADDA NER APPEN"
+      }
+    },
+    {
+      "id": "sv/campaign_03",
+      "locale": "sv",
+      "campaign": "campaign_03",
+      "file": "sv/campaign_03.png",
+      "sha256": "0e87ce143dee11c399f436facdbe0c4198578a93cc0c2860447e206d13c4fadb",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 spellägen • 94 AI-botar • Träningscenter • Analysera och dela statistik • X01-statistik per dartset • Klubbar, föreningar och ligor • Arcade-universum och atmosfär\nLADDA NER NU! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "APPEN SOM GÖR ALLT."
+        ],
+        "subtitle": "Det kompletta darts-universumet.",
+        "cta": "LADDA NER NU!"
+      }
+    },
+    {
+      "id": "tr/campaign_01",
+      "locale": "tr",
+      "campaign": "campaign_01",
+      "file": "tr/campaign_01.png",
+      "sha256": "7cc17ddd69638e5cfdd89ce629080e0bf5c5623823e3e101743427b1745cd5b2",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 oyun modu • 94 YZ botu • Antrenman merkezi • İstatistikleri analiz et ve paylaş • Dart setine göre X01 istatistikleri • Kulüpler, dernekler ve ligler • Arcade evreni ve atmosferi\nUYGULAMAYI İNDİR : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "OYNA.",
+          "GELİŞ.",
+          "KENDİNE MEYDAN OKU."
+        ],
+        "subtitle": "Dart oyunu, bambaşka.",
+        "cta": "UYGULAMAYI İNDİR"
+      }
+    },
+    {
+      "id": "tr/campaign_02",
+      "locale": "tr",
+      "campaign": "campaign_02",
+      "file": "tr/campaign_02.png",
+      "sha256": "7642383589cd62f68550d49d029db6e00eee497aca9e18cbc55749adf844f0e7",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 oyun modu • 94 YZ botu • Antrenman merkezi • İstatistikleri analiz et ve paylaş • Dart setine göre X01 istatistikleri • Kulüpler, dernekler ve ligler • Arcade evreni ve atmosferi\nUYGULAMAYI İNDİR : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "OYNA.",
+          "GELİŞ.",
+          "HAKİM OL."
+        ],
+        "subtitle": "Oynamak, antrenman yapmak, kendine meydan okumak ve turnuvalarını düzenlemek için eksiksiz uygulama.",
+        "cta": "UYGULAMAYI İNDİR"
+      }
+    },
+    {
+      "id": "tr/campaign_03",
+      "locale": "tr",
+      "campaign": "campaign_03",
+      "file": "tr/campaign_03.png",
+      "sha256": "8ba494a5ac39a24a4a1f2329266eb156a12fad23260d18c9fc3c06a74f8b6481",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 oyun modu • 94 YZ botu • Antrenman merkezi • İstatistikleri analiz et ve paylaş • Dart setine göre X01 istatistikleri • Kulüpler, dernekler ve ligler • Arcade evreni ve atmosferi\nHEMEN İNDİR! : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "HER ŞEYİ YAPAN UYGULAMA."
+        ],
+        "subtitle": "Dartın eksiksiz evreni.",
+        "cta": "HEMEN İNDİR!"
+      }
+    },
+    {
+      "id": "zh/campaign_01",
+      "locale": "zh",
+      "campaign": "campaign_01",
+      "file": "zh/campaign_01.png",
+      "sha256": "04d367e2f29f4aa4d8ff2774d9c21d319857f7562d3fa893b8cce851ca9f501e",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 种游戏模式 • 94 个 AI 机器人 • 训练中心 • 分析与分享统计数据 • 按飞镖套装统计 X01 数据 • 俱乐部、协会和联赛 • 街机宇宙与氛围\n下载应用 : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "畅玩。",
+          "进步。",
+          "挑战自我。"
+        ],
+        "subtitle": "不一样的飞镖体验。",
+        "cta": "下载应用"
+      }
+    },
+    {
+      "id": "zh/campaign_02",
+      "locale": "zh",
+      "campaign": "campaign_02",
+      "file": "zh/campaign_02.png",
+      "sha256": "7f8915d793eb0c9f51284fd796e92ed0ac1f0597496e71ae6be3ab7d7b1f576e",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 种游戏模式 • 94 个 AI 机器人 • 训练中心 • 分析与分享统计数据 • 按飞镖套装统计 X01 数据 • 俱乐部、协会和联赛 • 街机宇宙与氛围\n下载应用 : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "畅玩。",
+          "进步。",
+          "主宰赛场。"
+        ],
+        "subtitle": "一款完整的应用，用于游戏、训练、挑战自我并组织比赛。",
+        "cta": "下载应用"
+      }
+    },
+    {
+      "id": "zh/campaign_03",
+      "locale": "zh",
+      "campaign": "campaign_03",
+      "file": "zh/campaign_03.png",
+      "sha256": "cd82b6300536f6d131183a8d3a426b05d8c4bc061084a09d350ff14530edf4cf",
+      "width": 1080,
+      "height": 1350,
+      "qr_url": "https://play.google.com/store/apps/details?id=com.multisportsscoring.app",
+      "qa": "PASS_LAYOUT_GLYPHS_QR",
+      "caption": "156 种游戏模式 • 94 个 AI 机器人 • 训练中心 • 分析与分享统计数据 • 按飞镖套装统计 X01 数据 • 俱乐部、协会和联赛 • 街机宇宙与氛围\n立即下载！ : https://play.google.com/store/apps/details?id=com.multisportsscoring.app\n#MultisportsScoring #DartsScoring #Darts #Arcade #ScoringApp",
+      "template_version": 2,
+      "copy": {
+        "headline": [
+          "这是一款全能应用。"
+        ],
+        "subtitle": "完整的飞镖宇宙。",
+        "cta": "立即下载！"
+      }
+    }
+  ],
+  "errors": [],
+  "publication": "manual_approval_required"
+}

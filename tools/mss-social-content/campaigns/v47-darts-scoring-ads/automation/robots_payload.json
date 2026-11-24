@@ -4,18 +4,18 @@
   "masters": [
     {
       "poster_id": "campaign_01",
-      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
-      "primary_objective": "brand_trust_and_feature_density"
+      "primary_objective": "brand_trust_and_feature_density",
+      "reference_asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png"
     },
     {
       "poster_id": "campaign_02",
-      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
-      "primary_objective": "acquisition_high_energy"
+      "primary_objective": "acquisition_high_energy",
+      "reference_asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png"
     },
     {
       "poster_id": "campaign_03",
-      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
-      "primary_objective": "arcade_identity_and_character_driven"
+      "primary_objective": "arcade_identity_and_character_driven",
+      "reference_asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png"
     }
   ],
   "supported_languages": [
@@ -53,9 +53,9 @@
     "telegram"
   ],
   "assets_policy": {
-    "base_visual_language": "fr",
-    "localized_copy_source": "tools/mss-social-content/campaigns/v47-darts-scoring-ads/locales/<lang>.json",
-    "localized_image_rendering": "required outside fr before publication when text on image must match local language"
+    "localized_image_rendering": "catalog_ready",
+    "selection_gate_required": true,
+    "fallback": "none"
   },
   "recommended_rotation": [
     "campaign_01",
@@ -63,9 +63,10 @@
     "campaign_03"
   ],
   "notes": [
-    "Use campaign_01 for clear feature-led posts.",
-    "Use campaign_02 for high-energy paid acquisition posts.",
-    "Use campaign_03 for arcade / Awena / persona-led promotions.",
-    "When automation cannot render translated images, use the French master plus the localized caption as a fallback only if explicitly accepted by the destination channel strategy."
-  ]
+    "Use selectMedia(locale,campaign) only; never use master asset directly.",
+    "Approval of exact SHA required. No automatic publication adapter installed."
+  ],
+  "graphic_designer": "tools/mss-social-content/graphic-designer/output/catalog.json",
+  "selection_gate": "tools/mss-social-content/graphic-designer/media-gate.mjs",
+  "publication_status": "approval_required_adapter_not_connected"
 }

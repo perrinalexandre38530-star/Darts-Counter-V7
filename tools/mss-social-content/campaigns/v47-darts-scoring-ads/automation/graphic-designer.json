@@ -1,0 +1,19 @@
+{
+  "schema": "mss.social.graphic-designer.v2",
+  "renderer": "tools/mss-social-content/graphic-designer/designer.py",
+  "catalog": "tools/mss-social-content/graphic-designer/output/catalog.json",
+  "selection_command": [
+    "node",
+    "tools/mss-social-content/graphic-designer/media-gate.mjs",
+    "<locale>",
+    "<campaign_id>"
+  ],
+  "approval_required": true,
+  "fallback": false,
+  "publication_adapter": "not_connected",
+  "review_url": "http://127.0.0.1:4184/graphic/",
+  "standalone_review_url": "http://127.0.0.1:4186/",
+  "planner": "tools/mss-social-content/graphic-designer/planner.mjs",
+  "template_version": 2,
+  "schedule_mode": "local_draft_only"
+}

@@ -19,7 +19,10 @@
     ]
   },
   "locale_strategy": {
-    "default": "localized_image_preferred",
-    "fallback": "french_master_plus_localized_caption"
-  }
+    "default": "approved_localized_image_only",
+    "fallback": "none"
+  },
+  "graphic_designer": "tools/mss-social-content/graphic-designer/output/catalog.json",
+  "selection_gate": "tools/mss-social-content/graphic-designer/media-gate.mjs",
+  "publication_status": "approval_required_adapter_not_connected"
 }

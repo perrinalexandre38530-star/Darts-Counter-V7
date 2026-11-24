@@ -3070,7 +3070,7 @@ function getStartScore(e: SavedEntry): number {
     anyE.decoded?.x01?.start ??
     anyE.decoded?.x01?.start;
 
-  if (typeof direct === "number" && [301, 501, 701, 901].includes(direct)) return direct;
+  if (typeof direct === "number" && [301, 501, 701, 901, 1001].includes(direct)) return direct;
   return 501;
 }
 
@@ -6952,7 +6952,7 @@ function isX01HistoryRecord(e: any) {
   const raw = [e?.kind, e?.mode, e?.game?.mode, e?.payload?.kind, e?.payload?.mode, e?.summary?.kind, e?.summary?.mode]
     .map((x) => String(x || "").toLowerCase())
     .join(" ");
-  return /x01|301|501|701|901|leg/.test(raw) || String(modeLabel(e) || "").toLowerCase().includes("x01");
+  return /x01|301|501|701|901|1001|leg/.test(raw) || String(modeLabel(e) || "").toLowerCase().includes("x01");
 }
 
 function buildHistoryPlayersById(e: any, store: any): Record<string, HistoryPlayerLite> {

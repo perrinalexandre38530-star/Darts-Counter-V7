@@ -518,7 +518,7 @@ function isLikelyX01HistoryRow(row: any): boolean {
     row?.payload?.config?.startScore ??
     row?.payload?.config?.start
   );
-  if ([301, 501, 701, 901].includes(startScore)) return true;
+  if ([301, 501, 701, 901, 1001].includes(startScore)) return true;
 
   // Si le header léger ne sait vraiment pas identifier le mode, on conserve
   // la ligne en fallback pour ne pas perdre de très vieux X01. En revanche,
@@ -4519,7 +4519,7 @@ return (
             marginTop: 8,
           }}
         >
-          {(["all", 301, 501, 701, 901] as X01ScoreFilterKey[]).map((key) => (
+          {(["all", 301, 501, 701, 901, 1001] as X01ScoreFilterKey[]).map((key) => (
             <GoldPill
               key={`score-${key}`}
               active={scoreFilter === key}
