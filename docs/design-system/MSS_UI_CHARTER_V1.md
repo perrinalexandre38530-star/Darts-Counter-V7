@@ -38,6 +38,25 @@
 
 **STATS / PROGRESSION** : indicateurs essentiels en premier ; détails dans onglet STATS ou un panneau unique scrollable ; ne pas surcharger le jeu avec graphiques et bilans.
 
+## 2.1. Contrat de configuration MSS — référence KILLER (obligatoire)
+
+**KILLER est la référence de navigation et d'organisation pour toutes les configurations de modes de jeu.** Les capacités métier (nombre de participants, formats possibles, options) restent propres à chaque mode. Toute migration doit garder le moteur, les données et les sauvegardes existants.
+
+**Parcours guidé de référence (un seul objectif par étape) :**
+
+1. **Awena** : première étape dédiée à la présentation du mode, bouton/vidéo Awena, variantes apparentées si elles existent ; aucun choix de participants sur cette page.
+2. **Type de participants** : uniquement deux grands boutons identiques à ceux de KILLER, « JOUEURS » (silhouette unique) et « ÉQUIPES » (trois silhouettes), thème MSS, occupant ensemble la largeur. Ne pas y intégrer « DUEL / MULTI » ou le nombre d'équipes.
+3. **Format de partie** : si JOUEURS, choix distinct « DUEL » (2 joueurs) ou « MULTI » (minimum 2 et maximum défini par le jeu) ; si ÉQUIPES, choix *nombre d'équipes* puis *nombre de joueurs/bots par équipe* parmi les combinaisons réellement prises en charge par le moteur du mode. Les limites sont explicites et ne sont jamais inventées au niveau visuel.
+4. **Sélection des participants** : « CHOIX JOUEURS » ou « CHOIX ÉQUIPES » selon le type. Sélecteurs MSS réutilisables (icônes BottomNav, profils/bots/équipes, modales de 9 cartes/page si adaptées), créateur intégré et résumé affichant photos/logos et membres. Respect strict du format choisi, sans ajouts silencieux issus de la dernière partie.
+5. **Réglages propres au jeu** : une décision lisible par étape, dans l'ordre cohérent des règles du mode. Options détaillées dans les info-mini, couleurs et SVG issus de la charte centrale, sans blocs explicatifs répétés.
+6. **Récapitulatif** : une étape finale compacte, claire et vérifiable (participants / équipes, format, règles, saisie, options). Le bouton « LANCER LA PARTIE » n'apparaît **qu'à cette dernière étape en vue guidée** et reste désactivé si la sélection n'est pas valide.
+
+**Vue complète :** le commutateur **Guidée / Complète doit toujours être accessible**. La vue complète peut réunir les réglages sur une page, sans forcer l'utilisateur à parcourir la guidée. Conserver la capacité « Dernière partie » sans laisser sa restauration outrepasser un format explicitement choisi. Préserver l'état quand on avance ou revient entre les étapes et ne jamais écraser les joueurs/équipes sans action explicite.
+
+**Références techniques :** `src/pages/KillerConfig.tsx` (parcours maître) et `src/components/config/MssGuidedConfigNav.tsx` / `MssParticipantTypeChoice` (navigation et boutons communs). `src/pages/X01ConfigV3.tsx` est la première migration : étape Awena → Participants → Format → Sélection → Réglages → Récap, avec **8 étapes**. En X01, les combinaisons d'équipes actuellement supportées sont 2×2, 2×3, 2×4, 3×2 et 4×2 ; il ne faut pas proposer 3×3/4×4 tant que le moteur ne les valide pas.
+
+**Contrôles de non-régression :** vérifier bascule JOUEURS ↔ ÉQUIPES, DUEL ↔ MULTI, formats 2/3/4 équipes, sélection humaine/bot/équipes enregistrées/brassage, changement de format avec sélection déjà présente, retour en arrière, étape recap, lancer en guidée et en complète. Sur mobile, aucun bloc ni bouton principal ne doit se retrouver sous la BottomNav.
+
 ## 3. Règles techniques et lisibilité
 
 - Portrait : une seule zone contextuelle affichée à la fois ; score, objectif, volée et commandes nécessaires visibles ; pas de configuration complète au-dessus du keypad en pleine partie.
@@ -83,3 +102,14 @@
 Le présent fichier est la référence écrite **V1** ; `src/styles/mss-ui-contract.css` est le contrat visuel réutilisable ; `src/components/mss/MssSectionTabs.tsx` est la barre d'onglets réutilisable. Ne pas copier-coller les styles de ces fichiers dans chaque mode. Tout écart se justifie dans une note de patch avec capture et raison fonctionnelle. Tout écart non justifié est une régression à corriger **avant livraison**.
 
 **Limite actuelle :** ce patch crée l'architecture et un contrôle automatique de présence, mais ne convertit pas d'un coup les centaines d'écrans existants. Le script de contrôle n'est pas un moteur de comparaison visuelle.
+
+
+## Sélecteurs de participants communs — référence KILLER / X01
+
+- Les écrans de configuration présentent d’abord le choix Joueurs/Équipes, puis un format distinct (Duel/Multi ou nombre d’équipes × membres), puis **Choix joueurs**/**Choix équipes**. Ne jamais regrouper ces trois étapes.
+- La page de choix reste compacte : titre, rangée unique d’icônes BottomNav centrées, résumé des profils ou équipes choisis (avatars, logos officiels si disponibles), édition et retrait accessibles. Pas de formulaire de composition vertical directement sur la page.
+- Les icônes Joueurs, Liste, Bots, Manuel, Équipes enregistrées, Brassage auto, Teams Bots et + ouvrent des galeries/fenêtres flottantes conservant la page de configuration courante. Ne pas rediriger vers Profils pour créer.
+- Galeries de sélection : **9 profils, bots ou équipes par page**, trois colonnes si l’espace le permet, pagination précédente/suivante et fermeture/validation clairement identifiables. L’édition d’une équipe ouvre le choix de ses membres, sans modifier les autres équipes.
+- Le format fixé à l’étape précédente reste **autoritaire** pour la capacité, la sélection, les contrôles de cohérence et le démarrage. Un joueur ou bot ne peut être retenu deux fois dans les équipes d’un même match. La liste d’une équipe enregistrée peut comporter plus de membres que le format demandé ; choisir exactement le nombre requis.
+- La création contextuelle **+** propose Joueur/Bot pour une partie individuelle, et Joueur/Bot/Équipe/Team BOT pour une partie en équipes. Les nouveaux éléments sont enregistrés dans les magasins existants puis proposés directement dans la sélection, sans nouvelle route.
+- Les sélecteurs en mode guidé et en mode complet utilisent le **même composant**, sans deux implémentations divergentes. Conserver les contrôles Guidée/Complète, l’étape Awena et le récapitulatif final.

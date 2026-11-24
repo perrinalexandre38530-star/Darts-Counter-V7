@@ -91,6 +91,10 @@ function query(input: any, scope: any, extra: Record<string, any> = {}) {
   return params.toString();
 }
 
+export async function submitChallengeChainBatchCloud(input: any): Promise<ChallengeCloudResult<any>> {
+  return request('/chain-submit', {method:'POST',body:JSON.stringify(input)});
+}
+
 export async function submitChallengeScoreCloud(input: any): Promise<ChallengeCloudResult<any>> {
   return request('/submit', {
     method: 'POST',

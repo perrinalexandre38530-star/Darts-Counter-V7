@@ -50,6 +50,7 @@ export const CHALLENGE_ARCADE_CATALOG: readonly ArcadeChallenge[]=[
  {id:'territory-war',title:'LA GUERRE DES TERRITOIRES',family:'MULTIJOUEURS',description:'Conquérir, voler et protéger les secteurs de la cible.',goal:'max',status:'ready'},
  {id:'ghost-challenge',title:'LE DÉFI FANTÔME',family:'MULTIJOUEURS',description:'Affronter sa meilleure performance passée volée par volée.',goal:'max',status:'ready'},
  {id:'revenge',title:'LA REVANCHE',family:'MULTIJOUEURS',description:'Transformer les cibles ratées de l’adversaire en opportunités.',goal:'max',status:'ready'},
+ {id:'dont-break-the-chain',title:'NE BRISE PAS LA CHAÎNE !',family:'PRÉCISION',description:'Enchaîner les impacts conformes ou jouer librement : 67 chaînes indépendantes en FREE HYBRIDE.',goal:'streak',status:'ready'},
 ];
 export const CHALLENGE_ARCADE_FAMILIES:readonly ArcadeFamily[]=['PRÉCISION','PARCOURS','COMBINAISONS','SCORING','RISQUE','STRATÉGIE','MULTIJOUEURS'];
 export const getArcadeChallenge=(id:string|null|undefined):ArcadeChallenge=>CHALLENGE_ARCADE_CATALOG.find(item=>item.id===id)??CHALLENGE_ARCADE_CATALOG[0]!;

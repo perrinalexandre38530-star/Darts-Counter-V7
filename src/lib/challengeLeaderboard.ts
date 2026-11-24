@@ -1,9 +1,12 @@
+import {CHAIN_ONLINE_BATCH_SIZE,CHAIN_ONLINE_MAX_DARTS} from './challengeChainSubmission';
+import {CHAIN_ID,chainOnlinePerformances,type ChainConfig,type ChainImpact} from './challengeChains';
 import { supabase } from './supabaseClient';
 import { History } from './history';
 import {
   fetchChallengeLeaderboardCloud,
   fetchChallengeLeaderboardDetailCloud,
   submitChallengeScoreCloud,
+  submitChallengeChainBatchCloud,
   syncChallengeIdentityCloud,
 } from './challengeCloudflareApi';
 
@@ -451,6 +454,32 @@ export async function listChallengeTeamScopes(): Promise<ChallengeLeaderboardTea
     .filter((row: ChallengeLeaderboardTeam) => row.key);
 }
 
+/** Publie la session une seule fois par objectif (reçus D1 par matchId).
+ * L'identité est résolue une fois ; les sous-classements ne dépendent pas d'IndexedDB. */
+export async function submitChainLeaderboardSession(input:{config:ChainConfig;entries:(ChainImpact & {pid?:string;hit?:string})[];matchId:string;displayName:string;avatarUrl?:string|null}){
+ const performances=chainOnlinePerformances(input.entries,input.config);
+ const total=performances.length;
+ if(!total||input.entries.length>CHAIN_ONLINE_MAX_DARTS)return {ok:false,submitted:0,total};
+ const uid=await getChallengeOnlineUserId();if(!uid)return {ok:false,submitted:0,total};
+ const identity=await publishChallengeAccountIdentity({displayName:input.displayName,avatarUrl:input.avatarUrl||null,countryCode:null});
+ const pending=performances.map(p=>p.key),acknowledged=new Set<string>();
+ // Do not repeat 67 independent authentication calls. The server replays each batch.
+ // A partial response retries only failed categories, and a full replay is idempotent.
+ for(let offset=0;offset<pending.length;offset+=CHAIN_ONLINE_BATCH_SIZE){
+  let keys=pending.slice(offset,offset+CHAIN_ONLINE_BATCH_SIZE);
+  for(let attempt=0;attempt<2&&keys.length;attempt++){
+   try{
+    const result=await submitChallengeChainBatchCloud({...identity,config:input.config,entries:input.entries.map(({zone,segment})=>({zone,segment})),matchId:input.matchId,keys});
+    if(!result.available){if(!acknowledged.size)return {ok:false,submitted:0,total};break;}
+    const results=Array.isArray(result.data?.results)?result.data.results:[];
+    for(const r of results)if(r.ok===true&&keys.includes(r.key))acknowledged.add(r.key);
+    keys=keys.filter(k=>!acknowledged.has(k));
+   }catch{if(attempt===1)break;}
+  }
+ }
+ return {ok:acknowledged.size===total,submitted:acknowledged.size,total};
+}
+
 export async function submitChallengeBestScore(input: ChallengeLeaderboardSubmit): Promise<{ ok: boolean; improved?: boolean; bestScore?: number; skipped?: string }> {
   const userId = await getChallengeOnlineUserId();
   if (!userId) return { ok: false, skipped: 'AUTH_REQUIRED' };
@@ -863,8 +892,10 @@ function historyStatsPayload(record: any, row: any) {
 
   const exerciseConfig=(payload?.config&&typeof payload.config==='object')?payload.config:(record?.resume?.config&&typeof record.resume.config==='object'?record.resume.config:null);
 
+  const chain=exerciseConfig?.catalogChallengeId==='dont-break-the-chain';
   return {
-    ...(exerciseConfig?{exerciseConfig}:{}),
+    ...(chain?{chainStats:row?.chainStats||row?.exerciseStats?.chainStats}:{}),
+    ...(exerciseConfig?{exerciseConfig:chain?{...exerciseConfig,chainEnded:exerciseConfig.chainEnded===true||state?.chainEnded===true}:exerciseConfig}:{}),
     bestVisit: bestVisitStored || (visitScoresDerived.length ? Math.max(...visitScoresDerived) : 0),
     avgVisit: avgVisitStored || (visitScoresDerived.length ? scoreDerived / visitScoresDerived.length : 0),
     hitCounts,
@@ -876,10 +907,10 @@ function historyStatsPayload(record: any, row: any) {
     visitScores: storedVisitScores.length ? storedVisitScores : visitScoresDerived,
     cumulativeScores: storedCumulativeScores.length ? storedCumulativeScores : cumulativeScoresDerived,
     entries,
-    score: scoreStored || scoreDerived,
+    score: chain ? scoreStored : scoreStored || scoreDerived,
     darts: darts || entries.length,
-    bestStreak: bestStreakStored || bestStreakDerived,
-    accuracy: accuracyStored || accuracyDerived,
+    bestStreak: chain ? bestStreakStored : bestStreakStored || bestStreakDerived,
+    accuracy: chain ? accuracyStored : accuracyStored || accuracyDerived,
   };
 }
 
@@ -998,6 +1029,13 @@ export async function syncChallengeHistoricalScores(profiles: any[], _teams: any
       const bestStreak = Math.max(0, int(row?.bestStreak ?? row?.special?.bestStreak, 0));
       const accuracy = Math.max(0, Math.min(100, num(row?.successRate ?? row?.accuracy ?? row?.accuracyPct ?? row?.special?.successRate, 0)));
       const pi = profile?.privateInfo || profile?.private_info || {};
+      const stats=historyStatsPayload(record,row);
+      if(stats.exerciseConfig?.catalogChallengeId===CHAIN_ID){
+        const zoneMap:Record<string,string>={S:'G',D:'D',T:'T','25':'BULL','50':'DBULL',MISS:'MISS'};
+        const entries=stats.entries.map((e:any)=>({...e,zone:zoneMap[e.hit],segment:e.segment??null}));
+        try{const result=await submitChainLeaderboardSession({config:stats.exerciseConfig,entries,matchId,displayName:clean(profile?.name||row?.name,'Joueur'),avatarUrl:avatarFromProfile(profile)});submitted+=result.submitted;}catch(error){console.warn('[challenge] chain backfill',error);}
+        continue;
+      }
       try {
         const result = await submitChallengeBestScore({
           ...config,

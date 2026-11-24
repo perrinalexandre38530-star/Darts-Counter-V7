@@ -1,3 +1,6 @@
+import {useLangOptional} from '../contexts/LangContext';
+import {chainUi,localizedChainTitle,localizedChainRule} from '../i18n/challengeChainTranslations';
+import {CHAIN_ID,CHAIN_VARIANTS,chainVariant as resolveChainVariant,chainFormat as resolveChainFormat,chainTitle,type ChainVariant,type ChainFormat} from '../lib/challengeChains';
 import "./challengeFinishDoShortcut.css";
 import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from 'react';
@@ -47,6 +50,7 @@ export type ChallengeConfigData={
   catalogLine?:number;
   catalogVariant?:ArcadeVariant;
   catalogRounds?:number;
+ chainVariant?:ChainVariant;chainFormat?:ChainFormat;chainDarts?:number;chainGoal?:number;
  catalogTarget?:number;catalogStep?:number;catalogMin?:number;catalogMax?:number;catalogLives?:number;catalogSeed?:number;
   clockIncludeBull?:boolean;
   clockScoreMode?:ChallengeScoreMode;
@@ -77,6 +81,7 @@ type ChallengePreset={
  catalogLine?:number;
  catalogVariant?:ArcadeVariant;
  catalogRounds?:number;
+ chainVariant?:ChainVariant;chainFormat?:ChainFormat;chainDarts?:number;chainGoal?:number;
  catalogTarget?:number;catalogStep?:number;catalogMin?:number;catalogMax?:number;catalogLives?:number;catalogSeed?:number;
  clockIncludeBull:boolean;
  clockScoreMode:ChallengeScoreMode;
@@ -103,6 +108,7 @@ const writeChallengePreset=(key:string,preset:ChallengePreset)=>{try{localStorag
 const presetDescriptor=(preset:ChallengePreset|null)=>{
  if(!preset)return '';
  const type=preset.exerciseType||'classic';
+ if(type==='arcade'&&preset.catalogChallengeId===CHAIN_ID)return `NE BRISE PAS LA CHAÎNE ! · ${chainTitle(preset)}`;
  if(type==='arcade')return `${getArcadeChallenge(preset.catalogChallengeId).title} · ${preset.catalogRounds||5} ${arcadeRuleDetails({catalogChallengeId:preset.catalogChallengeId||'perfect-line',catalogLine:preset.catalogLine||20,catalogRounds:preset.catalogRounds||5,catalogVariant:preset.catalogVariant||'classic'}).roundUnit}`;
  if(type==='classic')return `${targetText(preset.target||'20')} · ${preset.visits||30} TOURS`;
  if(type==='clock')return `${preset.clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${preset.clockScoreMode==='real'?'VALEUR RÉELLE':'S1 / D2 / T3'}`;
@@ -129,6 +135,8 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  const theme=useTheme();
  const awena=useAwenaOptional();
  const primary='#ff4148';
+ const chainLang=useLangOptional()?.lang||'fr';
+ const ct=(source:string)=>chainUi(chainLang,source);
  const [mode,setMode]=React.useState<ConfigMode>('guided');
  const [step,setStep]=React.useState(0);
  const [matchMode,setMatchMode]=React.useState<MatchMode|null>(null);
@@ -147,6 +155,10 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  const [focusedChoiceId,setFocusedChoiceId]=React.useState<string|null>(null);
  const [catalogLine,setCatalogLine]=React.useState(20);
  const [catalogVariant,setCatalogVariant]=React.useState<ArcadeVariant>('classic');
+ const [chainVariant,setChainVariant]=React.useState<ChainVariant>('hybrid');
+ const [chainFormat,setChainFormat]=React.useState<ChainFormat>('rounds');
+ const [chainDarts,setChainDarts]=React.useState(30);
+ const [chainGoal,setChainGoal]=React.useState(10);
  const [catalogRounds,setCatalogRounds]=React.useState(5);
  const [catalogTarget,setCatalogTarget]=React.useState(100);
  const [catalogStep,setCatalogStep]=React.useState(3);
@@ -193,6 +205,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
   setCatalogLine(Math.max(1,Math.min(20,Number(preset.catalogLine)||20)));
   setCatalogVariant(preset.catalogVariant==='doubles'?'doubles':preset.catalogVariant==='triples'?'triples':'classic');
   setCatalogRounds(Math.max(1,Math.min(20,Number(preset.catalogRounds)||5)));
+  setChainVariant(resolveChainVariant(preset));setChainFormat(resolveChainFormat(preset));setChainDarts(Math.max(1,Math.min(100000,Math.round(Number(preset.chainDarts)||30))));setChainGoal(Math.max(1,Math.min(100000,Math.round(Number(preset.chainGoal)||10))));
   setCatalogTarget(Number(preset.catalogTarget)||100);setCatalogStep(Number(preset.catalogStep)||3);
   setCatalogMin(Number(preset.catalogMin)||60);setCatalogMax(Number(preset.catalogMax)||80);
   setCatalogLives(Number(preset.catalogLives)||3);
@@ -246,10 +259,10 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
 
  const currentPreset=React.useMemo<ChallengePreset>(()=>({
   target,visits,rule,configMode:mode,matchMode,participantSource,soundsEnabled,exerciseType,
-  catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,
+  catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,chainVariant,chainFormat,chainDarts,chainGoal,
   clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives:[...sequenceObjectives],sequenceScoreMode,
   groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets:[...doublesTargets],doublesTargetMode
- }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode]);
+ }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,chainVariant,chainFormat,chainDarts,chainGoal,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode]);
 
  React.useEffect(()=>{if(presetHydrated && !fromTrainingLab)writeChallengePreset(CHALLENGE_DRAFT_KEY,currentPreset)},[presetHydrated,currentPreset,fromTrainingLab]);
 
@@ -340,14 +353,14 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
 
  const resolvedSequence=exerciseType==='half-it'?[...DEFAULT_HALF_IT_SEQUENCE]:sequenceObjectives;
  const resolvedDoublesTargets=(doublesTargetMode==='official'?[...DOUBLES_8_TARGETS]:doublesTargets).filter((n,index,self)=>n>=1&&n<=20&&self.indexOf(n)===index);
- const resolvedVisits=exerciseType==='arcade'?Math.max(1,catalogRounds):exerciseType==='jdc'?19:exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
+ const resolvedVisits=exerciseType==='arcade'?(catalogChallengeId===CHAIN_ID&&chainFormat==='rounds'?Math.ceil(chainDarts/3):Math.max(1,catalogRounds)):exerciseType==='jdc'?19:exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
  const resolvedTarget:ChallengeTarget=exerciseType==='arcade'?String(catalogLine) as ChallengeTarget:exerciseType==='jdc'?'10':exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?String(resolvedDoublesTargets[0]||20) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
  const resolvedRule:ChallengeRule=exerciseType==='classic'?rule:exerciseType==='doubles8'?'double':'all';
  const exerciseValid=(exerciseType!=='arcade'||(isArcadeChallengePlayable(catalogChallengeId)&&playerIds.length>=arcadeRuleDetails({catalogChallengeId,catalogLine,catalogVariant,catalogRounds}).minPlayers))&&(exerciseType!=='sequence'||sequenceObjectives.length>0)&&(exerciseType!=='doubles8'||resolvedDoublesTargets.length>0);
- const exerciseSummary=exerciseType==='arcade'?getArcadeChallenge(catalogChallengeId).title:exerciseType==='classic'?`OBJECTIF ${targetText(target)}`:exerciseTitle({target:resolvedTarget,rule:resolvedRule,visits:resolvedVisits,exerciseType,doublesTargets:resolvedDoublesTargets,doublesBonusTarget});
- const arcadeConfig:ArcadePlayConfig={catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives};
+ const exerciseSummary=exerciseType==='arcade'?ct(getArcadeChallenge(catalogChallengeId).title):exerciseType==='classic'?`OBJECTIF ${targetText(target)}`:exerciseTitle({target:resolvedTarget,rule:resolvedRule,visits:resolvedVisits,exerciseType,doublesTargets:resolvedDoublesTargets,doublesBonusTarget});
+ const arcadeConfig:ArcadePlayConfig={catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,chainVariant,chainFormat,chainDarts,chainGoal};
  const arcadeRule=arcadeRuleDetails(arcadeConfig);
- const exerciseRuleSummary=exerciseType==='arcade'?arcadeRuleDescription(arcadeConfig):exerciseType==='jdc'?'Phase 1 : 10–15 · Phase 2 : D1→D20 + BULL · Phase 3 : 15–20 · SHANGHAI +100':exerciseType==='classic'
+ const exerciseRuleSummary=exerciseType==='arcade'?(catalogChallengeId===CHAIN_ID?localizedChainRule(chainLang,arcadeConfig):arcadeRuleDescription(arcadeConfig)):exerciseType==='jdc'?'Phase 1 : 10–15 · Phase 2 : D1→D20 + BULL · Phase 3 : 15–20 · SHANGHAI +100':exerciseType==='classic'
   ? `${targetText(target)} · ${resolvedVisits} tours`
   : exerciseType==='clock'
    ? `${clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${clockScoreMode==='real'?'valeur réelle':'S=1 · D=2 · T=3'}`
@@ -400,7 +413,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
   go('challenge_play',{config:{
    target:resolvedTarget,visits:resolvedVisits,rule:resolvedRule,
    exerciseType,
-   catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,
+   catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,chainVariant,chainFormat,chainDarts,chainGoal,
    clockIncludeBull,
    clockScoreMode,
    halfItStartScore,
@@ -484,7 +497,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
        const selected=exerciseType===choice.exerciseType&&(choice.exerciseType!=='arcade'||catalogChallengeId===choice.arcadeId);
        const stateLabel=choice.state==='available'?'DISPONIBLE':choice.state==='preview'?'APERÇU JOUABLE':'À VENIR';
        return <button type="button" key={choice.id} className={'challenge-unified-tile '+(selected?'on ':'')+choice.state} aria-pressed={selected} onClick={()=>setPreviewChoiceId(choice.id)} title={'Voir la fiche et les records de '+choice.title}>
-        <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{choice.title}</b><span style={{alignSelf:'flex-start'}}><GameDifficultyStars level={mssChallengeDifficulty(choice)} compact /></span><small>{choice.description}</small><em>{stateLabel}</em></span>
+        <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{ct(choice.title)}</b><span style={{alignSelf:'flex-start'}}><GameDifficultyStars level={mssChallengeDifficulty(choice)} compact /></span><small>{choice.description}</small><em>{stateLabel}</em></span>
        </button>;
       })}
      </div>
@@ -564,10 +577,16 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  </Section>;
  const arcadeStage=<Section title="RÈGLES ET PARAMÈTRES" subtitle="Mêmes étapes de configuration que les autres challenges, adaptées à chaque règle." key="arcade">
   <div className="challenge-catalog-options">
-   <h3>{getArcadeChallenge(catalogChallengeId).title}</h3>
-   <p>{arcadeRuleDescription(arcadeConfig)}</p>
+   <h3>{ct(getArcadeChallenge(catalogChallengeId).title)}</h3>
+   <p>{catalogChallengeId===CHAIN_ID?localizedChainRule(chainLang,arcadeConfig):arcadeRuleDescription(arcadeConfig)}</p>
    <div className="challenge-catalog-config">
-    {arcadeRule.usesLine&&<label>NUMÉRO INITIAL<select value={catalogLine} onChange={e=>setCatalogLine(Number(e.target.value))}>{Array.from({length:20},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}</select></label>}
+    {catalogChallengeId===CHAIN_ID&&<>
+      <label>VARIANTE<select value={chainVariant} onChange={e=>{const v=e.target.value as ChainVariant;setChainVariant(v);if(v==='hybrid'&&chainFormat==='single')setChainFormat('rounds')}}>{CHAIN_VARIANTS.map(([v,label])=><option key={v} value={v}>{ct(label)}</option>)}</select></label>
+      <label>FORMAT<select value={chainFormat} onChange={e=>setChainFormat(e.target.value as ChainFormat)}><option value="rounds">NOMBRE DE FLÉCHETTES / VOLÉES</option><option value="free">RECORD LIBRE</option>{chainVariant!=='hybrid'&&<option value="single">CHAÎNE UNIQUE</option>}<option value="goal">OBJECTIF DE MAILLONS</option></select></label>
+      {chainFormat==='rounds'&&<><label>NOMBRE DE VOLÉES<select value={[5,10,15,20,30,50,100].includes(chainDarts/3)?chainDarts/3:0} onChange={e=>{const n=Number(e.target.value);if(n)setChainDarts(n*3)}}><option value={0}>PERSONNALISÉ</option>{[5,10,15,20,30,50,100].map(n=><option value={n} key={n}>{n} VOLÉES</option>)}</select></label><label>{ct('FLÉCHETTES')}<input type="number" min={1} max={100000} value={chainDarts} onChange={e=>setChainDarts(Math.max(1,Math.min(100000,Math.round(Number(e.target.value)||1))))}/></label>{chainVariant==='hybrid'&&<div style={{display:'flex',flexWrap:'wrap',gap:5}}>{[30,60,100,300,500,1000].map(n=><button key={n} type="button" aria-pressed={chainDarts===n} onClick={()=>setChainDarts(n)} style={{flex:'1 0 28%',borderRadius:8,padding:6,border:`1px solid ${chainDarts===n?'#ffc341':'#44566b'}`,background:chainDarts===n?'#ffc34122':'#111c2a',color:chainDarts===n?'#ffc341':'#fff',cursor:'pointer'}}>{n}</button>)}</div>}</>}
+      {chainFormat==='goal'&&<label>MAILLONS À ATTEINDRE<input type="number" min={1} max={100000} value={chainGoal} onChange={e=>setChainGoal(Math.max(1,Math.min(100000,Math.round(Number(e.target.value)||1))))}/></label>}
+    </>}
+    {arcadeRule.usesLine&&<label>{catalogChallengeId===CHAIN_ID?'SECTEUR CIBLE':'NUMÉRO INITIAL'}<select value={catalogLine} onChange={e=>setCatalogLine(Number(e.target.value))}>{Array.from({length:20},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}</select></label>}
     {arcadeRule.usesRounds&&<label>{arcadeRule.roundUnit}<select value={catalogRounds} onChange={e=>setCatalogRounds(Number(e.target.value))}>{[1,2,3,5,7,10,15,20].map(n=><option value={n} key={n}>{n}</option>)}</select></label>}
     {arcadeRule.usesVariant&&<label>DIFFICULTÉ / ZONE<select value={catalogVariant} onChange={e=>setCatalogVariant(e.target.value as ArcadeVariant)}><option value="classic">SIMPLES / CLASSIQUE</option><option value="doubles">DOUBLES</option><option value="triples">TRIPLES / EXPERT</option></select></label>}
     {arcadeRule.usesTarget&&<label>SCORE CIBLE<select value={catalogTarget} onChange={e=>setCatalogTarget(Number(e.target.value))}>{[20,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180].map(n=><option value={n} key={n}>{n} PTS</option>)}</select></label>}
@@ -637,7 +656,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
   </main> : <main className="config-wrap">
    <section className="config-overview">
     <div className="overview-copy"><small>CONFIGURATION CHALLENGE</small><div className="mode-row"><button type="button" className={mode==='guided'?'on':''} onClick={()=>{setMode('guided');setStep(0)}}>GUIDÉE</button><button type="button" className={mode==='complete'?'on':''} onClick={()=>setMode('complete')}>COMPLÈTE</button></div><p>{mode==='guided'?'Configuration compacte, étape par étape, dans le même esprit que X01.':'Tous les réglages sont accessibles sur une seule page.'}</p>{!fromTrainingLab && <button type="button" className="challenge-leaderboard-access" onClick={()=>go('challenge_leaderboard',{from:'challenge_config'})}><span>🏆</span><b>CLASSEMENTS ONLINE</b><small>Meilleurs scores · filtres · équipes officielles</small></button>}</div>
-    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{exerciseType==='arcade'?arcadeRule.roundUnit+' · '+catalogRounds:resolvedVisits+' TOURS'}</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
+    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{exerciseType==='arcade'?(catalogChallengeId===CHAIN_ID?localizedChainTitle(chainLang,arcadeConfig):arcadeRule.roundUnit+' · '+catalogRounds):resolvedVisits+' TOURS'}</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
    </section>
    {(lastPlayedPreset||favoritePreset)&&<section className="quick-presets" aria-label="Raccourcis Challenge">
     {lastPlayedPreset&&<button type="button" className="quick-preset last" onClick={()=>replayPreset(lastPlayedPreset)}><i>↻</i><span><small>DERNIER CHALLENGE</small><b>{presetDescriptor(lastPlayedPreset)}</b><em>Réglages chargés · choisissez joueurs ou équipes</em></span><strong>REJOUER</strong></button>}
@@ -645,7 +664,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
    </section>}
    {mode==='guided'&&<section className="progress-card"><div><strong>CONFIGURATION GUIDÉE</strong><span>Étape {step+1}/{stages.length} • {stepLabels[step]}</span></div><div className="steps">{stepLabels.map((label,i)=><button type="button" onClick={()=>{if(i<=step||currentStepValid)setStep(i)}} className={i===step?'on':i<step?'done':''} key={label}><b>{i+1}</b><span>{label}</span></button>)}</div></section>}
    <div className={mode==='complete'?'complete-grid':'guided-stage'}>{shown}</div>
-   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>{exerciseValid?'PRÊT À JOUER':'EN DÉVELOPPEMENT'}</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{exerciseType==='arcade'?catalogRounds:resolvedVisits}<small>{exerciseType==='arcade'?arcadeRule.roundUnit:'TOURS'}</small></strong></section>
+   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>{exerciseValid?'PRÊT À JOUER':'EN DÉVELOPPEMENT'}</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{exerciseType==='arcade'?(catalogChallengeId===CHAIN_ID?(chainFormat==='rounds'?chainDarts:chainFormat==='goal'?chainGoal:'∞'):catalogRounds):resolvedVisits}<small>{exerciseType==='arcade'?(catalogChallengeId===CHAIN_ID?(chainFormat==='rounds'?'FLÉCHETTES':chainFormat==='goal'?'MAILLONS':'LIBRE'):arcadeRule.roundUnit):'TOURS'}</small></strong></section>
    <div className="preset-actions"><button type="button" className={favoritePreset?'favorite-set on':'favorite-set'} onClick={saveFavorite}><span>{favoritePreset?'★':'☆'}</span><b>{favoritePreset?'METTRE À JOUR LE FAVORI':'ENREGISTRER COMME FAVORI'}</b></button><small>Les derniers réglages sont mémorisés automatiquement.</small></div>
    <div className="config-actions">
     {mode==='guided'&&step>0&&<button type="button" onClick={()=>setStep(s=>s-1)}>← PRÉCÉDENT</button>}

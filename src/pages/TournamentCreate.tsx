@@ -1,3 +1,6 @@
+import {useLangOptional} from '../contexts/LangContext';
+import {chainUi} from '../i18n/challengeChainTranslations';
+import {CHAIN_ID,CHAIN_VARIANTS,chainConfigKey,type ChainVariant} from '../lib/challengeChains';
 // @ts-nocheck
 // ============================================
 // src/pages/TournamentCreate.tsx
@@ -1235,6 +1238,7 @@ function GuidedHeroCard({
 ------------------------------ */
 
 export default function TournamentCreate({ store, go, params }: Props) {
+  const chainLang=useLangOptional()?.lang||"fr";
 
   // ✅ FORCE SPORT multi-sport (local + online) : vient de GameSelect / BottomNav.
   const forceMode = normalizeCompetitionSport(params?.forceMode ?? params?.sport ?? "darts");
@@ -2027,6 +2031,8 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [challengeObjectiveCadence, setChallengeObjectiveCadence] = React.useState<"competition"|"round"|"match">("match");
   const [challengeTieBreak, setChallengeTieBreak] = React.useState<"segment_sum"|"accuracy"|"best_streak"|"exercise">("segment_sum");
   const [challengeExerciseType, setChallengeExerciseType] = React.useState<ChallengeExerciseType>("classic");
+  const [challengeChainVariant,setChallengeChainVariant]=React.useState<ChainVariant>("hybrid");
+  const [challengeChainSector,setChallengeChainSector]=React.useState(20);
   const [challengeClockIncludeBull, setChallengeClockIncludeBull] = React.useState(false);
   const [challengeClockScoreMode, setChallengeClockScoreMode] = React.useState<ChallengeScoreMode>("challenge");
   const [challengeHalfItStartScore, setChallengeHalfItStartScore] = React.useState(40);
@@ -2059,12 +2065,13 @@ const petanqueTeamsReady = React.useMemo(() => {
   },[challengePointsPreset]);
   const challengeExerciseConfig = React.useMemo(()=>{
     const type=challengeExerciseType;
+    if(type==="arcade"){const c={catalogChallengeId:CHAIN_ID,chainVariant:challengeChainVariant,catalogLine:challengeChainSector,chainFormat:"rounds" as const,chainDarts:Math.max(1,challengeVisits)*3,catalogRounds:Math.max(1,challengeVisits)};return {...c,target:chainConfigKey(c),rule:"arcade",visits:c.catalogRounds,exerciseType:type};}
     if(type==="clock") return { target:"1", rule:"all", visits:challengeClockIncludeBull?21:20, exerciseType:type, clockIncludeBull:challengeClockIncludeBull, clockScoreMode:challengeClockScoreMode };
     if(type==="half-it") return { target:"15", rule:"all", visits:DEFAULT_HALF_IT_SEQUENCE.length, exerciseType:type, halfItStartScore:Math.max(0,Number(challengeHalfItStartScore)||0), sequenceObjectives:[...DEFAULT_HALF_IT_SEQUENCE], sequenceScoreMode:"real" };
     if(type==="sequence") return { target:String((challengeSequenceObjectives[0]&&/^\d+$/.test(challengeSequenceObjectives[0]))?challengeSequenceObjectives[0]:20), rule:"all", visits:Math.max(1,challengeSequenceObjectives.length), exerciseType:type, sequenceObjectives:challengeSequenceObjectives, sequenceScoreMode:challengeSequenceScoreMode };
     if(type==="grouping") { const lo=Math.min(challengeGroupingMin,challengeGroupingMax),hi=Math.max(challengeGroupingMin,challengeGroupingMax); return { target:String(lo), rule:"all", visits:Math.max(1,challengeVisits), exerciseType:type, groupingMin:lo, groupingMax:hi, groupingHits:challengeGroupingHits }; }
     return { target:challengeTarget, rule:challengeRule, visits:Math.max(1,challengeVisits), exerciseType:"classic" as const };
-  },[challengeExerciseType,challengeClockIncludeBull,challengeClockScoreMode,challengeHalfItStartScore,challengeSequenceObjectives,challengeSequenceScoreMode,challengeGroupingMin,challengeGroupingMax,challengeGroupingHits,challengeVisits,challengeTarget,challengeRule]);
+  },[challengeExerciseType,challengeChainVariant,challengeChainSector,challengeClockIncludeBull,challengeClockScoreMode,challengeHalfItStartScore,challengeSequenceObjectives,challengeSequenceScoreMode,challengeGroupingMin,challengeGroupingMax,challengeGroupingHits,challengeVisits,challengeTarget,challengeRule]);
   const challengePrimaryObjective = React.useMemo(()=>challengeExerciseType==="classic"?String(challengeTarget):challengeObjectiveKeyTarget(challengeExerciseConfig as any),[challengeExerciseType,challengeTarget,challengeExerciseConfig]);
   const challengeProgramObjectives = React.useMemo(()=>{
     if(challengeExerciseType!=="classic") return [challengePrimaryObjective];
@@ -4863,6 +4870,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         <NeonPill active={challengeExerciseType==="half-it"} label="HALF-IT" onClick={()=>setChallengeExerciseType("half-it")} primary={primary}/>
         <NeonPill active={challengeExerciseType==="sequence"} label="SÉQUENCE" onClick={()=>setChallengeExerciseType("sequence")} primary={primary}/>
         <NeonPill active={challengeExerciseType==="grouping"} label="GROUPEMENT" onClick={()=>setChallengeExerciseType("grouping")} primary={primary}/>
+        <NeonPill active={challengeExerciseType==="arcade"} label={chainUi(chainLang,"NE BRISE PAS LA CHAÎNE !")} onClick={()=>setChallengeExerciseType("arcade")} primary={primary}/>
       </div>
 
       {challengeExerciseType==="classic" ? <>
@@ -4880,6 +4888,12 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         <RowTitle label="Départage"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={challengeTieBreak==="segment_sum"} label="SOMME SEGMENTS" onClick={()=>setChallengeTieBreak("segment_sum")} disabled={!challengeCanUseSegmentSum} primary={primary}/><NeonPill active={challengeTieBreak==="accuracy"} label="PRÉCISION" onClick={()=>setChallengeTieBreak("accuracy")} primary={primary}/><NeonPill active={challengeTieBreak==="best_streak"} label="MEILLEURE SUITE" onClick={()=>setChallengeTieBreak("best_streak")} primary={primary}/></div>
       </> : null}
 
+      {challengeExerciseType==="arcade"?<>
+        <RowTitle label="Variante de chaîne"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{CHAIN_VARIANTS.map(([key,label])=><NeonPill key={key} active={challengeChainVariant===key} label={chainUi(chainLang,label)} onClick={()=>setChallengeChainVariant(key)} primary={primary}/>)}</div>
+        {challengeChainVariant.endsWith('-fixed')&&<label>SECTEUR <select value={challengeChainSector} onChange={e=>setChallengeChainSector(Number(e.target.value))}>{Array.from({length:20},(_,i)=><option key={i+1}>{i+1}</option>)}</select></label>}
+        <RowTitle label="Nombre de volées identique pour tous"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{[5,10,15,20,30,50,100].map(n=><NeonPill key={n} active={challengeVisits===n} label={String(n)} onClick={()=>setChallengeVisits(n)} primary={primary}/>)}</div>
+        <small>{challengeVisits*3} fléchettes par joueur · FREE HYBRIDE : record sans MISS pour le classement général, 67 records détaillés.</small>
+      </>:null}
       {challengeExerciseType==="clock" ? <>
         <div style={{padding:"10px 12px",borderRadius:12,border:`1px solid ${primary}2c`,background:`${primary}0d`}}>1 → 20 automatiquement, un objectif par volée.</div>
         <RowTitle label="Fin de parcours"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}><NeonPill active={!challengeClockIncludeBull} label="ARRÊT AU 20" onClick={()=>setChallengeClockIncludeBull(false)} primary={primary}/><NeonPill active={challengeClockIncludeBull} label="+ BULL" onClick={()=>setChallengeClockIncludeBull(true)} primary={primary}/></div>
@@ -4905,7 +4919,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         <RowTitle label="Nombre de tours"/><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{[5,10,15,20,30,50,100].map(n=><NeonPill key={n} active={challengeVisits===n} label={String(n)} onClick={()=>setChallengeVisits(n)} primary={primary}/>)}</div><label style={{fontSize:10,maxWidth:180}}>PERSONNALISÉ<TextInput value={String(challengeVisits)} onChange={(e:any)=>setChallengeVisits(Math.max(1,Math.min(999,Number(e.target.value)||1)))}/></label>
       </>:null}
 
-      {challengeExerciseType!=="classic" ? <div style={{padding:"10px 12px",borderRadius:12,border:"1px solid rgba(101,230,162,.28)",background:"rgba(18,72,50,.18)",fontSize:10.5,lineHeight:1.45}}><b style={{color:"#65e6a2"}}>PRÊT À JOUER · {challengeOnlineTargetLabel(challengePrimaryObjective)}</b><br/>Départage automatique : score → validation → meilleure série → meilleure volée.</div>:null}
+      {challengeExerciseType!=="classic" ? <div style={{padding:"10px 12px",borderRadius:12,border:"1px solid rgba(101,230,162,.28)",background:"rgba(18,72,50,.18)",fontSize:10.5,lineHeight:1.45}}><b style={{color:"#65e6a2"}}>PRÊT À JOUER · {challengeOnlineTargetLabel(challengePrimaryObjective)}</b><br/>{challengeExerciseType==="arcade"?"Départage : meilleure chaîne → chaînes suivantes → réussite.":"Départage automatique : score → validation → meilleure série → meilleure volée"}.</div>:null}
     </div>;
   };
 

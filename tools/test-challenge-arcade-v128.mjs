@@ -7,13 +7,13 @@ const cfg=(id,changes={})=>({catalogChallengeId:id,catalogLine:20,catalogRounds:
 const hit=(zone,segment,pid='A')=>({zone,segment,pid});
 const fromObjective=(obj,pid='A')=>hit(obj.zone==='S'?'G':obj.zone==='NUMBER'?'G':obj.zone==='ANY'?'G':obj.zone,obj.segment??(obj.zone==='ANY'?20:null),pid);
 const progress=(id,hits=[],extras={})=>evaluateArcadeProgress(hits,cfg(id,extras),hits,'A');
-assert.equal(CHALLENGE_ARCADE_CATALOG.length,44,'42 new challenges + 2 previously agreed');
-assert.equal(new Set(CHALLENGE_ARCADE_CATALOG.map(i=>i.id)).size,44,'no duplicate IDs');
-assert.equal(CHALLENGE_ARCADE_CATALOG.filter(i=>i.status==='ready').length,44,'every mode now enabled');
-assert.equal(CHALLENGE_MODE_OPTIONS.length,51,'7 classic + 44 new, one unified selection');
+assert.equal(CHALLENGE_ARCADE_CATALOG.length,45,'42 new challenges + 2 previously agreed');
+assert.equal(new Set(CHALLENGE_ARCADE_CATALOG.map(i=>i.id)).size,45,'no duplicate IDs');
+assert.equal(CHALLENGE_ARCADE_CATALOG.filter(i=>i.status==='ready').length,45,'every mode now enabled');
+assert.equal(CHALLENGE_MODE_OPTIONS.length,52,'7 classic + 44 new, one unified selection');
 assert.equal(EXISTING_CHALLENGE_MODES.length,7);
 assert.equal(CHALLENGE_MODE_FAMILIES.length,7);
-assert.equal(CHALLENGE_MODE_OPTIONS.filter(i=>i.state==='available').length,51);
+assert.equal(CHALLENGE_MODE_OPTIONS.filter(i=>i.state==='available').length,52);
 for(const item of CHALLENGE_ARCADE_CATALOG){
  assert.ok(isArcadeChallengePlayable(item.id),item.id+' available');
  const c=cfg(item.id,{catalogRounds:3});

@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "ro",
+  "language_name": "Română",
+  "native_name": "Română",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Disponibil pe Google Play",
+    "Disponibil pe Microsoft Store"
+  ],
+  "footer": [
+    "Pentru toate nivelurile.",
+    "Pentru plăcerea jocului."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Jocul de darts, altfel.",
+      "headline": [
+        "JOACĂ.",
+        "PROGRESEAZĂ.",
+        "PROVOACĂ-TE."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 moduri de joc",
+      "section_title": "TOT UNIVERSUL DARTS ÎNTR-O SINGURĂ APLICAȚIE",
+      "feature_list": [
+        "156 moduri de joc",
+        "Provocări și antrenament",
+        "Statistici și recorduri",
+        "Boți IA și profiluri locale",
+        "Competiții și turnee",
+        "Ecrane și scoring",
+        "Gestionarea organizației",
+        "Personalizare",
+        "Urmărirea statisticilor după setul de săgeți",
+        "Univers și atmosferă Arcade"
+      ],
+      "cta": "DESCARCĂ APLICAȚIA",
+      "caption_short": "156 moduri de joc, 94 de boți IA, antrenament, statistici, gestionarea cluburilor și atmosferă arcade: Darts Scoring reunește întregul univers al dartsului într-o singură aplicație.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Aplicația completă pentru a juca, a te antrena, a te provoca și a-ți organiza competițiile.",
+      "headline": [
+        "JOACĂ.",
+        "PROGRESEAZĂ.",
+        "DOMINĂ."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 moduri de joc",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 de boți IA",
+      "section_title": "PUNCTE FORTE",
+      "feature_list": [
+        "156 moduri de joc",
+        "94 de boți IA",
+        "Provocări și antrenament",
+        "Statistici și recorduri",
+        "Boți IA și profiluri locale",
+        "Competiții și turnee",
+        "Ecrane și scoring",
+        "Gestionarea organizației (cluburi / asociații / ligi)",
+        "Personalizare",
+        "Urmărirea statisticilor după setul de săgeți",
+        "Univers și atmosferă Arcade"
+      ],
+      "cta": "DESCARCĂ APLICAȚIA",
+      "caption_short": "Progresează, antrenează-te și domină-ți meciurile cu 156 de moduri, 94 de boți IA, statistici detaliate și instrumente pentru cluburi, asociații și ligi.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Universul complet al dartsului.",
+      "headline": [
+        "APLICAȚIA CARE FACE TOTUL."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 moduri de joc",
+      "section_title": "CAMPANIE ARCADE",
+      "feature_list": [
+        "156 moduri de joc",
+        "94 de boți IA și profiluri personalizate",
+        "Centru complet de antrenament",
+        "Statistici după setul de săgeți",
+        "Gestionarea clubului / asociației / echipei",
+        "Turnee, clasamente și competiții",
+        "Personalizare completă a aplicației",
+        "Univers și atmosferă Arcade"
+      ],
+      "cta": "DESCARCĂ ACUM!",
+      "caption_short": "O versiune de campanie mai explozivă: Awena, universul arcade MSS, 156 de moduri de joc, 94 de boți IA și toate instrumentele pentru a juca, a-ți urmări statisticile și a organiza competiții.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

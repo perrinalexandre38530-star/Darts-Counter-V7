@@ -47,7 +47,7 @@ export const CHALLENGE_MODE_OPTIONS: readonly UnifiedChallengeMode[] = [
   family:item.family,
   exerciseType:'arcade',
   arcadeId:item.id,
-  icon:FAMILY_ICONS[item.family],
+  icon:item.id==='dont-break-the-chain'?'⛓':FAMILY_ICONS[item.family],
   state:item.status==='ready'?'available':'planned',
  })),
 ];

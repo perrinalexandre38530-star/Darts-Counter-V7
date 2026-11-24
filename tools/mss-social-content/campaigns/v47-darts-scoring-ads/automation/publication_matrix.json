@@ -1,0 +1,25 @@
+{
+  "schema": "mss.social.publication-matrix.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "poster_objectives": {
+    "campaign_01": [
+      "awareness",
+      "feature_explanation",
+      "organic_post"
+    ],
+    "campaign_02": [
+      "paid_acquisition",
+      "high_ctr",
+      "short_caption"
+    ],
+    "campaign_03": [
+      "brand_persona",
+      "arcade_identity",
+      "community_growth"
+    ]
+  },
+  "locale_strategy": {
+    "default": "localized_image_preferred",
+    "fallback": "french_master_plus_localized_caption"
+  }
+}

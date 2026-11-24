@@ -2130,6 +2130,6 @@ export default function ChallengePlay(props:{go:(t:any,p?:any)=>void;params?:any
  const record=params?.rec||null;
  const payload=record?.decoded||record?.payload||record?.resume?.livePayload||{};
  const cfg=params?.config||record?.resume?.config||payload?.config||null;
- if(cfg?.exerciseType==='arcade')return <ChallengeArcadePlay go={props.go} params={{...params,config:cfg}}/>;
+ if(cfg?.exerciseType==='arcade')return <ChallengeArcadePlay go={props.go} params={{...params,config:cfg}} onCompetitionFinish={props.onCompetitionFinish}/>;
  return <LegacyChallengePlay {...props}/>;
 }

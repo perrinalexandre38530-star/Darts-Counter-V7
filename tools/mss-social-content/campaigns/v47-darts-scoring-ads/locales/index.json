@@ -1,0 +1,33 @@
+{
+  "schema": "mss.social.campaign.localization-index.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "languages": [
+    "ar",
+    "cs",
+    "da",
+    "de",
+    "en",
+    "es",
+    "fr",
+    "hi",
+    "hr",
+    "is",
+    "it",
+    "ja",
+    "nl",
+    "no",
+    "pl",
+    "pt",
+    "ro",
+    "ru",
+    "sr",
+    "sv",
+    "tr",
+    "zh"
+  ],
+  "poster_ids": [
+    "campaign_01",
+    "campaign_02",
+    "campaign_03"
+  ]
+}

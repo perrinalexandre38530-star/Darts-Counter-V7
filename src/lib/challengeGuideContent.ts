@@ -88,6 +88,7 @@ export function buildChallengeGuide(choice:UnifiedChallengeMode,ctx:{target:stri
    footer:'Défi idéal pour le travail de doubles et la gestion de la pression.',
   };
  }
+ if(choice.arcadeId==='dont-break-the-chain')return {intro:arcadeRuleDescription(ctx.arcadeConfig),badges:['10 VARIANTES','67 CHAÎNES FREE HYBRIDE','SOLO · DUO · MULTI'],steps:[{eyebrow:'ÉTAPE 1',title:'Choisis ta variante',text:'Bull, simple, double, triple ou FREE HYBRIDE. Un secteur précis est configurable pour les trois familles.'},{eyebrow:'ÉTAPE 2',title:'Enchaîne tes fléchettes',text:'Chaque impact conforme ajoute un maillon. Une erreur remet uniquement la chaîne concernée à zéro ; son record reste acquis entre les volées.'},{eyebrow:'ÉTAPE 3',title:'Joue librement',text:'En FREE HYBRIDE les 67 compteurs sont indépendants. Un T20 alimente T20, tous les triples et la chaîne sans MISS.'},{eyebrow:'ÉTAPE 4',title:'Consulte tes records',text:'Le classement repose sur la meilleure chaîne principale. En FREE HYBRIDE : sans MISS. Le détail de chaque famille et secteur reste disponible.'}],footer:'Chaque chaîne possède son propre historique.'};
  const rule=arcadeRuleDetails(ctx.arcadeConfig);
  const badges=[`${rule.kind==='path'||rule.kind==='team'?'PARCOURS':'DÉFI'} · ${rule.roundUnit}`];
  if(rule.usesLine)badges.push(`DÉPART · ${ctx.arcadeConfig.catalogLine}`);

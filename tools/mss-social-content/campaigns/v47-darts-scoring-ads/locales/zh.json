@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "zh",
+  "language_name": "中文",
+  "native_name": "中文",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "可在 Google Play 获取",
+    "可在 Microsoft Store 获取"
+  ],
+  "footer": [
+    "适合所有水平。",
+    "为了游戏的乐趣。"
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "不一样的飞镖体验。",
+      "headline": [
+        "畅玩。",
+        "进步。",
+        "挑战自我。"
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 种游戏模式",
+      "section_title": "一款应用，尽享完整飞镖世界",
+      "feature_list": [
+        "156 种游戏模式",
+        "挑战与训练",
+        "数据统计与纪录",
+        "AI 机器人与本地档案",
+        "比赛与锦标赛",
+        "屏幕与计分",
+        "组织管理",
+        "个性化",
+        "按飞镖套装追踪统计数据",
+        "街机宇宙与氛围"
+      ],
+      "cta": "下载应用",
+      "caption_short": "156 种游戏模式、94 个 AI 机器人、训练、数据统计、俱乐部管理以及街机氛围：Darts Scoring 将完整飞镖世界汇聚于一款应用中。",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "一款完整的应用，用于游戏、训练、挑战自我并组织比赛。",
+      "headline": [
+        "畅玩。",
+        "进步。",
+        "主宰赛场。"
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 种游戏模式",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 个 AI 机器人",
+      "section_title": "核心亮点",
+      "feature_list": [
+        "156 种游戏模式",
+        "94 个 AI 机器人",
+        "挑战与训练",
+        "数据统计与纪录",
+        "AI 机器人与本地档案",
+        "比赛与锦标赛",
+        "屏幕与计分",
+        "组织管理（俱乐部 / 协会 / 联赛）",
+        "个性化",
+        "按飞镖套装追踪统计数据",
+        "街机宇宙与氛围"
+      ],
+      "cta": "下载应用",
+      "caption_short": "通过 156 种模式、94 个 AI 机器人、详细数据统计，以及面向俱乐部、协会和联赛的工具，不断进步、训练并主宰你的比赛。",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "完整的飞镖宇宙。",
+      "headline": [
+        "这是一款全能应用。"
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 种游戏模式",
+      "section_title": "街机宣传版",
+      "feature_list": [
+        "156 种游戏模式",
+        "94 个 AI 机器人与个性化档案",
+        "完整训练中心",
+        "按飞镖套装统计",
+        "俱乐部 / 协会 / 队伍管理",
+        "锦标赛、排行榜与比赛",
+        "完整应用个性化",
+        "街机宇宙与氛围"
+      ],
+      "cta": "立即下载！",
+      "caption_short": "更具爆发力的宣传版本：Awena、MSS 街机宇宙、156 种游戏模式、94 个 AI 机器人，以及你进行游戏、追踪数据和组织比赛所需的一切工具。",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

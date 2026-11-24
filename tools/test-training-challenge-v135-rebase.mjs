@@ -13,8 +13,8 @@ const arcade = read('src/pages/ChallengeArcadePlay.tsx');
 const cards = read('src/training/profile/trainingSessionCards.ts');
 const ui = read('src/training/ui/TrainingChallengeCatalog.tsx');
 
-assert.equal(CHALLENGE_ARCADE_CATALOG.length, 44, '44 official arcade entries');
-assert.equal(new Set(CHALLENGE_ARCADE_CATALOG.map(row => row.id)).size, 44, 'unique arcade IDs');
+assert.equal(CHALLENGE_ARCADE_CATALOG.length, 45, '44 official arcade entries');
+assert.equal(new Set(CHALLENGE_ARCADE_CATALOG.map(row => row.id)).size, 45, 'unique arcade IDs');
 assert.ok(CHALLENGE_ARCADE_CATALOG.every(row => row.status === 'ready'), 'V135 challenge states are playable');
 assert.equal((catalog.match(/\{ id: 'challenge_/g) || []).length, 12, '12 classic Challenge training presets');
 assert.match(catalog, /CHALLENGE_ARCADE_CATALOG\.map\(\(item\) =>/, 'mirror official arcade source, no stale copy');

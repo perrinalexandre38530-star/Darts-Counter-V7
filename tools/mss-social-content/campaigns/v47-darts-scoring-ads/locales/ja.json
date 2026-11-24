@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "ja",
+  "language_name": "日本語",
+  "native_name": "日本語",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Google Play で入手可能",
+    "Microsoft Store で入手可能"
+  ],
+  "footer": [
+    "すべてのレベルに。",
+    "プレイする楽しさのために。"
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "新しいダーツ体験。",
+      "headline": [
+        "遊ぶ。",
+        "上達する。",
+        "自分に挑む。"
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 のゲームモード",
+      "section_title": "ダーツのすべてを、ひとつのアプリに",
+      "feature_list": [
+        "156 のゲームモード",
+        "チャレンジ＆トレーニング",
+        "統計＆記録",
+        "AI ボット＆ローカルプロフィール",
+        "大会＆トーナメント",
+        "画面表示＆スコアリング",
+        "組織管理",
+        "カスタマイズ",
+        "ダーツセット別の統計追跡",
+        "アーケードの世界観と雰囲気"
+      ],
+      "cta": "アプリをダウンロード",
+      "caption_short": "156 のゲームモード、94 体の AI ボット、トレーニング、統計、クラブ管理、そしてアーケード感。Darts Scoring はダーツの世界をひとつのアプリに集約します。",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "プレイ、練習、挑戦、そして大会運営までこなせる完全アプリ。",
+      "headline": [
+        "遊ぶ。",
+        "上達する。",
+        "支配する。"
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 のゲームモード",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 体の AI ボット",
+      "section_title": "主な特長",
+      "feature_list": [
+        "156 のゲームモード",
+        "94 体の AI ボット",
+        "チャレンジ＆トレーニング",
+        "統計＆記録",
+        "AI ボット＆ローカルプロフィール",
+        "大会＆トーナメント",
+        "画面表示＆スコアリング",
+        "組織管理（クラブ / 協会 / リーグ）",
+        "カスタマイズ",
+        "ダーツセット別の統計追跡",
+        "アーケードの世界観と雰囲気"
+      ],
+      "cta": "アプリをダウンロード",
+      "caption_short": "156 モード、94 体の AI ボット、詳細な統計、クラブ・協会・リーグ向けのツールで、練習し、上達し、試合を支配しよう。",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "ダーツの完全なユニバース。",
+      "headline": [
+        "すべてをこなすアプリ。"
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 のゲームモード",
+      "section_title": "アーケードキャンペーン",
+      "feature_list": [
+        "156 のゲームモード",
+        "94 体の AI ボット＆カスタムプロフィール",
+        "完全なトレーニングセンター",
+        "ダーツセット別統計",
+        "クラブ / 協会 / チーム管理",
+        "トーナメント、ランキング、競技会",
+        "アプリの完全カスタマイズ",
+        "アーケードの世界観と雰囲気"
+      ],
+      "cta": "今すぐダウンロード！",
+      "caption_short": "よりインパクトの強いキャンペーン版。Awena、MSS のアーケード世界観、156 のゲームモード、94 体の AI ボット、そしてプレイ・統計追跡・大会運営に必要なすべてのツール。",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "tr",
+  "language_name": "Türkçe",
+  "native_name": "Türkçe",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Google Play’de mevcut",
+    "Microsoft Store’da mevcut"
+  ],
+  "footer": [
+    "Tüm seviyeler için.",
+    "Oyun keyfi için."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Dart oyunu, bambaşka.",
+      "headline": [
+        "OYNA.",
+        "GELİŞ.",
+        "KENDİNE MEYDAN OKU."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 oyun modu",
+      "section_title": "TÜM DART EVRENİ TEK BİR UYGULAMADA",
+      "feature_list": [
+        "156 oyun modu",
+        "Meydan okumalar ve antrenman",
+        "İstatistikler ve rekorlar",
+        "YZ botları ve yerel profiller",
+        "Yarışmalar ve turnuvalar",
+        "Ekranlar ve skor takibi",
+        "Organizasyon yönetimi",
+        "Kişiselleştirme",
+        "İstatistikleri dart setine göre takip et",
+        "Arcade evreni ve atmosferi"
+      ],
+      "cta": "UYGULAMAYI İNDİR",
+      "caption_short": "156 oyun modu, 94 YZ botu, antrenman, istatistikler, kulüp yönetimi ve arcade atmosferi: Darts Scoring tüm dart evrenini tek bir uygulamada bir araya getiriyor.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Oynamak, antrenman yapmak, kendine meydan okumak ve turnuvalarını düzenlemek için eksiksiz uygulama.",
+      "headline": [
+        "OYNA.",
+        "GELİŞ.",
+        "HAKİM OL."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 oyun modu",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 YZ botu",
+      "section_title": "ÖNE ÇIKANLAR",
+      "feature_list": [
+        "156 oyun modu",
+        "94 YZ botu",
+        "Meydan okumalar ve antrenman",
+        "İstatistikler ve rekorlar",
+        "YZ botları ve yerel profiller",
+        "Yarışmalar ve turnuvalar",
+        "Ekranlar ve skor takibi",
+        "Organizasyon yönetimi (kulüpler / dernekler / ligler)",
+        "Kişiselleştirme",
+        "İstatistikleri dart setine göre takip et",
+        "Arcade evreni ve atmosferi"
+      ],
+      "cta": "UYGULAMAYI İNDİR",
+      "caption_short": "156 mod, 94 YZ botu, detaylı istatistikler ve kulüpler, dernekler, ligler için araçlarla geliş, antrenman yap ve maçlarına hükmet.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Dartın eksiksiz evreni.",
+      "headline": [
+        "HER ŞEYİ YAPAN UYGULAMA."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 oyun modu",
+      "section_title": "ARCADE KAMPANYASI",
+      "feature_list": [
+        "156 oyun modu",
+        "94 YZ botu ve özelleştirilmiş profiller",
+        "Eksiksiz antrenman merkezi",
+        "Dart setine göre istatistikler",
+        "Kulüp / dernek / takım yönetimi",
+        "Turnuvalar, sıralamalar ve yarışmalar",
+        "Tam uygulama kişiselleştirmesi",
+        "Arcade evreni ve atmosferi"
+      ],
+      "cta": "HEMEN İNDİR!",
+      "caption_short": "Daha patlayıcı bir kampanya sürümü: Awena, MSS arcade evreni, 156 oyun modu, 94 YZ botu ve oynamak, istatistikleri takip etmek ve yarışmalar düzenlemek için tüm araçlar.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

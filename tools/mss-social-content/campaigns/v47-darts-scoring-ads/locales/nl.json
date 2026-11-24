@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "nl",
+  "language_name": "Nederlands",
+  "native_name": "Nederlands",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Beschikbaar op Google Play",
+    "Beschikbaar in de Microsoft Store"
+  ],
+  "footer": [
+    "Voor elk niveau.",
+    "Voor het plezier van het spel."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Darts, op een andere manier.",
+      "headline": [
+        "SPEEL.",
+        "GROEI.",
+        "DAAG JEZELF UIT."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spelmodi",
+      "section_title": "HET COMPLETE DARTS-UNIVERSUM IN ÉÉN APP",
+      "feature_list": [
+        "156 spelmodi",
+        "Uitdagingen & training",
+        "Statistieken & records",
+        "AI-bots & lokale profielen",
+        "Competities & toernooien",
+        "Schermen & scoring",
+        "Beheer van organisaties",
+        "Personalisatie",
+        "Statistieken volgen per dartset",
+        "Arcade-universum en -sfeer"
+      ],
+      "cta": "DOWNLOAD DE APP",
+      "caption_short": "156 spelmodi, 94 AI-bots, training, statistieken, clubbeheer en een arcade-sfeer: Darts Scoring brengt het volledige darts-universum samen in één app.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "De complete app om te spelen, trainen, jezelf uit te dagen en je competities te organiseren.",
+      "headline": [
+        "SPEEL.",
+        "GROEI.",
+        "DOMINEER."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 spelmodi",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 AI-bots",
+      "section_title": "STERKE PUNTEN",
+      "feature_list": [
+        "156 spelmodi",
+        "94 AI-bots",
+        "Uitdagingen & training",
+        "Statistieken & records",
+        "AI-bots & lokale profielen",
+        "Competities & toernooien",
+        "Schermen & scoring",
+        "Organisatiebeheer (clubs / verenigingen / competities)",
+        "Personalisatie",
+        "Statistieken volgen per dartset",
+        "Arcade-universum en -sfeer"
+      ],
+      "cta": "DOWNLOAD DE APP",
+      "caption_short": "Verbeter, train en domineer je wedstrijden met 156 modi, 94 AI-bots, gedetailleerde statistieken en tools voor clubs, verenigingen en competities.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Het complete darts-universum.",
+      "headline": [
+        "DE APP DIE ALLES DOET."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spelmodi",
+      "section_title": "ARCADE-CAMPAGNE",
+      "feature_list": [
+        "156 spelmodi",
+        "94 AI-bots & gepersonaliseerde profielen",
+        "Compleet trainingscentrum",
+        "Statistieken per dartset",
+        "Club- / verenigings- / teambeheer",
+        "Toernooien, ranglijsten en competities",
+        "Volledige app-personalisatie",
+        "Arcade-universum en -sfeer"
+      ],
+      "cta": "DOWNLOAD NU!",
+      "caption_short": "Een meer explosieve campagneversie: Awena, het MSS-arcade-universum, 156 spelmodi, 94 AI-bots en alle tools om te spelen, statistieken te volgen en competities te organiseren.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

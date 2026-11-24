@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "pl",
+  "language_name": "Polski",
+  "native_name": "Polski",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Dostępne w Google Play",
+    "Dostępne w Microsoft Store"
+  ],
+  "footer": [
+    "Dla wszystkich poziomów.",
+    "Dla przyjemności gry."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Rzutki w nowym wydaniu.",
+      "headline": [
+        "GRAJ.",
+        "ROZWIJAJ SIĘ.",
+        "PODEJMUJ WYZWANIA."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 trybów gry",
+      "section_title": "CAŁY ŚWIAT RZUTEK W JEDNEJ APLIKACJI",
+      "feature_list": [
+        "156 trybów gry",
+        "Wyzwania i trening",
+        "Statystyki i rekordy",
+        "Boty SI i profile lokalne",
+        "Zawody i turnieje",
+        "Ekrany i punktacja",
+        "Zarządzanie organizacją",
+        "Personalizacja",
+        "Śledzenie statystyk według zestawu rzutek",
+        "Świat i klimat Arcade"
+      ],
+      "cta": "POBIERZ APLIKACJĘ",
+      "caption_short": "156 trybów gry, 94 boty SI, trening, statystyki, zarządzanie klubem i klimat arcade: Darts Scoring łączy cały świat rzutek w jednej aplikacji.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Kompletna aplikacja do gry, treningu, podejmowania wyzwań i organizowania zawodów.",
+      "headline": [
+        "GRAJ.",
+        "ROZWIJAJ SIĘ.",
+        "DOMINUJ."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 trybów gry",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 boty SI",
+      "section_title": "NAJWAŻNIEJSZE ZALETY",
+      "feature_list": [
+        "156 trybów gry",
+        "94 boty SI",
+        "Wyzwania i trening",
+        "Statystyki i rekordy",
+        "Boty SI i profile lokalne",
+        "Zawody i turnieje",
+        "Ekrany i punktacja",
+        "Zarządzanie organizacją (kluby / stowarzyszenia / ligi)",
+        "Personalizacja",
+        "Śledzenie statystyk według zestawu rzutek",
+        "Świat i klimat Arcade"
+      ],
+      "cta": "POBIERZ APLIKACJĘ",
+      "caption_short": "Rozwijaj się, trenuj i dominuj dzięki 156 trybom, 94 botom SI, szczegółowym statystykom i narzędziom dla klubów, stowarzyszeń i lig.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Kompletny świat rzutek.",
+      "headline": [
+        "APLIKACJA, KTÓRA ROBI WSZYSTKO."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 trybów gry",
+      "section_title": "KAMPANIA ARCADE",
+      "feature_list": [
+        "156 trybów gry",
+        "94 boty SI i spersonalizowane profile",
+        "Kompletne centrum treningowe",
+        "Statystyki według zestawu rzutek",
+        "Zarządzanie klubem / stowarzyszeniem / drużyną",
+        "Turnieje, rankingi i zawody",
+        "Pełna personalizacja aplikacji",
+        "Świat i klimat Arcade"
+      ],
+      "cta": "POBIERZ TERAZ!",
+      "caption_short": "Bardziej wybuchowa wersja kampanii: Awena, arcade’owy świat MSS, 156 trybów gry, 94 boty SI i wszystkie narzędzia do gry, śledzenia statystyk i organizowania zawodów.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

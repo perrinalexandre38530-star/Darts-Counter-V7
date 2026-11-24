@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "sv",
+  "language_name": "Svenska",
+  "native_name": "Svenska",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Finns på Google Play",
+    "Finns i Microsoft Store"
+  ],
+  "footer": [
+    "För alla nivåer.",
+    "För spelglädjen."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Dart på ett nytt sätt.",
+      "headline": [
+        "SPELA.",
+        "UTVECKLAS.",
+        "UTMANA DIG SJÄLV."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spellägen",
+      "section_title": "HELA DARTS-UNIVERSUMET I EN ENDA APP",
+      "feature_list": [
+        "156 spellägen",
+        "Utmaningar och träning",
+        "Statistik och rekord",
+        "AI-botar och lokala profiler",
+        "Tävlingar och turneringar",
+        "Skärmar och poängräkning",
+        "Organisationshantering",
+        "Anpassning",
+        "Statistik per dartset",
+        "Arcade-universum och atmosfär"
+      ],
+      "cta": "LADDA NER APPEN",
+      "caption_short": "156 spellägen, 94 AI-botar, träning, statistik, klubbhantering och arcade-känsla: Darts Scoring samlar hela darts-universumet i en enda app.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Den kompletta appen för att spela, träna, utmana dig själv och organisera dina tävlingar.",
+      "headline": [
+        "SPELA.",
+        "UTVECKLAS.",
+        "DOMINERA."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 spellägen",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 AI-botar",
+      "section_title": "STYRKOR",
+      "feature_list": [
+        "156 spellägen",
+        "94 AI-botar",
+        "Utmaningar och träning",
+        "Statistik och rekord",
+        "AI-botar och lokala profiler",
+        "Tävlingar och turneringar",
+        "Skärmar och poängräkning",
+        "Organisationshantering (klubbar / föreningar / ligor)",
+        "Anpassning",
+        "Statistik per dartset",
+        "Arcade-universum och atmosfär"
+      ],
+      "cta": "LADDA NER APPEN",
+      "caption_short": "Utvecklas, träna och dominera dina matcher med 156 lägen, 94 AI-botar, detaljerad statistik och verktyg för klubbar, föreningar och ligor.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Det kompletta darts-universumet.",
+      "headline": [
+        "APPEN SOM GÖR ALLT."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spellägen",
+      "section_title": "ARCADE-KAMPANJ",
+      "feature_list": [
+        "156 spellägen",
+        "94 AI-botar och personliga profiler",
+        "Komplett träningscenter",
+        "Statistik per dartset",
+        "Klubb- / förenings- / laghantering",
+        "Turneringar, rankingar och tävlingar",
+        "Fullständig app-anpassning",
+        "Arcade-universum och atmosfär"
+      ],
+      "cta": "LADDA NER NU!",
+      "caption_short": "En mer explosiv kampanjversion: Awena, MSS arcade-universum, 156 spellägen, 94 AI-botar och alla verktyg för att spela, följa statistik och organisera tävlingar.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

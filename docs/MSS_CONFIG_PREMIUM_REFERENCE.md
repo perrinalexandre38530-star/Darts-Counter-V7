@@ -40,3 +40,12 @@ Version 1 — basée sur le parcours KILLER V7(43), référence de migration des
 - CAMÉRA : `CameraAssistedOverlay` après calibration, ouverture volontaire via la commande caméra ; keypad toujours accessible comme recours.
 - AUTODARTS : connexion WebSocket vers le bridge déjà configuré pour X01 ; seuls les impacts reçus et validés sont injectés. Sans bridge, ne pas présenter la connexion comme opérationnelle.
 - Les autres modes ne changent pas de moteur de scoring au titre de cette charte : migrer et vérifier chaque mode séparément.
+
+## Migration X01 — première passe (V7(46))
+
+- `X01ConfigV3.tsx` utilise désormais le bandeau réutilisable `MssGuidedConfigNav` pour les **7 étapes guidées** : numéros, barre de progression, bouton Awena (vidéo), Précédent/Suivant et accès permanent à **Complète**.
+- Le mode **Complète** conserve son sélecteur Guidée/Complète historique et la même configuration métier. Le guide ne duplique plus un deuxième bloc de navigation en bas des étapes.
+- L'étape « Participants » utilise les cartes iconographiques `MssParticipantTypeChoice` (une silhouette / trois silhouettes), sans sous-texte dans les cartes ; les sélecteurs et leurs données de partie sont inchangés.
+- Le récapitulatif de fin de guide X01 utilise les faits-clés compacts `MssConfigFact`.
+- Source de présentation transverse créée : `src/components/config/MssGuidedConfigNav.tsx`. Les composants gardent **zéro logique métier** ; toute validation de participants reste dans X01.
+- **Non migré dans cette passe** : le détail des sections avancées en vue complète, l'écran de jeu X01, les modales d'équipes et les autres modes. À vérifier visuellement en portrait/paysage et dans StackBlitz/Android avant de déclarer le mode entièrement migré.

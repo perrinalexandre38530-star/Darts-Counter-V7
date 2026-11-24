@@ -1,0 +1,65 @@
+{
+  "schema": "mss.social.campaign.v47.v1",
+  "reference_project": "Darts-Counter-V7(47).zip",
+  "status": "REVIEW_REQUIRED_NOT_SCHEDULED_NOT_PUBLISHED",
+  "project_files_modified": 0,
+  "package_json_modified": false,
+  "timestamp": "2026-11-24",
+  "campaign_name": "MSS Darts Scoring Ads Pack",
+  "campaign_path": "tools/mss-social-content/campaigns/v47-darts-scoring-ads/",
+  "assets_fr": [
+    {
+      "file": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "sha256": "e999e4d2cfcc7324fd9c30291300c19b7dfcfc9042aae187a8820daa8ccf021c",
+      "size_bytes": 3298250,
+      "resolution": "1122x1402"
+    },
+    {
+      "file": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "sha256": "a75700eeeea7bbc5490f9dc551606fb9ae41286cc07e91e815aa868ebbeb412c",
+      "size_bytes": 3133773,
+      "resolution": "1122x1402"
+    },
+    {
+      "file": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "sha256": "3d79ef11a5da8f43f6d91b74aa3c6330e16ef5b8a5d55e2f9c48bd16d6ac8563",
+      "size_bytes": 3653288,
+      "resolution": "1199x1312"
+    }
+  ],
+  "languages": [
+    "ar",
+    "cs",
+    "da",
+    "de",
+    "en",
+    "es",
+    "fr",
+    "hi",
+    "hr",
+    "is",
+    "it",
+    "ja",
+    "nl",
+    "no",
+    "pl",
+    "pt",
+    "ro",
+    "ru",
+    "sr",
+    "sv",
+    "tr",
+    "zh"
+  ],
+  "supported_language_count": 22,
+  "poster_ids": [
+    "campaign_01",
+    "campaign_02",
+    "campaign_03"
+  ],
+  "automation_files": [
+    "automation/robots_payload.json",
+    "automation/publication_matrix.json"
+  ],
+  "notes": "Three French visual masters + 22 localized copy packs for autonomous campaign diffusion robots."
+}

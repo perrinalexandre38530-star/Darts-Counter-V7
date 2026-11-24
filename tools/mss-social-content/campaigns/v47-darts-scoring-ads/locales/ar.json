@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "ar",
+  "language_name": "العربية",
+  "native_name": "العربية",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "متوفر على Google Play",
+    "متوفر على Microsoft Store"
+  ],
+  "footer": [
+    "لكل المستويات.",
+    "من أجل متعة اللعب."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "لعبة السهام بشكل مختلف.",
+      "headline": [
+        "العب.",
+        "تطوّر.",
+        "تحدَّ نفسك."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 وضع لعب",
+      "section_title": "كل عالم السهام في تطبيق واحد",
+      "feature_list": [
+        "156 وضع لعب",
+        "التحديات والتدريب",
+        "الإحصائيات والأرقام القياسية",
+        "روبوتات الذكاء الاصطناعي والملفات المحلية",
+        "المنافسات والبطولات",
+        "الشاشات وتسجيل النقاط",
+        "إدارة المنظمات",
+        "التخصيص",
+        "متابعة الإحصائيات حسب مجموعة السهام",
+        "عالم وأجواء الآركيد"
+      ],
+      "cta": "حمّل التطبيق",
+      "caption_short": "156 وضع لعب، و94 روبوت ذكاء اصطناعي، وتدريب، وإحصائيات، وإدارة للأندية وأجواء آركيد: Darts Scoring يجمع عالم السهام بالكامل في تطبيق واحد.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "التطبيق الكامل للعب والتدريب وتحدي النفس وتنظيم المنافسات.",
+      "headline": [
+        "العب.",
+        "تطوّر.",
+        "هيمن."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 وضع لعب",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 روبوت ذكاء اصطناعي",
+      "section_title": "أهم المزايا",
+      "feature_list": [
+        "156 وضع لعب",
+        "94 روبوت ذكاء اصطناعي",
+        "التحديات والتدريب",
+        "الإحصائيات والأرقام القياسية",
+        "روبوتات الذكاء الاصطناعي والملفات المحلية",
+        "المنافسات والبطولات",
+        "الشاشات وتسجيل النقاط",
+        "إدارة المنظمات (الأندية / الجمعيات / الدوريات)",
+        "التخصيص",
+        "متابعة الإحصائيات حسب مجموعة السهام",
+        "عالم وأجواء الآركيد"
+      ],
+      "cta": "حمّل التطبيق",
+      "caption_short": "تطوّر وتدرّب وهيمن على مبارياتك مع 156 وضعاً و94 روبوت ذكاء اصطناعي وإحصائيات مفصلة وأدوات للأندية والجمعيات والدوريات.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "العالم الكامل للسهام.",
+      "headline": [
+        "التطبيق الذي يفعل كل شيء."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 وضع لعب",
+      "section_title": "حملة آركيد",
+      "feature_list": [
+        "156 وضع لعب",
+        "94 روبوت ذكاء اصطناعي وملفات مخصصة",
+        "مركز تدريب متكامل",
+        "إحصائيات حسب مجموعة السهام",
+        "إدارة النادي / الجمعية / الفريق",
+        "البطولات والتصنيفات والمنافسات",
+        "تخصيص كامل للتطبيق",
+        "عالم وأجواء الآركيد"
+      ],
+      "cta": "حمّله الآن!",
+      "caption_short": "نسخة دعائية أكثر قوة: أوينا، وعالم MSS الآركيدي، و156 وضع لعب، و94 روبوت ذكاء اصطناعي، وكل الأدوات للعب ومتابعة الإحصائيات وتنظيم المنافسات.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

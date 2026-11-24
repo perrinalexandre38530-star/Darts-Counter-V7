@@ -2424,7 +2424,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
       }
       const rows=Array.from(attemptsByPlayer.entries()).map(([playerId,attempts])=>{
         const best=attempts.slice().sort((a,b)=>compareChallengeRankRows(a,b,objectiveConfig))[0]||{score:0,tieBreakPoints:0};
-        return {playerId,name:playersById[playerId]?.name||"Joueur",score:best.score,tie:Number(best.tieBreakPoints||0),attempts:attempts.length,exerciseStats:best.exerciseStats||null};
+        return {playerId,name:playersById[playerId]?.name||"Joueur",score:best.score,tie:Number(best.tieBreakPoints||0),tieBreakPoints:best.tieBreakPoints,accuracy:best.accuracy,bestStreak:best.bestStreak,bestVisit:best.bestVisit,darts:best.darts,attempts:attempts.length,exerciseStats:best.exerciseStats||null};
       }).sort((a,b)=>compareChallengeRankRows(a,b,objectiveConfig)||a.name.localeCompare(b.name));
       out[objective]=rows.map((row,index)=>({...row,rank:index+1,championshipPoints:Number(challengePointsTable[index]||0)}));
     }

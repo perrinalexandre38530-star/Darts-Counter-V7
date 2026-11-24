@@ -4,9 +4,9 @@ import {CHALLENGE_ARCADE_CATALOG,isArcadeChallengePlayable} from '../src/lib/cha
 import {CHALLENGE_MODE_OPTIONS,EXISTING_CHALLENGE_MODES,CHALLENGE_MODE_FAMILIES,selectedChallengeMode} from '../src/lib/challengeUnifiedCatalog.ts';
 import {BOARD_CLOCKWISE,arcadeObjectives,evaluateArcadeProgress,oppositeSector,currentArcadePlayer,isArcadeObjectiveHit} from '../src/lib/challengeArcadeEngine.ts';
 
-assert.equal(CHALLENGE_ARCADE_CATALOG.length,44,'42 concepts + Perfect Line + Opposés');
-assert.equal(new Set(CHALLENGE_ARCADE_CATALOG.map(x=>x.id)).size,44,'all unique');
-assert.equal(CHALLENGE_ARCADE_CATALOG.filter(x=>x.status==='ready').length,44,'all CHALLENGE arcade engines implemented');
+assert.equal(CHALLENGE_ARCADE_CATALOG.length,45,'42 concepts + Perfect Line + Opposés');
+assert.equal(new Set(CHALLENGE_ARCADE_CATALOG.map(x=>x.id)).size,45,'all unique');
+assert.equal(CHALLENGE_ARCADE_CATALOG.filter(x=>x.status==='ready').length,45,'all CHALLENGE arcade engines implemented');
 assert.ok(isArcadeChallengePlayable('perfect-line'));
 assert.ok(isArcadeChallengePlayable('opposites'));
 assert.ok(isArcadeChallengePlayable('snake'));
@@ -52,10 +52,10 @@ assert.equal(currentArcadePlayer([{pid:'A',zone:'D',segment:20}],['A','B'],oppos
 assert.equal(currentArcadePlayer([{pid:'A',zone:'MISS',segment:null},{pid:'A',zone:'MISS',segment:null},{pid:'A',zone:'MISS',segment:null}],['A','B'],opposite),'B');
 const cfg=fs.readFileSync('src/pages/ChallengeConfig.tsx','utf8');
 assert.equal(EXISTING_CHALLENGE_MODES.length,7,'existing exercises preserved');
-assert.equal(CHALLENGE_MODE_OPTIONS.length,51,'single selection: 7 historical + 44 new');
-assert.equal(new Set(CHALLENGE_MODE_OPTIONS.map(x=>x.id)).size,51,'unique choices');
+assert.equal(CHALLENGE_MODE_OPTIONS.length,52,'single selection: 7 historical + 44 new');
+assert.equal(new Set(CHALLENGE_MODE_OPTIONS.map(x=>x.id)).size,52,'unique choices');
 assert.equal(CHALLENGE_MODE_FAMILIES.length,7,'seven unified families');
-assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='available').length,51,'existing and all new modes available');
+assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='available').length,52,'existing and all new modes available');
 assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='preview').length,0,'no preview-only cards remain');
 assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='planned').length,0,'no proposed challenge stays locked');
 assert.equal(selectedChallengeMode('jdc')?.id,'jdc');

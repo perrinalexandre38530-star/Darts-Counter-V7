@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {CHAIN_ID,CHAIN_KEYS,CHAIN_VARIANTS,chainConfigKey,evaluateChains,compareChainResults} from '../src/lib/challengeChains.ts';
+import {evaluateArcadeProgress,currentArcadePlayer,compareArcadeRanks} from '../src/lib/challengeArcadeEngine.ts';
+import {CHALLENGE_MODE_OPTIONS} from '../src/lib/challengeUnifiedCatalog.ts';
+import {challengeRecordConfigKey} from '../src/lib/challengeArchiveCore.ts';
+const h=(zone,segment=null,pid='a')=>({zone,segment,pid});
+const cfg=(chainVariant='hybrid',extra={})=>({catalogChallengeId:CHAIN_ID,catalogLine:20,catalogVariant:'classic',catalogRounds:5,chainVariant,chainFormat:'rounds',chainDarts:30,...extra});
+assert.equal(CHAIN_KEYS.length,67);assert.equal(new Set(CHAIN_KEYS).size,67);assert.equal(CHAIN_VARIANTS.length,10);assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.arcadeId===CHAIN_ID).length,1);
+const hits=[h('G',20),h('P',20),h('G',18),h('G',5),h('T',20),h('T',20),h('T',19),h('D',16),h('D',16),h('BULL'),h('DBULL'),h('BULL')];
+const stats=evaluateChains(hits,cfg()).stats;
+for(const [key,value] of Object.entries({HIT:12,S:4,S20:2,T:3,T20:2,D:2,D16:2,BULL:3,'25':1,'50':1}))assert.equal(stats[key].best,value,key);
+assert.deepEqual(stats['25'].runs,[1,1]);assert.equal(stats['25'].breaks,1);assert.equal(stats.BULL.current,3);assert.equal(stats.T.current,0);assert.equal(stats.S20.distribution[2],1);
+const miss=evaluateChains([...hits,h('MISS')],cfg());assert.equal(miss.primary.current,0);assert.equal(miss.primary.best,12);assert.equal(miss.stats.BULL.current,0);assert.equal(miss.stats.BULL.breaks,1);
+for(const [variant,key,good,bad] of [['bull50','50',h('DBULL'),h('BULL')],['bull25','25',h('BULL'),h('DBULL')],['bull','BULL',h('BULL'),h('D',20)],['triple-fixed','T20',h('T',20),h('T',19)],['triples','T',h('T',19),h('D',19)],['double-fixed','D20',h('D',20),h('D',19)],['doubles','D',h('D',19),h('DBULL')],['single-fixed','S20',h('P',20),h('G',19)],['singles','S',h('G',2),h('BULL')]]){const r=evaluateChains([good,good,good,good,bad,good],cfg(variant));assert.equal(r.stats[key].best,4,variant);assert.equal(r.primary.current,1);assert.equal(r.primary.breaks,1);assert.deepEqual(r.primary.runs,[4,1]);}
+const triple=cfg('triples',{chainDarts:7});const t=Array.from({length:9},()=>h('T',20));assert.equal(evaluateArcadeProgress(t,triple).score,7);assert.equal(evaluateArcadeProgress(t,triple).attempts,7);assert.equal(evaluateArcadeProgress(t.slice(0,6),triple).complete,false);assert.equal(evaluateArcadeProgress(t,triple).complete,true);
+const single=cfg('bull50',{chainFormat:'single'});assert.equal(evaluateArcadeProgress([h('DBULL'),h('BULL'),h('DBULL')],single).attempts,2);assert.equal(evaluateArcadeProgress([h('MISS')],single).score,0);
+const goal=cfg('triples',{chainFormat:'goal',chainGoal:2});assert.equal(evaluateArcadeProgress(t,goal).attempts,2);assert.equal(evaluateArcadeProgress(t,goal).complete,true);
+const free=cfg('hybrid',{chainFormat:'free'});assert.equal(evaluateArcadeProgress(t,free).complete,false);assert.equal(evaluateArcadeProgress(t,{...free,chainEnded:true}).complete,true);
+const a=[h('T',20),h('T',19),h('T',1)],b=[h('G',1,'b'),h('G',2,'b'),h('G',3,'b')];const multi=cfg('triples',{chainDarts:6});assert.equal(currentArcadePlayer(a,['a','b'],multi),'b');assert.equal(currentArcadePlayer([...a,...b],['a','b'],multi),'a');assert.equal(evaluateArcadeProgress([...a,h('T',5)],multi).bestStreak,4);assert.equal(evaluateArcadeProgress(b,multi).score,0);
+const aa=evaluateChains([h('T',1),h('T',1),h('MISS'),h('T',1),h('T',1)],cfg('triples'));const bb=evaluateChains([h('T',1),h('T',1),h('MISS'),h('T',1),h('MISS')],cfg('triples'));assert.ok(compareChainResults(aa,bb)<0);assert.ok(compareArcadeRanks(evaluateArcadeProgress(a,multi),evaluateArcadeProgress(b,multi),multi)<0);
+assert.notEqual(chainConfigKey(cfg('double-fixed')),chainConfigKey(cfg('double-fixed',{catalogLine:19})));assert.equal(chainConfigKey(cfg('doubles')),chainConfigKey(cfg('doubles',{catalogLine:19})));assert.notEqual(chainConfigKey(cfg('doubles',{chainDarts:30})),chainConfigKey(cfg('doubles',{chainDarts:60})));assert.notEqual(chainConfigKey(cfg('doubles',{chainFormat:'free'})),chainConfigKey(cfg('doubles',{chainFormat:'single'})));
+const rec=c=>({kind:'challenge',payload:{config:{...c,exerciseType:'arcade'}}});assert.notEqual(challengeRecordConfigKey(rec(cfg('bull25'))),challengeRecordConfigKey(rec(cfg('bull50'))));
+assert.deepEqual(evaluateChains(hits,cfg()),evaluateChains([...hits,h('MISS')].slice(0,-1),cfg()));
+console.log('✅ CHAÎNES : 10 variantes, 67 compteurs, ruptures, volées, limites, objectif, libre, duel, départage, reprise/annulation, clés de records');

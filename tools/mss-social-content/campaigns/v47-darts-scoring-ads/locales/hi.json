@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "hi",
+  "language_name": "हिन्दी",
+  "native_name": "हिन्दी",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Google Play पर उपलब्ध",
+    "Microsoft Store पर उपलब्ध"
+  ],
+  "footer": [
+    "हर स्तर के लिए।",
+    "खेलने की खुशी के लिए।"
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "डार्ट्स, एक नए अंदाज़ में।",
+      "headline": [
+        "खेलो।",
+        "बेहतर बनो।",
+        "खुद को चुनौती दो।"
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 गेम मोड",
+      "section_title": "पूरा डार्ट्स संसार एक ही ऐप में",
+      "feature_list": [
+        "156 गेम मोड",
+        "चुनौतियाँ और प्रशिक्षण",
+        "आँकड़े और रिकॉर्ड",
+        "AI बॉट्स और लोकल प्रोफाइल",
+        "प्रतियोगिताएँ और टूर्नामेंट",
+        "स्क्रीन और स्कोरिंग",
+        "संगठन प्रबंधन",
+        "कस्टमाइज़ेशन",
+        "डार्टसेट के अनुसार आँकड़ों की ट्रैकिंग",
+        "आर्केड दुनिया और माहौल"
+      ],
+      "cta": "ऐप डाउनलोड करें",
+      "caption_short": "156 गेम मोड, 94 AI बॉट्स, प्रशिक्षण, आँकड़े, क्लब प्रबंधन और आर्केड माहौल: Darts Scoring पूरे डार्ट्स संसार को एक ही ऐप में लाता है।",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "खेलने, अभ्यास करने, खुद को चुनौती देने और प्रतियोगिताएँ आयोजित करने के लिए संपूर्ण ऐप।",
+      "headline": [
+        "खेलो।",
+        "आगे बढ़ो।",
+        "दबदबा बनाओ।"
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 गेम मोड",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 AI बॉट्स",
+      "section_title": "मुख्य खूबियाँ",
+      "feature_list": [
+        "156 गेम मोड",
+        "94 AI बॉट्स",
+        "चुनौतियाँ और प्रशिक्षण",
+        "आँकड़े और रिकॉर्ड",
+        "AI बॉट्स और लोकल प्रोफाइल",
+        "प्रतियोगिताएँ और टूर्नामेंट",
+        "स्क्रीन और स्कोरिंग",
+        "संगठन प्रबंधन (क्लब / एसोसिएशन / लीग)",
+        "कस्टमाइज़ेशन",
+        "डार्टसेट के अनुसार आँकड़ों की ट्रैकिंग",
+        "आर्केड दुनिया और माहौल"
+      ],
+      "cta": "ऐप डाउनलोड करें",
+      "caption_short": "156 मोड, 94 AI बॉट्स, विस्तृत आँकड़ों और क्लबों, एसोसिएशनों व लीगों के लिए टूल्स के साथ प्रगति करो, अभ्यास करो और अपने मैचों पर हावी हो जाओ।",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "डार्ट्स की पूरी दुनिया।",
+      "headline": [
+        "वह ऐप जो सब कुछ करता है।"
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 गेम मोड",
+      "section_title": "आर्केड अभियान",
+      "feature_list": [
+        "156 गेम मोड",
+        "94 AI बॉट्स और कस्टम प्रोफाइल",
+        "पूर्ण प्रशिक्षण केंद्र",
+        "डार्टसेट के अनुसार आँकड़े",
+        "क्लब / एसोसिएशन / टीम प्रबंधन",
+        "टूर्नामेंट, रैंकिंग और प्रतियोगिताएँ",
+        "ऐप का पूर्ण कस्टमाइज़ेशन",
+        "आर्केड दुनिया और माहौल"
+      ],
+      "cta": "अभी डाउनलोड करें!",
+      "caption_short": "एक और भी दमदार अभियान संस्करण: Awena, MSS आर्केड दुनिया, 156 गेम मोड, 94 AI बॉट्स और खेलने, आँकड़े ट्रैक करने और प्रतियोगिताएँ आयोजित करने के लिए सभी टूल्स।",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

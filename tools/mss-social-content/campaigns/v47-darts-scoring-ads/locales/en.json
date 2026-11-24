@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "en",
+  "language_name": "English",
+  "native_name": "English",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Available on Google Play",
+    "Available on Microsoft Store"
+  ],
+  "footer": [
+    "For all skill levels.",
+    "For the joy of playing."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Darts, reimagined.",
+      "headline": [
+        "PLAY.",
+        "PROGRESS.",
+        "CHALLENGE YOURSELF."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 game modes",
+      "section_title": "THE COMPLETE DARTS UNIVERSE IN A SINGLE APP",
+      "feature_list": [
+        "156 game modes",
+        "Challenges & Training",
+        "Stats & Records",
+        "AI Bots & Local Profiles",
+        "Competitions & Tournaments",
+        "Screens & Scoring",
+        "Organization Management",
+        "Customization",
+        "Track stats by dart set",
+        "Arcade universe and atmosphere"
+      ],
+      "cta": "DOWNLOAD THE APP",
+      "caption_short": "156 game modes, 94 AI bots, training, stats, club management and an arcade vibe: Darts Scoring brings the whole darts universe into a single app.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#DartsApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "The complete app to play, train, challenge yourself and organize your competitions.",
+      "headline": [
+        "PLAY.",
+        "PROGRESS.",
+        "DOMINATE."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 game modes",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "AI Bots",
+      "section_title": "KEY HIGHLIGHTS",
+      "feature_list": [
+        "156 game modes",
+        "94 AI bots",
+        "Challenges & Training",
+        "Stats & Records",
+        "AI Bots & Local Profiles",
+        "Competitions & Tournaments",
+        "Screens & Scoring",
+        "Organization management (clubs / associations / leagues)",
+        "Customization",
+        "Track stats by dart set",
+        "Arcade universe and atmosphere"
+      ],
+      "cta": "DOWNLOAD THE APP",
+      "caption_short": "Improve, train and dominate your matches with 156 modes, 94 AI bots, detailed stats and tools built for clubs, associations and leagues.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#DartsApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "The complete darts universe.",
+      "headline": [
+        "THE APP THAT DOES IT ALL."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 game modes",
+      "section_title": "ARCADE CAMPAIGN",
+      "feature_list": [
+        "156 game modes",
+        "94 AI bots & custom profiles",
+        "Complete training center",
+        "Stats by dart set",
+        "Club / association / team management",
+        "Tournaments, rankings and competitions",
+        "Complete app customization",
+        "Arcade universe and atmosphere"
+      ],
+      "cta": "DOWNLOAD NOW!",
+      "caption_short": "A more explosive campaign version: Awena, the MSS arcade universe, 156 game modes, 94 AI bots and every tool you need to play, track stats and organize competitions.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#DartsApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

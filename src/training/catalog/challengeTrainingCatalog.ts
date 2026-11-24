@@ -66,6 +66,7 @@ export const CHALLENGE_TRAINING_ARCADE_CATALOG: ChallengeTrainingPreset[] = CHAL
   config: {
     exerciseType: 'arcade', target: '20', rule: 'all', visits: 5,
     catalogChallengeId: item.id, catalogLine: 20, catalogVariant: 'classic', catalogRounds: 5,
+    ...(item.id==='dont-break-the-chain'?{chainVariant:'hybrid' as const,chainFormat:'rounds' as const,chainDarts:30,chainGoal:10,visits:10}:{}),
   },
 }));
 export const CHALLENGE_TRAINING_ALL: ChallengeTrainingPreset[] = [

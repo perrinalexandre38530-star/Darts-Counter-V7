@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "no",
+  "language_name": "Norsk",
+  "native_name": "Norsk",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Tilgjengelig på Google Play",
+    "Tilgjengelig i Microsoft Store"
+  ],
+  "footer": [
+    "For alle nivåer.",
+    "For gleden ved å spille."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Dart, på en annen måte.",
+      "headline": [
+        "SPILL.",
+        "UTVIKLE DEG.",
+        "UTFORDRE DEG SELV."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spillmoduser",
+      "section_title": "HELE DARTS-UNIVERSET I ÉN APP",
+      "feature_list": [
+        "156 spillmoduser",
+        "Utfordringer og trening",
+        "Statistikk og rekorder",
+        "AI-boter og lokale profiler",
+        "Konkurranser og turneringer",
+        "Skjermer og scoring",
+        "Organisasjonsstyring",
+        "Tilpasning",
+        "Statistikk per dartsett",
+        "Arcade-univers og stemning"
+      ],
+      "cta": "LAST NED APPEN",
+      "caption_short": "156 spillmoduser, 94 AI-boter, trening, statistikk, klubbadministrasjon og arcade-stemning: Darts Scoring samler hele darts-universet i én app.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Den komplette appen for å spille, trene, utfordre deg selv og organisere konkurranser.",
+      "headline": [
+        "SPILL.",
+        "UTVIKLE DEG.",
+        "DOMINER."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 spillmoduser",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 AI-boter",
+      "section_title": "HØYDEPUNKTER",
+      "feature_list": [
+        "156 spillmoduser",
+        "94 AI-boter",
+        "Utfordringer og trening",
+        "Statistikk og rekorder",
+        "AI-boter og lokale profiler",
+        "Konkurranser og turneringer",
+        "Skjermer og scoring",
+        "Organisasjonsstyring (klubber / foreninger / ligaer)",
+        "Tilpasning",
+        "Statistikk per dartsett",
+        "Arcade-univers og stemning"
+      ],
+      "cta": "LAST NED APPEN",
+      "caption_short": "Bli bedre, tren og dominer kampene dine med 156 moduser, 94 AI-boter, detaljert statistikk og verktøy for klubber, foreninger og ligaer.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Det komplette darts-universet.",
+      "headline": [
+        "APPEN SOM GJØR ALT."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spillmoduser",
+      "section_title": "ARCADE-KAMPANJE",
+      "feature_list": [
+        "156 spillmoduser",
+        "94 AI-boter og tilpassede profiler",
+        "Komplett treningssenter",
+        "Statistikk per dartsett",
+        "Klubb- / forenings- / lagstyring",
+        "Turneringer, rangeringer og konkurranser",
+        "Full app-tilpasning",
+        "Arcade-univers og stemning"
+      ],
+      "cta": "LAST NED NÅ!",
+      "caption_short": "En mer eksplosiv kampanjeversjon: Awena, MSS-arcade-universet, 156 spillmoduser, 94 AI-boter og alle verktøyene du trenger for å spille, følge statistikk og organisere konkurranser.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

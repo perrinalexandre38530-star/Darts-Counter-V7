@@ -377,7 +377,7 @@ function KillerRecapHeading({ children, accent = "#f7c85c" }: { children: React.
 /** Sélecteur de vies : chiffre DANS le cœur, + dans un médaillon superposé en bas à droite.
  * L'ensemble est un seul bouton (pas de signe + isolé entre les choix).
  */
-function HeartLivesButton({ value, active, onClick, primary }: { value: number; active: boolean; onClick: () => void; primary: string }) {
+function HeartLivesButton({ value, active, onClick, primary, fluid = false }: { value: number; active: boolean; onClick: () => void; primary: string; fluid?: boolean }) {
   const stroke = active ? primary : `${primary}99`;
   return (
     <button
@@ -388,8 +388,11 @@ function HeartLivesButton({ value, active, onClick, primary }: { value: number; 
       onClick={onClick}
       style={{
         flex: "0 0 auto",
-        width: 53,
-        height: 47,
+        width: fluid ? "100%" : 53,
+        maxWidth: 53,
+        height: fluid ? "auto" : 47,
+        aspectRatio: fluid ? "53 / 47" : undefined,
+        minWidth: 0,
         padding: 0,
         border: "none",
         borderRadius: 10,
@@ -401,7 +404,7 @@ function HeartLivesButton({ value, active, onClick, primary }: { value: number; 
         WebkitTapHighlightColor: "transparent",
       }}
     >
-      <svg aria-hidden="true" viewBox="0 0 60 52" width="53" height="47" fill="none">
+      <svg aria-hidden="true" viewBox="0 0 60 52" width={fluid ? "100%" : 53} height={fluid ? "auto" : 47} fill="none">
         <path
           d="M26 45.4 22 41.8C12.4 33.3 5.5 27.1 5.5 18.4c0-6.7 5.2-11.8 11.6-11.8 3.7 0 7.2 1.8 9.4 4.7 2.2-2.9 5.7-4.7 9.4-4.7 6.4 0 11.6 5.1 11.6 11.8 0 8.7-6.9 14.9-16.5 23.4L26 45.4Z"
           fill={active ? primary : "#0c111f"}
@@ -2802,8 +2805,8 @@ export default function KillerConfigPage(props: Props) {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong style={{ color: primary, fontSize: 12, letterSpacing: .9 }}>OPTIONS DU</strong>
                     <KeypadBullBadge kind="sbull" />
-                    <strong style={{ color: primary, fontSize: 12, letterSpacing: .9 }}>OPTIONS DU 1/2 BULL</strong>
                     <button type="button" aria-label="Informations 1/2 BULL" onClick={() => setResInfo({ title: "1/2 BULL (BULL25)", text: "Le 1/2 BULL correspond au bull extérieur vert. Tu peux lui attribuer une fonction simple (dégâts ou soins). Si la rotation est active, plusieurs fonctions peuvent cohabiter et alterner." })} style={{ width: 23, height: 23, borderRadius: 99, border: `1px solid ${primary}77`, background: "transparent", color: primary, cursor: "pointer", fontWeight: 900 }}>i</button>
                   </div>
 
@@ -2854,8 +2857,8 @@ export default function KillerConfigPage(props: Props) {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong style={{ color: primary, fontSize: 12, letterSpacing: .9 }}>OPTIONS DU</strong>
                     <KeypadBullBadge kind="dbull" />
-                    <strong style={{ color: primary, fontSize: 12, letterSpacing: .9 }}>OPTIONS DU BULL</strong>
                     <button type="button" aria-label="Informations BULL50" onClick={() => setResInfo({ title: "BULL50", text: "Le BULL50 correspond au centre rouge, aussi appelé DBULL. Tu peux lui attribuer des dégâts de zone, un bouclier, des soins max ou un désarmement. Si la rotation est activée, plusieurs fonctions peuvent être retenues et alterner." })} style={{ width: 23, height: 23, borderRadius: 99, border: `1px solid ${primary}77`, background: "transparent", color: primary, cursor: "pointer", fontWeight: 900 }}>i</button>
                   </div>
 
@@ -2985,9 +2988,9 @@ export default function KillerConfigPage(props: Props) {
                   </span>
                 </div>
                 {resurrectionMode !== "off" && (
-                  <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                  <div role="group" aria-label="Vies rendues à la résurrection" style={{ margin: "12px auto 0", display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", justifyItems: "center", gap: 2, width: "100%", maxWidth: 348 }}>
                     {[1,2,3,4,5,6].map((n) => (
-                      <HeartLivesButton key={n} value={n} active={resurrectionLives === n} onClick={() => setResurrectionLives(n)} primary={primary} />
+                      <HeartLivesButton key={n} value={n} active={resurrectionLives === n} onClick={() => setResurrectionLives(n)} primary={primary} fluid />
                     ))}
                   </div>
                 )}

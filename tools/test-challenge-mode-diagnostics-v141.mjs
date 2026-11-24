@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {buildChallengeModeDiagnostics} from '../src/lib/challengeModeDiagnostics.ts';
 import {CHALLENGE_MODE_OPTIONS} from '../src/lib/challengeUnifiedCatalog.ts';
 const make=(id,modeId,config,entries,extra={})=>({id,modeId,title:modeId,configKey:JSON.stringify(config),configLabel:'test',playedAt:1000,score:100,darts:entries?.length||0,successful:0,accuracy:0,bestStreak:0,status:'finished',playerId:'P1',playerName:'Test',record:{summary:{perPlayer:[{id:'P1',name:'Test'}]},payload:{config,entries}},...extra});
-assert.equal(CHALLENGE_MODE_OPTIONS.length,51);
+assert.equal(CHALLENGE_MODE_OPTIONS.length,52);
 const c={catalogChallengeId:'perfect-line',catalogLine:20,catalogVariant:'classic',catalogRounds:5};
 const steps=[['D',20],['G',20],['T',20],['P',20],['BULL',null],['DBULL',null]];
 const hits=[{pid:'P1',zone:'MISS',segment:null},...steps.map(([zone,segment])=>({pid:'P1',zone,segment}))];

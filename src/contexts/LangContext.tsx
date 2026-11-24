@@ -5,6 +5,7 @@
 
 import React from "react";
 import { DICT } from "../i18n";
+import { CHAIN_UI_TRANSLATIONS } from "../i18n/challengeChainTranslations";
 import {
   createUiLiteralTranslator,
   getUiLiteralSourceLanguage,
@@ -106,6 +107,7 @@ const DICT_ANY = DICT as any;
 
 // Register authored UI sources application-wide before the first DOM scan.
 registerCoreUiLiteralTranslations();
+for(const [lang,labels] of Object.entries(CHAIN_UI_TRANSLATIONS)) for(const [source,value] of Object.entries(labels)) if(lang!=="fr"&&value) registerUiLiteralTranslation(source,"fr",lang,value);
 // The feature registries stay loaded too because they contain hand-authored EN/ES translations.
 registerAppUiLiteralSources();
 registerConfigUiLiteralSources();

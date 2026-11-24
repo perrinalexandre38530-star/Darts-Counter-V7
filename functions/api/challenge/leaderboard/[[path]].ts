@@ -3,6 +3,8 @@
 // Supabase reste utilisé pour l'authentification et, pendant la transition,
 // comme source de migration lazy des anciens classements/détails.
 
+import { chainSubmissionBatch } from '../../../../src/lib/challengeChainSubmission.ts';
+
 interface Env {
   CHALLENGE_DB?: D1Database;
   USER_DATA_BUCKET?: R2Bucket;
@@ -448,6 +450,10 @@ async function submitScope(env: Env, db: D1Database, bucket: R2Bucket | undefine
   const current = await db.prepare(`SELECT * FROM challenge_best_scores WHERE objective_key=?1 AND scope_key=?2 AND user_id=?3 LIMIT 1`)
     .bind(key, scopeKey, userId).first();
 
+  const verifiedChain = input?.stats?.chainEvidenceVersion === 1;
+  if (verifiedChain && receipt && current) return {improved:false,bestScore:Number(current.score),playedCount:Number(current.played_count)};
+  const mutations = [];
+  const write = async (statement) => { if (verifiedChain) mutations.push(statement); else await statement.run(); };
   const candidate = {
     score: Math.max(0, int(input?.score, 0)),
     darts: Math.max(0, int(input?.darts, 0)),
@@ -491,7 +497,7 @@ async function submitScope(env: Env, db: D1Database, bucket: R2Bucket | undefine
   const playedCount = Math.max(1, Number(current?.played_count || 0) + (receipt ? 0 : 1));
 
   if (!current) {
-    await db.prepare(`
+    await write(db.prepare(`
       INSERT INTO challenge_best_scores(
         objective_key, scope_key, user_id, display_name, avatar_url, country_code,
         target, rule, visits, score, darts, best_streak, accuracy, played_count,
@@ -502,9 +508,9 @@ async function submitScope(env: Env, db: D1Database, bucket: R2Bucket | undefine
       objective.target, objective.rule, objective.visits,
       candidate.score, candidate.darts, candidate.bestStreak, candidate.accuracy, playedCount,
       matchId, statsKey, detailState, timestamp,
-    ).run();
+    ));
   } else if (improved) {
-    await db.prepare(`
+    await write(db.prepare(`
       UPDATE challenge_best_scores SET
         display_name=?1, avatar_url=?2, country_code=?3,
         target=?4, rule=?5, visits=?6,
@@ -517,11 +523,11 @@ async function submitScope(env: Env, db: D1Database, bucket: R2Bucket | undefine
       candidate.score, candidate.darts, candidate.bestStreak, candidate.accuracy, playedCount,
       matchId, statsKey, detailState, timestamp,
       key, scopeKey, userId,
-    ).run();
+    ));
   } else {
     // Même sans nouveau record, le profil public peut avoir changé. Ne jamais
     // laisser l'avatar attaché au jour où le best score a été réalisé.
-    await db.prepare(`
+    await write(db.prepare(`
       UPDATE challenge_best_scores SET
         display_name=CASE WHEN length(?1)>0 THEN ?1 ELSE display_name END,
         avatar_url=?2,
@@ -532,13 +538,15 @@ async function submitScope(env: Env, db: D1Database, bucket: R2Bucket | undefine
     `).bind(
       clean(input?.displayName), clean(input?.avatarUrl), clean(input?.countryCode).toUpperCase(),
       playedCount, receipt ? 1 : 0, timestamp, key, scopeKey, userId,
-    ).run();
+    ));
   }
 
   if (!receipt) {
-    await db.prepare(`INSERT OR IGNORE INTO challenge_submission_receipts(user_id, objective_key, scope_key, match_id, submitted_at) VALUES(?1,?2,?3,?4,?5)`)
-      .bind(userId, key, scopeKey, matchId, timestamp).run();
+    await write(db.prepare(`INSERT OR IGNORE INTO challenge_submission_receipts(user_id, objective_key, scope_key, match_id, submitted_at) VALUES(?1,?2,?3,?4,?5)`)
+      .bind(userId, key, scopeKey, matchId, timestamp));
   }
+
+  if (verifiedChain && mutations.length) await db.batch(mutations);
 
   if (improved && previousStatsKey && previousStatsKey !== statsKey && bucket) {
     // Scope-specific keys: safe to delete the former best detail for this scope.
@@ -597,9 +605,33 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       });
     }
 
+    // Bounded batches: one authentication and one replay of the evidence per batch.
+    // Legacy /submit remains compatible with already deployed clients.
+    if (method === 'POST' && parts[0] === 'chain-submit') {
+      if (!env.USER_DATA_BUCKET) return json({ok:false,code:'challenge_r2_not_configured'},503);
+      const body = await request.json().catch(() => ({}));
+      const matchId = safe(body?.matchId).slice(0,160);
+      if (!matchId) return json({ok:false,code:'match_id_required'},400);
+      const batch = chainSubmissionBatch(body);
+      const results = [];
+      for (const performance of batch) {
+        const input = {...performance,matchId,displayName:clean(body.displayName,'Joueur'),avatarUrl:body.avatarUrl||null,countryCode:body.countryCode||null};
+        try {
+          const result = await submitScope(env,db,env.USER_DATA_BUCKET,identity,input,objectiveFrom(input),'public');
+          results.push({key:performance.stats.chainCategory,ok:true,...result});
+        } catch (error) {
+          // A retry can safely replay already acknowledged objectives via their match receipts.
+          console.warn('[challenge] chain batch objective failed',performance.stats.chainCategory,error);
+          results.push({key:performance.stats.chainCategory,ok:false});
+        }
+      }
+      return json({ok:results.every(r=>r.ok),results,backend:'cloudflare-d1-r2-chain-v1'});
+    }
+
     if (method === 'POST' && parts[0] === 'submit') {
       if (!env.USER_DATA_BUCKET) return json({ ok: false, code: 'challenge_r2_not_configured', error: 'Binding R2 USER_DATA_BUCKET manquant.' }, 503);
       const body: any = await request.json().catch(() => ({}));
+      if (body?.stats?.chainEvidenceVersion) delete body.stats.chainEvidenceVersion;
       const objective = objectiveFrom(body);
       const requestedTeams = (Array.isArray(body?.teams) ? body.teams : []).map((team: any) => clean(team?.key)).filter(Boolean);
       const scopes = [{ scopeKey: 'public', teamName: '' }];

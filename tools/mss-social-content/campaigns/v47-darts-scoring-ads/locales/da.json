@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "da",
+  "language_name": "Dansk",
+  "native_name": "Dansk",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Tilgængelig på Google Play",
+    "Tilgængelig i Microsoft Store"
+  ],
+  "footer": [
+    "For alle niveauer.",
+    "For glæden ved at spille."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Dart på en anden måde.",
+      "headline": [
+        "SPIL.",
+        "UDVIKL DIG.",
+        "UDFORDR DIG SELV."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spiltilstande",
+      "section_title": "HELE DART-UNIVERSET I ÉN ENESTE APP",
+      "feature_list": [
+        "156 spiltilstande",
+        "Udfordringer & træning",
+        "Statistik & rekorder",
+        "AI-bots & lokale profiler",
+        "Konkurrencer & turneringer",
+        "Skærme & scoring",
+        "Organisationsstyring",
+        "Tilpasning",
+        "Statistik efter dart-sæt",
+        "Arcade-univers og stemning"
+      ],
+      "cta": "DOWNLOAD APPEN",
+      "caption_short": "156 spiltilstande, 94 AI-bots, træning, statistik, klubstyring og arcade-stemning: Darts Scoring samler hele dart-universet i én app.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Den komplette app til at spille, træne, udfordre dig selv og organisere dine konkurrencer.",
+      "headline": [
+        "SPIL.",
+        "UDVIKL DIG.",
+        "DOMINÉR."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 spiltilstande",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 AI-bots",
+      "section_title": "STYRKER",
+      "feature_list": [
+        "156 spiltilstande",
+        "94 AI-bots",
+        "Udfordringer & træning",
+        "Statistik & rekorder",
+        "AI-bots & lokale profiler",
+        "Konkurrencer & turneringer",
+        "Skærme & scoring",
+        "Organisationsstyring (klubber / foreninger / ligaer)",
+        "Tilpasning",
+        "Statistik efter dart-sæt",
+        "Arcade-univers og stemning"
+      ],
+      "cta": "DOWNLOAD APPEN",
+      "caption_short": "Udvikl dig, træn og dominér dine kampe med 156 tilstande, 94 AI-bots, detaljeret statistik og værktøjer til klubber, foreninger og ligaer.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Det komplette dart-univers.",
+      "headline": [
+        "APPEN DER GØR DET HELE."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 spiltilstande",
+      "section_title": "ARCADE-KAMPAGNE",
+      "feature_list": [
+        "156 spiltilstande",
+        "94 AI-bots & personlige profiler",
+        "Komplet træningscenter",
+        "Statistik efter dart-sæt",
+        "Klub- / forenings- / teamstyring",
+        "Turneringer, ranglister og konkurrencer",
+        "Fuld app-tilpasning",
+        "Arcade-univers og stemning"
+      ],
+      "cta": "DOWNLOAD NU!",
+      "caption_short": "En mere eksplosiv kampagneversion: Awena, MSS-arcade-universet, 156 spiltilstande, 94 AI-bots og alle værktøjer til at spille, følge statistik og organisere konkurrencer.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

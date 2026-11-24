@@ -1,0 +1,1 @@
+See README.md and manifest.json in this folder.

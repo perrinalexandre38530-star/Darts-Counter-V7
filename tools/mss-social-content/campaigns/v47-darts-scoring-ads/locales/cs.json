@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "cs",
+  "language_name": "Čeština",
+  "native_name": "Čeština",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Dostupné na Google Play",
+    "Dostupné v Microsoft Store"
+  ],
+  "footer": [
+    "Pro všechny úrovně.",
+    "Pro radost ze hry."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Šipky jinak.",
+      "headline": [
+        "HRAJ.",
+        "ZLEPŠUJ SE.",
+        "VYZVI SÁM SEBE."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 herních režimů",
+      "section_title": "CELÝ SVĚT ŠIPEK V JEDINÉ APLIKACI",
+      "feature_list": [
+        "156 herních režimů",
+        "Výzvy a trénink",
+        "Statistiky a rekordy",
+        "AI boti a místní profily",
+        "Soutěže a turnaje",
+        "Obrazovky a skórování",
+        "Správa organizace",
+        "Přizpůsobení",
+        "Sledování statistik podle sady šipek",
+        "Arcade svět a atmosféra"
+      ],
+      "cta": "STÁHNOUT APLIKACI",
+      "caption_short": "156 herních režimů, 94 AI botů, trénink, statistiky, správa klubů a arcade atmosféra: Darts Scoring spojuje celý svět šipek v jediné aplikaci.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Kompletní aplikace pro hraní, trénink, výzvy a organizaci soutěží.",
+      "headline": [
+        "HRAJ.",
+        "ZLEPŠUJ SE.",
+        "OVLÁDNI TO."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 herních režimů",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 AI botů",
+      "section_title": "HLAVNÍ PŘEDNOSTI",
+      "feature_list": [
+        "156 herních režimů",
+        "94 AI botů",
+        "Výzvy a trénink",
+        "Statistiky a rekordy",
+        "AI boti a místní profily",
+        "Soutěže a turnaje",
+        "Obrazovky a skórování",
+        "Správa organizace (kluby / asociace / ligy)",
+        "Přizpůsobení",
+        "Sledování statistik podle sady šipek",
+        "Arcade svět a atmosféra"
+      ],
+      "cta": "STÁHNOUT APLIKACI",
+      "caption_short": "Zlepšuj se, trénuj a dominuj svým zápasům se 156 režimy, 94 AI boty, podrobnými statistikami a nástroji pro kluby, asociace a ligy.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Kompletní svět šipek.",
+      "headline": [
+        "APLIKACE, KTERÁ ZVLÁDNE VŠE."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 herních režimů",
+      "section_title": "ARCADE KAMPAŇ",
+      "feature_list": [
+        "156 herních režimů",
+        "94 AI botů a personalizované profily",
+        "Kompletní tréninkové centrum",
+        "Statistiky podle sady šipek",
+        "Správa klubu / asociace / týmu",
+        "Turnaje, žebříčky a soutěže",
+        "Úplné přizpůsobení aplikace",
+        "Arcade svět a atmosféra"
+      ],
+      "cta": "STÁHNOUT NYNÍ!",
+      "caption_short": "Ještě výbušnější kampaň: Awena, arcade svět MSS, 156 herních režimů, 94 AI botů a všechny nástroje pro hru, sledování statistik a organizaci soutěží.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

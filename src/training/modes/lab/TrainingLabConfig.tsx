@@ -235,7 +235,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const challengeSessions = React.useMemo(() => sessions.filter((row) => row.modeId === "training_challenges" && row.config?.trainingOrigin === "training_lab"), [sessions]);
   const launchChallengeExercise = React.useCallback((preset: ChallengeTrainingPreset) => {
     if (!onOpenChallenge || !accountParticipantId) return;
-    if ((preset.minPlayers || 1) > 1) { onCustomizeChallenge?.(preset.id, accountParticipantId); return; }
+    if ((preset.minPlayers || 1) > 1 || preset.arcadeId==='dont-break-the-chain') { onCustomizeChallenge?.(preset.id, accountParticipantId); return; }
     if (preset.arcadeId) clearTrainingArcadeDraft(accountParticipantId, preset.id);
     else clearTrainingChallengeDraft(accountParticipantId, preset.id);
     onOpenChallenge(makeChallengeTrainingConfig(preset, accountParticipantId), preset.id);

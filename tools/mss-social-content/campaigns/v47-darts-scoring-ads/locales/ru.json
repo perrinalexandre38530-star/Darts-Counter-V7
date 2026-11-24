@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "ru",
+  "language_name": "Русский",
+  "native_name": "Русский",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Доступно в Google Play",
+    "Доступно в Microsoft Store"
+  ],
+  "footer": [
+    "Для любого уровня.",
+    "Ради удовольствия от игры."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Дартс по‑новому.",
+      "headline": [
+        "ИГРАЙ.",
+        "РАСТИ.",
+        "БРОСЬ ВЫЗОВ СЕБЕ."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 игровых режимов",
+      "section_title": "ВЕСЬ МИР ДАРТСА В ОДНОМ ПРИЛОЖЕНИИ",
+      "feature_list": [
+        "156 игровых режимов",
+        "Испытания и тренировки",
+        "Статистика и рекорды",
+        "ИИ-боты и локальные профили",
+        "Соревнования и турниры",
+        "Экраны и подсчёт очков",
+        "Управление организацией",
+        "Персонализация",
+        "Отслеживание статистики по набору дротиков",
+        "Вселенная и атмосфера Arcade"
+      ],
+      "cta": "СКАЧАТЬ ПРИЛОЖЕНИЕ",
+      "caption_short": "156 игровых режимов, 94 ИИ-бота, тренировки, статистика, управление клубом и атмосфера arcade: Darts Scoring объединяет весь мир дартса в одном приложении.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Полноценное приложение для игры, тренировок, вызовов и организации соревнований.",
+      "headline": [
+        "ИГРАЙ.",
+        "РАСТИ.",
+        "ДОМИНИРУЙ."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 игровых режимов",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 ИИ-бота",
+      "section_title": "СИЛЬНЫЕ СТОРОНЫ",
+      "feature_list": [
+        "156 игровых режимов",
+        "94 ИИ-бота",
+        "Испытания и тренировки",
+        "Статистика и рекорды",
+        "ИИ-боты и локальные профили",
+        "Соревнования и турниры",
+        "Экраны и подсчёт очков",
+        "Управление организацией (клубы / ассоциации / лиги)",
+        "Персонализация",
+        "Отслеживание статистики по набору дротиков",
+        "Вселенная и атмосфера Arcade"
+      ],
+      "cta": "СКАЧАТЬ ПРИЛОЖЕНИЕ",
+      "caption_short": "Развивайся, тренируйся и доминируй с 156 режимами, 94 ИИ-ботами, детальной статистикой и инструментами для клубов, ассоциаций и лиг.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Полная вселенная дартса.",
+      "headline": [
+        "ПРИЛОЖЕНИЕ, КОТОРОЕ УМЕЕТ ВСЁ."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 игровых режимов",
+      "section_title": "ARCADE-КАМПАНИЯ",
+      "feature_list": [
+        "156 игровых режимов",
+        "94 ИИ-бота и персональные профили",
+        "Полноценный тренировочный центр",
+        "Статистика по набору дротиков",
+        "Управление клубом / ассоциацией / командой",
+        "Турниры, рейтинги и соревнования",
+        "Полная персонализация приложения",
+        "Вселенная и атмосфера Arcade"
+      ],
+      "cta": "СКАЧАТЬ СЕЙЧАС!",
+      "caption_short": "Более взрывная версия кампании: Awena, arcade-вселенная MSS, 156 игровых режимов, 94 ИИ-бота и все инструменты для игры, анализа статистики и организации соревнований.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

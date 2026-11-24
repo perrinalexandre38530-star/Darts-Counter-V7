@@ -10,7 +10,8 @@
 
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
-import MssAwenaExplainButton from "../components/MssAwenaExplainButton";
+import { MssGuidedConfigNav, MssParticipantTypeChoice } from "../components/config/MssGuidedConfigNav";
+import { MssConfigFact } from "../components/config/MssPremiumConfig";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
 import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { applyResolvedBotCountries } from "../lib/botCountries";
@@ -31,6 +32,12 @@ import DartSetImage from "../components/DartSetImage";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import MssSelectorIconButton from "../components/MssSelectorIconButton";
+import MssIntegratedAvatarPicker from "../components/MssIntegratedAvatarPicker";
+import teamGoldLogo from "../ui_assets/teams/team_gold.png";
+import teamPinkLogo from "../ui_assets/teams/team_pink.png";
+import teamBlueLogo from "../ui_assets/teams/team_blue.png";
+import teamGreenLogo from "../ui_assets/teams/team_green.png";
 import SelectionStickyBanner from "../components/SelectionStickyBanner";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -52,9 +59,9 @@ import {
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { getAudioPreferences, updateAudioPreferences } from "../lib/audioPreferences";
 import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
-import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
-import { useCurrentProfile } from "../contexts/StoreContext";
-import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
+import { loadBots as loadStoredBots, saveBots as saveStoredBots, subscribeBotsChange } from "../lib/bots";
+import { useCurrentProfile, useStore } from "../contexts/StoreContext";
+import { loadTeamsBySport, createTeam, upsertTeam, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
 import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
@@ -2290,6 +2297,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
   const awena = useAwenaOptional();
+  const { update: updateAppStore } = useStore();
 
   // ⚠️ Garde ces constantes de thème tout en haut du composant.
   // Les versions minifiées peuvent renommer `primary` en R1/B1/etc. ;
@@ -2703,6 +2711,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   });
   const [guidedStep, setGuidedStep] = React.useState<number>(0);
   const [participantMode, setParticipantMode] = React.useState<ParticipantMode>("players");
+  // Référence de parcours MSS (KILLER) : le format se choisit avant les participants.
+  // X01 accepte actuellement 2v2, 3v3, 4v4, 2v2v2 et 2v2v2v2.
+  const [teamFormatCount, setTeamFormatCount] = React.useState<2 | 3 | 4>(2);
+  const [teamFormatSize, setTeamFormatSize] = React.useState<2 | 3 | 4>(2);
   const [awenaVoiceSetupActive, setAwenaVoiceSetupActive] = React.useState(false);
   const [awenaVoiceStep, setAwenaVoiceStep] = React.useState<X01AwenaVoiceStep>("idle");
   const [awenaVoiceLastHeard, setAwenaVoiceLastHeard] = React.useState("");
@@ -2711,6 +2723,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   const selectConfigViewMode = React.useCallback((mode: ConfigViewMode) => {
     setConfigViewMode(mode);
+    // Comme dans KILLER, revenir en guidée recommence toujours par la présentation Awena.
+    if (mode === "guided") setGuidedStep(0);
     try { window.localStorage.setItem("dc_x01_v3_config_view_mode", mode); } catch {}
     try {
       const el = contentRef.current;
@@ -2809,6 +2823,27 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>({});
   const [teamsSourceMode, setTeamsSourceMode] = React.useState<TeamsSourceMode>("manual");
   const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>([]);
+  // Référence KILLER : la sélection s'effectue dans des modales, non dans la page de config.
+  const [premiumTeamsOpen, setPremiumTeamsOpen] = React.useState(false);
+  const [premiumTeamTab, setPremiumTeamTab] = React.useState<"manual" | "saved" | "auto" | "bots">("manual");
+  const [premiumBotCatalogPage, setPremiumBotCatalogPage] = React.useState(0);
+  const [premiumBotMembersPage, setPremiumBotMembersPage] = React.useState(0);
+  const [premiumBotDraftTeam, setPremiumBotDraftTeam] = React.useState<any>(null);
+  const [premiumBotDraftIds, setPremiumBotDraftIds] = React.useState<string[]>([]);
+  const [premiumBotEditInstance, setPremiumBotEditInstance] = React.useState<string | null>(null);
+  const [premiumSelectorError, setPremiumSelectorError] = React.useState("");
+  const [premiumCreateMenu, setPremiumCreateMenu] = React.useState(false);
+  const [premiumCreateKind, setPremiumCreateKind] = React.useState<"profile" | "bot" | "team" | "bot-team" | null>(null);
+  const [premiumCreateName, setPremiumCreateName] = React.useState("");
+  const [premiumCreateAvatar, setPremiumCreateAvatar] = React.useState<string | null>(null);
+  const [premiumCreateCountry, setPremiumCreateCountry] = React.useState("");
+  const [premiumCreateLevel, setPremiumCreateLevel] = React.useState("medium");
+  const [premiumCreateMembers, setPremiumCreateMembers] = React.useState<string[]>([]);
+  const [premiumCreatePage, setPremiumCreatePage] = React.useState(0);
+  const [premiumAvatarPickerOpen, setPremiumAvatarPickerOpen] = React.useState(false);
+  const [premiumCreateBusy, setPremiumCreateBusy] = React.useState(false);
+  const [premiumTeamStoreRevision, setPremiumTeamStoreRevision] = React.useState(0);
+  const [premiumResumeTeamDraft, setPremiumResumeTeamDraft] = React.useState<any>(null);
   const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState<boolean>(false);
   const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>([]);
   const [savedTeamMemberSelections, setSavedTeamMemberSelections] = React.useState<Record<string, string[]>>({});
@@ -2838,8 +2873,15 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     const pid = String(id || "");
     playersTouchedRef.current = true;
     setSelectedIds((prev) => {
-      const exists = prev.includes(pid);
-      const next = exists ? prev.filter((x) => x !== pid) : [...prev, pid];
+      // En équipes manuelles, les anciens bots du mode individuel ne réservent pas
+      // de places dans le format. Le sélecteur de joueurs reste strictement humain.
+      const pool = participantMode === "teams" ? prev.filter((id) => humanProfiles.some((p: any) => String(p.id) === String(id))) : prev;
+      const exists = pool.includes(pid);
+      if (!exists && configViewMode === "guided") {
+        const capacity = participantMode === "teams" ? teamFormatCount * teamFormatSize : matchMode === "solo" ? 2 : 20;
+        if (pool.length >= capacity) return pool;
+      }
+      const next = exists ? pool.filter((x) => x !== pid) : [...pool, pid];
 
       if (!exists && humanProfiles.some((p: any) => String(p?.id) === pid)) {
         const preferred = x01MostUsedDartSetIdForProfile(pid, humanProfiles);
@@ -2868,6 +2910,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   function setPlayerTeam(playerId: string, teamId: TeamId) {
     setTeamAssignments((prev) => {
       const current = prev[playerId] ?? null;
+      if (configViewMode === "guided" && participantMode === "teams" && current !== teamId) {
+        const assigned = Object.entries(prev).filter(([pid, tid]) => pid !== playerId && tid && selectedIds.includes(pid));
+        const activeTeams = new Set(assigned.map(([, tid]) => String(tid)));
+        if (!activeTeams.has(teamId) && activeTeams.size >= teamFormatCount) return prev;
+        if (assigned.filter(([, tid]) => tid === teamId).length >= teamFormatSize) return prev;
+      }
       const next = { ...prev };
       next[playerId] = current === teamId ? null : teamId;
       return next;
@@ -2880,12 +2928,22 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     } catch {
       return [];
     }
-  }, [allProfiles]);
+  }, [allProfiles, premiumTeamStoreRevision]);
 
-  const botDartsTeams: any[] = React.useMemo(
-    () => buildX01DartsBotTeams(botProfiles),
-    [botProfiles]
-  );
+  const botDartsTeams: any[] = React.useMemo(() => {
+    const standard = buildX01DartsBotTeams(botProfiles);
+    const botIds = new Set((botProfiles || []).map((p: any) => String(p?.id)));
+    const customBotTeams = (storedDartsTeams || []).filter((team: any) =>
+      team?.isBotTeam === true || (Array.isArray(team?.playerIds) && team.playerIds.length > 0 && team.playerIds.every((id: any) => botIds.has(String(id))))
+    ).map((team: any) => ({ ...team, isBotTeam: true }));
+    return [...standard, ...customBotTeams.filter((team: any) => !standard.some((base: any) => String(base.id) === String(team.id)))];
+  }, [botProfiles, storedDartsTeams]);
+  const humanStoredDartsTeams = React.useMemo(() => {
+    const humanIds = new Set(humanProfiles.map((p: any) => String(p.id)));
+    return (storedDartsTeams || []).filter((team: any) =>
+      team?.isBotTeam !== true && Array.isArray(team?.playerIds) && team.playerIds.some((id: any) => humanIds.has(String(id)))
+    );
+  }, [storedDartsTeams, humanProfiles]);
 
   const selectableDartsTeams: any[] = React.useMemo(() => {
     return [...storedDartsTeams, ...botDartsTeams];
@@ -3011,6 +3069,25 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   // ---- conditions pour pouvoir démarrer ----
   const canStart = React.useMemo(() => {
+    if (configViewMode === "guided" && participantMode === "teams") {
+      const selectedTeams = teamsSourceMode === "saved" || teamsSourceMode === "auto"
+        ? selectedSavedTeams.map((team: any) => {
+            const chosen = savedTeamMemberSelections[String(team?.id)] ?? team?.playerIds ?? [];
+            return (chosen || []).map(String).filter((id: string) => teamProfiles.some((p: any) => String(p?.id) === id));
+          })
+        : [
+            ...(["gold", "pink", "blue", "green"] as const).map((tid) =>
+              selectedIds.filter((id) => teamAssignments[id] === tid)
+            ).filter((ids) => ids.length > 0),
+            ...selectedBotTeams.map((team: any) => {
+              const chosen = savedTeamMemberSelections[String(team?.id)] ?? team?.playerIds ?? [];
+              return (chosen || []).map(String).filter((id: string) => teamProfiles.some((p: any) => String(p?.id) === id));
+            }),
+          ];
+      const ids = selectedTeams.flat().map(String);
+      return selectedTeams.length === teamFormatCount && selectedTeams.every((members) => members.length === teamFormatSize)
+        && new Set(ids).size === ids.length;
+    }
     if (participantMode === "teams") {
       if (teamsSourceMode === "saved" || teamsSourceMode === "auto") return selectedSavedTeamsCount >= 2 && savedTeamPlayerIds.length >= 2;
       if (selectedBotTeamsCount > 0) return manualAssignedTeamsCount + selectedBotTeamsCount >= 2;
@@ -3020,12 +3097,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     if (matchMode === "solo") return totalPlayers === 2;
     if (matchMode === "multi") return totalPlayers >= 2;
     return totalPlayers >= 4; // équipes manuelles legacy
-  }, [participantMode, totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length, selectedBotTeamsCount, manualAssignedTeamsCount]);
+  }, [configViewMode, participantMode, totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length, selectedBotTeamsCount, manualAssignedTeamsCount, teamFormatCount, teamFormatSize, selectedSavedTeams, selectedBotTeams, savedTeamMemberSelections, teamProfiles, selectedIds, teamAssignments]);
 
   const guidedSteps = React.useMemo(() => (
     participantMode === "teams"
-      ? ["Awena", "Mode", "Équipes", "Score", "Format", "Saisie", "Récap"]
-      : ["Awena", "Mode", "Joueurs", "Score", "Format", "Saisie", "Récap"]
+      ? ["Awena", "Participants", "Format des équipes", "Choix équipes", "Score", "Format de match", "Saisie", "Récap"]
+      : ["Awena", "Participants", "Duel ou Multi", "Choix joueurs", "Score", "Format de match", "Saisie", "Récap"]
   ), [participantMode]);
   const guidedMaxStep = Math.max(0, guidedSteps.length - 1);
   React.useEffect(() => {
@@ -3073,6 +3150,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
       const current = Array.isArray(prev[tid]) ? prev[tid] : allIds;
       const pid = String(playerId || "");
+      if (configViewMode === "guided" && participantMode === "teams" && !current.includes(pid) && current.length >= teamFormatSize) return prev;
       const next = current.includes(pid) ? current.filter((id) => id !== pid) : [...current, pid];
       return { ...prev, [tid]: next };
     });
@@ -3084,7 +3162,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const baseTid = x01TeamBaseId(tid);
       const team = teamList.find((t: any) => String(t.id || t.baseTeamId) === baseTid) || findRememberedGeneratedTeam(baseTid);
       const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
-      return { ...prev, [tid]: allIds };
+      return { ...prev, [tid]: configViewMode === "guided" && participantMode === "teams" ? allIds.slice(0, teamFormatSize) : allIds };
     });
   }
 
@@ -3093,6 +3171,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     const tid = String(teamId || "");
     const picked = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean)));
     if (!tid || picked.length <= 0) return;
+    if (configViewMode === "guided" && participantMode === "teams" && picked.length !== teamFormatSize) return;
     setPlayerDartSets((prev) => {
       let changed = false;
       const next = { ...(prev || {}) };
@@ -3106,6 +3185,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     });
     setSelectedStoredTeamIds((prev) => {
       const arr = Array.isArray(prev) ? prev : [];
+      if (configViewMode === "guided" && participantMode === "teams" && arr.length + selectedBotTeamIds.length >= teamFormatCount) return arr;
       const same = arr.filter((id: any) => x01TeamBaseId(id) === tid);
       const nextId = same.length > 0 ? `${tid}__slot_${x01TeamSuffix(same.length)}` : tid;
       setSavedTeamMemberSelections((old) => ({ ...old, [nextId]: picked }));
@@ -3129,6 +3209,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     const team = (storedDartsTeams as any[]).find((t: any) => String(t.id) === tid);
     setSelectedStoredTeamIds((prev) => {
       const arr = Array.isArray(prev) ? prev : [];
+      if (configViewMode === "guided" && participantMode === "teams" && arr.length + selectedBotTeamIds.length >= teamFormatCount) return arr;
       const same = arr.filter((id: any) => x01TeamBaseId(id) === tid);
       const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
       const used = new Set<string>();
@@ -3147,8 +3228,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     const tid = String(teamId || "");
     const picked = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean)));
     if (!tid || picked.length <= 0) return;
+    if (configViewMode === "guided" && participantMode === "teams" && picked.length !== teamFormatSize) return;
     setSelectedBotTeamIds((prev) => {
       const arr = Array.isArray(prev) ? prev : [];
+      if (configViewMode === "guided" && participantMode === "teams" && arr.length + selectedStoredTeamIds.length >= teamFormatCount) return arr;
       const same = arr.filter((id: any) => x01TeamBaseId(id) === tid);
       const nextId = same.length > 0 ? `${tid}__slot_${x01TeamSuffix(same.length)}` : tid;
       setSavedTeamMemberSelections((old) => ({ ...old, [nextId]: picked }));
@@ -3171,7 +3254,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     const tid = String(teamId || "");
     const team = (botDartsTeams as any[]).find((t: any) => String(t.id) === tid);
     const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
-    addBotTeamSelection(tid, allIds.length ? [allIds[0]] : []);
+    addBotTeamSelection(tid, configViewMode === "guided" && participantMode === "teams" ? allIds.slice(0, teamFormatSize) : (allIds.length ? [allIds[0]] : []));
   }
 
   function buildExternalTeamConfigs(teamList: any[]) {
@@ -3213,6 +3296,13 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       alert("Les équipes sélectionnées doivent contenir au moins 1 joueur chacune.");
       return null;
     }
+    if (configViewMode === "guided" && participantMode === "teams") {
+      const ids = teams.flatMap((team: any) => team.players || []).map(String);
+      if (teams.length !== teamFormatCount || teams.some((team: any) => team.players.length !== teamFormatSize) || new Set(ids).size !== ids.length) {
+        alert(`Format choisi : exactement ${teamFormatCount} équipes de ${teamFormatSize} membres distincts.`);
+        return null;
+      }
+    }
 
     return teams;
   }
@@ -3231,9 +3321,19 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       id: tid,
       name: TEAM_LABELS[tid],
       color: TEAM_COLORS[tid],
+      // Les logos existants doivent suivre le passage configuration -> partie.
+      logoDataUrl: ({ gold: teamGoldLogo, pink: teamPinkLogo, blue: teamBlueLogo, green: teamGreenLogo } as Record<TeamId, string>)[tid],
       players: teamBuckets[tid],
     }));
     const botTeams = buildExternalTeamConfigs(selectedBotTeams);
+    if (configViewMode === "guided" && participantMode === "teams") {
+      const combined = [...manualTeams, ...botTeams];
+      const ids = combined.flatMap((team: any) => team.players || []).map(String);
+      if (combined.length !== teamFormatCount || combined.some((team: any) => team.players.length !== teamFormatSize) || new Set(ids).size !== ids.length) {
+        alert(`Format choisi : exactement ${teamFormatCount} équipes de ${teamFormatSize} membres distincts.`);
+        return null;
+      }
+    }
 
     // Si des équipes BOTS IA sont ajoutées, elles deviennent des équipes adverses
     // à part entière. On autorise donc 1 équipe manuelle + 1 équipe BOT IA,
@@ -3355,7 +3455,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           if (/\b(joueur|joueurs|profil|profils|individuel|individuels|duel|multi)\b/.test(text)) {
             setParticipantMode("players");
             setMatchMode(/\bmulti\b/.test(text) ? "multi" : "solo");
-            setGuidedStep(1);
+            setGuidedStep(3);
             await awenaVoiceSpeak("Parfait. Prononce maintenant les noms des joueurs ou des bots qui participent, dans une seule phrase. Tu peux aussi dire moi pour inclure ton profil actif.", "players");
             return;
           }
@@ -3367,13 +3467,13 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           if (/\b(joueur|joueurs|individuel)\b/.test(text)) {
             setParticipantMode("players");
             setMatchMode("solo");
-            setGuidedStep(1);
+            setGuidedStep(3);
             await awenaVoiceSpeak("D'accord, mode joueurs. Prononce les noms des participants.", "players");
             return;
           }
           if (/\b(enregistree|enregistrees|saved|existante|existantes|equipe|equipes)\b/.test(text)) {
             setTeamsSourceMode("saved");
-            setGuidedStep(1);
+            setGuidedStep(3);
             const names = (storedDartsTeams || []).slice(0, 12).map((team: any) => team?.name).filter(Boolean);
             await awenaVoiceSpeak(names.length
               ? `Prononce le nom d'au moins deux équipes enregistrées. Équipes disponibles : ${names.join(", ")}.`
@@ -3406,7 +3506,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           playersTouchedRef.current = true;
           setSelectedIds(uniqueIds);
           setMatchMode(uniqueIds.length === 2 ? "solo" : "multi");
-          setGuidedStep(2);
+          setGuidedStep(4);
           const pickedNames = candidates.filter((p: any) => uniqueIds.includes(String(p?.id))).map((p: any) => p.__voiceName);
           await awenaVoiceSpeak(`J'ai sélectionné ${pickedNames.join(", ")}. Quel score de départ veux-tu : 301, 501, 701 ou 901 ?`, "start-score");
           return;
@@ -3425,7 +3525,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           setParticipantMode("teams");
           setMatchMode("teams");
           setTeamsSourceMode("saved");
-          setGuidedStep(2);
+          setGuidedStep(4);
           await awenaVoiceSpeak(`Équipes sélectionnées : ${matched.map((team: any) => team.name).join(", ")}. Quel score de départ veux-tu : 301, 501, 701 ou 901 ?`, "start-score");
           return;
         }
@@ -3461,7 +3561,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           }
           outTouchedRef.current = true;
           setOutMode(mode as OutModeV3);
-          setGuidedStep(3);
+          setGuidedStep(5);
           await awenaVoiceSpeak(`${mode} out. Veux-tu jouer un match directement en legs, ou un format en sets ?`, "format-unit");
           return;
         }
@@ -3520,7 +3620,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             await awenaVoiceSpeak("Dis alterné, ou aléatoire.");
             return;
           }
-          setGuidedStep(4);
+          setGuidedStep(6);
           await awenaVoiceSpeak("Quelle méthode de saisie veux-tu pendant la partie : keypad, cible, presets, ou voice pour annoncer les fléchettes ?", "score-input");
           return;
         }
@@ -3588,7 +3688,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         }
 
         if (awenaVoiceStep === "external" || awenaVoiceStep === "external-device") {
-          setGuidedStep(5);
+          setGuidedStep(7);
           const playerLabel = participantMode === "teams"
             ? `${selectedSavedTeamsCount || selectedStoredTeamIds.length} équipes`
             : (selectedParticipantProfiles || []).map((p: any) => p?.name).filter(Boolean).join(", ") || `${selectedIds.length} joueurs`;
@@ -3629,6 +3729,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // ---- validation & lancement ----
   function handleStart() {
     if (!canStart) {
+      if (configViewMode === "guided" && participantMode === "teams") {
+        alert(`Compose exactement ${teamFormatCount} équipes de ${teamFormatSize} membres distincts avant de lancer.`);
+        return;
+      }
       if (matchMode === "teams" && (teamsSourceMode === "saved" || teamsSourceMode === "auto")) {
         alert("Sélectionne au moins 2 équipes enregistrées avec des joueurs.");
         return;
@@ -3792,6 +3896,329 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     }
   }
 
+  // ---------- MSS : sélecteurs flottants partagés avec le parcours KILLER ----------
+  const premiumTeamLogos: Record<string, string> = {
+    gold: teamGoldLogo, pink: teamPinkLogo, blue: teamBlueLogo, green: teamGreenLogo,
+  };
+  const premiumSelectedTeamCards = React.useMemo(() => {
+    const teamProfilesById = new Map((teamProfiles || []).map((profile: any) => [String(profile.id), profile]));
+    const groups: any[] = [];
+    if (teamsSourceMode === "manual") {
+      (["gold", "pink", "blue", "green"] as const).slice(0, teamFormatCount).forEach((tid) => {
+        const ids = (selectedIds || []).filter((id) => teamAssignments[id] === tid);
+        if (ids.length) groups.push({ id: `manual-${tid}`, kind: "manual", teamKey: tid, name: TEAM_LABELS[tid], logo: premiumTeamLogos[tid], ids, members: ids.map((id) => teamProfilesById.get(String(id))).filter(Boolean) });
+      });
+    }
+    if (teamsSourceMode === "saved" || teamsSourceMode === "auto") {
+      (selectedStoredTeams || []).forEach((team: any) => {
+        const id = String(team.id);
+        const ids = (savedTeamMemberSelections[id] || team.playerIds || []).map(String);
+        groups.push({ id, kind: "stored", name: team.name, logo: team.logoDataUrl || team.logoUrl || team.avatarDataUrl, ids, members: ids.map((pid: string) => teamProfilesById.get(pid)).filter(Boolean) });
+      });
+    }
+    (selectedBotTeams || []).forEach((team: any) => {
+      const id = String(team.id);
+      const ids = (savedTeamMemberSelections[id] || team.playerIds || []).map(String);
+      groups.push({ id, kind: "bots", name: team.name, logo: team.logoDataUrl || team.logoUrl || team.avatarDataUrl, ids, members: ids.map((pid: string) => teamProfilesById.get(pid)).filter(Boolean) });
+    });
+    return groups;
+  }, [teamsSourceMode, selectedIds, teamAssignments, teamFormatCount, selectedStoredTeams, selectedBotTeams, savedTeamMemberSelections, teamProfiles]);
+
+  function premiumOpenTeamTab(tab: "manual" | "saved" | "auto" | "bots") {
+    setPremiumTeamTab(tab);
+    setPremiumBotDraftTeam(null); setPremiumBotDraftIds([]);
+    setPremiumBotEditInstance(null); setPremiumBotMembersPage(0);
+    setPremiumSelectorError("");
+    if (tab === "bots") {
+      setBotTeamsPanelEnabled(true);
+      // Une sélection manuelle peut cohabiter avec des équipes bots ; sinon on combine les équipes enregistrées et bots.
+      if (!(teamsSourceMode === "manual" && premiumSelectedTeamCards.some((team: any) => team.kind === "manual"))) setTeamsSourceMode("saved");
+    } else setTeamsSourceMode(tab);
+    setPremiumTeamsOpen(true);
+  }
+
+  function premiumRemoveTeam(item: any) {
+    if (item.kind === "stored") removeStoredTeamSelection(String(item.id));
+    else if (item.kind === "bots") removeBotTeamSelection(String(item.id));
+    else if (item.kind === "manual") {
+      const ids = new Set(item.ids.map(String));
+      setSelectedIds((prev) => prev.filter((id) => !ids.has(String(id))));
+      setTeamAssignments((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => delete next[id]);
+        return next;
+      });
+    }
+  }
+
+  function premiumEditTeam(item: any) {
+    if (item.kind === "bots") {
+      const found = botDartsTeams.find((team: any) => String(team.id) === x01TeamBaseId(item.id));
+      if (!found) return;
+      premiumOpenTeamTab("bots");
+      setPremiumBotDraftTeam(found);
+      setPremiumBotDraftIds([...item.ids]);
+      setPremiumBotEditInstance(item.id);
+    } else premiumOpenTeamTab(item.kind === "stored" ? "saved" : "manual");
+  }
+
+  function premiumOpenCreate(kind: "profile" | "bot" | "team" | "bot-team") {
+    setPremiumCreateMenu(false);
+    setPremiumCreateKind(kind);
+    setPremiumCreateName(""); setPremiumCreateAvatar(null); setPremiumCreateCountry("");
+    setPremiumCreateMembers([]); setPremiumCreatePage(0); setPremiumSelectorError("");
+    setPremiumCreateLevel("medium");
+  }
+
+  function premiumSelectBotMember(rawId: string) {
+    const id = String(rawId);
+    const selected = premiumBotDraftIds.includes(id);
+    const next = selected ? premiumBotDraftIds.filter((pid) => pid !== id) : [...premiumBotDraftIds, id];
+    if (!selected && next.length > teamFormatSize) return;
+    if (!selected && next.length === teamFormatSize && premiumBotDraftTeam) {
+      const used = new Set(premiumSelectedTeamCards.filter((item: any) => item.id !== premiumBotEditInstance).flatMap((item: any) => item.ids).map(String));
+      if (next.some((pid) => used.has(pid))) { setPremiumSelectorError("Un de ces bots participe déjà à une autre équipe."); return; }
+      if (premiumBotEditInstance) {
+        setSavedTeamMemberSelections((prev) => ({ ...prev, [premiumBotEditInstance]: next }));
+      } else if (premiumSelectedTeamCards.length < teamFormatCount || configViewMode !== "guided") {
+        addBotTeamSelection(String(premiumBotDraftTeam.id), next);
+      } else { setPremiumSelectorError(`Maximum ${teamFormatCount} équipes pour ce format.`); return; }
+      setPremiumBotDraftTeam(null); setPremiumBotDraftIds([]); setPremiumBotEditInstance(null);
+      setPremiumSelectorError(""); setPremiumBotMembersPage(0);
+    } else { setPremiumBotDraftIds(next); setPremiumSelectorError(""); }
+  }
+
+  async function premiumReadImage(file?: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) { setPremiumSelectorError("Image invalide ou supérieure à 2 Mo."); return; }
+    const reader = new FileReader();
+    reader.onload = () => setPremiumCreateAvatar(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => setPremiumSelectorError("Impossible de charger l'image.");
+    reader.readAsDataURL(file);
+  }
+
+  function premiumSaveCreate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!premiumCreateKind || !premiumCreateName.trim() || premiumCreateBusy) return;
+    setPremiumSelectorError(""); setPremiumCreateBusy(true);
+    try {
+      const name = premiumCreateName.trim();
+      const id = `mss-x01-${premiumCreateKind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (premiumCreateKind === "bot") {
+        const now = new Date().toISOString();
+        const record = { id, name, level: premiumCreateLevel, botLevel: premiumCreateLevel,
+          avatarDataUrl: premiumCreateAvatar, country: premiumCreateCountry.trim() || undefined,
+          avatarSeed: Math.random().toString(36).slice(2, 10), createdAt: now, updatedAt: now,
+          isBot: true, bot: true, cpu: true, type: "bot", kind: "bot" };
+        if (!saveStoredBots([...loadStoredBots(), record])) throw new Error("Enregistrement du bot impossible.");
+        if (participantMode === "players") setSelectedIds((prev) => prev.includes(id) || prev.length >= (matchMode === "solo" ? 2 : 20) ? prev : [...prev, id]);
+      } else if (premiumCreateKind === "profile") {
+        const updater = updateAppStore || (window as any)?.__appStore?.update;
+        if (typeof updater !== "function") throw new Error("Le magasin de profils n'est pas disponible.");
+        const record = { id, name, avatarDataUrl: premiumCreateAvatar, avatarUpdatedAt: Date.now(),
+          privateInfo: premiumCreateCountry.trim() ? { country: premiumCreateCountry.trim() } : undefined };
+        updater((current: any) => ({ ...current, profiles: [...(Array.isArray(current?.profiles) ? current.profiles : []), record] }));
+        if (participantMode === "players") setSelectedIds((prev) => prev.includes(id) || prev.length >= (matchMode === "solo" ? 2 : 20) ? prev : [...prev, id]);
+      } else {
+        const kind = premiumCreateKind;
+        const ids = [...new Set(premiumCreateMembers.map(String))];
+        const validIds = new Set((kind === "bot-team" ? botProfiles : humanProfiles).map((p: any) => String(p.id)));
+        if (ids.length !== teamFormatSize || ids.some((pid) => !validIds.has(pid))) throw new Error(`Sélectionne exactement ${teamFormatSize} membres distincts.`);
+        const used = new Set(premiumSelectedTeamCards.flatMap((team: any) => team.ids).map(String));
+        if (ids.some((pid) => used.has(pid))) throw new Error("Un membre appartient déjà à une autre équipe sélectionnée.");
+        if (configViewMode === "guided" && premiumSelectedTeamCards.length >= teamFormatCount) throw new Error(`Maximum ${teamFormatCount} équipes.`);
+        const team = createTeam({ sport: "darts", name, logoDataUrl: premiumCreateAvatar, teamKind: "leisure" });
+        upsertTeam({ ...team, playerIds: ids, isBotTeam: kind === "bot-team" } as any);
+        setPremiumTeamStoreRevision((v) => v + 1);
+        setSavedTeamMemberSelections((prev) => ({ ...prev, [String(team.id)]: ids }));
+        if (kind === "bot-team") {
+          setBotTeamsPanelEnabled(true); setSelectedBotTeamIds((prev) => [...prev, String(team.id)]);
+        } else setSelectedStoredTeamIds((prev) => [...prev, String(team.id)]);
+        setTeamsSourceMode("saved"); setPremiumTeamTab(kind === "bot-team" ? "bots" : "saved");
+        setPremiumTeamsOpen(true);
+      }
+      if (premiumResumeTeamDraft && (premiumCreateKind === "profile" || premiumCreateKind === "bot")) {
+        setPremiumCreateKind(premiumResumeTeamDraft.kind);
+        setPremiumCreateName(premiumResumeTeamDraft.name);
+        setPremiumCreateAvatar(premiumResumeTeamDraft.avatar);
+        setPremiumCreateMembers([...new Set([...premiumResumeTeamDraft.members, id])].slice(0, teamFormatSize));
+        setPremiumResumeTeamDraft(null);
+      } else {
+        setPremiumCreateKind(null); setPremiumCreateName(""); setPremiumCreateAvatar(null);
+      }
+    } catch (error: any) { setPremiumSelectorError(error?.message || "Création impossible."); }
+    finally { setPremiumCreateBusy(false); }
+  }
+
+  // Une seule UI utilisée par les parcours guidé ET complet. L'ancien formulaire reste
+  // disponible en tant que contenu de fenêtre, sans polluer la page principale.
+  function renderMssPremiumParticipantSelector() {
+    const group = participantMode === "teams";
+    const tabIcons = [
+      { id: "manual", icon: "teams", label: "Équipes manuelles" },
+      { id: "saved", icon: "saved-teams", label: "Équipes enregistrées" },
+      { id: "auto", icon: "shuffle", label: "Brassage automatique" },
+      { id: "bots", icon: "bot-teams", label: "Teams BOTS IA" },
+    ] as const;
+    const botTeamCount = Math.max(1, Math.ceil(botDartsTeams.length / 9));
+    const availableBotMembers = (botProfiles || []).filter((bot: any) => !!bot?.id);
+    const botMemberCount = Math.max(1, Math.ceil(availableBotMembers.length / 9));
+    const isCreatingTeam = premiumCreateKind === "team" || premiumCreateKind === "bot-team";
+    const eligibleCreateMembers = premiumCreateKind === "bot-team" ? botProfiles : humanProfiles;
+    const createMemberPages = Math.max(1, Math.ceil(eligibleCreateMembers.length / 9));
+    const pickerNavStyle = { borderRadius: 11, padding: "9px 14px", border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: primary, cursor: "pointer", fontWeight: 900 } as React.CSSProperties;
+    const summaryCards = group ? premiumSelectedTeamCards : [];
+    return <section data-mss-x01-killer-selector="true" style={{ borderRadius: 18, padding: "14px 12px", background: cardBg, border: "1px solid rgba(255,255,255,.07)", marginBottom: 14 }}>
+      {configViewMode === "complete" && <div style={{ marginBottom: 14, display: "grid", gap: 12 }}>
+        <div style={{ color: primary, fontSize: 12, fontWeight: 950, letterSpacing: .8 }}>PARTICIPANTS</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
+          <MssParticipantTypeChoice kind="players" active={!group} accent={primary} onClick={() => { setParticipantMode("players"); setMatchMode("solo"); setPremiumTeamsOpen(false); }}/>
+          <MssParticipantTypeChoice kind="teams" active={group} accent={primary} onClick={() => { setParticipantMode("teams"); setMatchMode("teams"); }}/>
+        </div>
+        {!group ? <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+          <PillButton label="DUEL 1V1" active={matchMode === "solo"} primary={primary} primarySoft={primarySoft} onClick={() => setMatchMode("solo")} compact />
+          <PillButton label="MULTI" active={matchMode === "multi"} primary={primary} primarySoft={primarySoft} onClick={() => setMatchMode("multi")} compact />
+        </div> : <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
+          {([[2,2],[2,3],[2,4],[3,2],[4,2]] as const).map(([count,size]) => <PillButton key={`${count}x${size}`} label={`${count}×${size}`} active={teamFormatCount === count && teamFormatSize === size} primary={primary} primarySoft={primarySoft} compact onClick={() => { setTeamFormatCount(count); setTeamFormatSize(size); }} />)}
+        </div>}
+      </div>}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 9, marginBottom: 10 }}>
+        <h3 style={{ fontSize: 13, letterSpacing: .7, color: primary, textTransform: "uppercase", margin: 0, fontWeight: 950 }}>{group ? "CHOIX ÉQUIPES" : "CHOIX JOUEURS"}</h3>
+        <span style={{ fontSize: 11, color: "#9da6c8", fontWeight: 800 }}>{group ? `${summaryCards.length}/${teamFormatCount} équipes` : `${selectedIds.length} joueurs/bots`}</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", gap: 9, alignItems: "center", flexWrap: "wrap", marginBottom: 13 }}>
+        {group ? <>
+          {tabIcons.map((tab) => <MssSelectorIconButton key={tab.id} icon={tab.icon as any} label={tab.label} accent={primary}
+            active={premiumTeamsOpen && premiumTeamTab === tab.id} onClick={() => premiumOpenTeamTab(tab.id)} />)}
+        </> : <>
+          <PlayerPagedSelector usageMode="x01" profiles={preferredHumanProfiles} selectedIds={selectedIds}
+            onToggle={togglePlayer} onAfterToggle={openDartSetPickerAfterPlayerSelection} accent={primary} pageSize={9}
+            modalTitle="CHOISIR DES JOUEURS" showSelectedSummary={false} showListButton={true}
+            modalHeaderExtra={<MssSelectorIconButton icon="plus" label="Créer un joueur ou un bot CPU" accent={primary} onClick={() => setPremiumCreateMenu(true)} />}
+            renderAvatarOverlay={(p: any) => <PlayerDartBadge profileId={p.id} dartSetId={playerDartSets[p.id] ?? null}
+              onChange={(id) => handleChangePlayerDartSet(p.id, id)} compact allProfiles={humanProfiles}
+              autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null} />}
+            onClose={() => setAutoDartSetPicker(null)} />
+          <div style={{ width: 45, flex: "0 0 45px" }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer}
+            accent={primary} pageSize={9} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} hideCompactSelectedSummary/></div>
+        </>}
+        <MssSelectorIconButton icon="plus" label={group ? "Créer joueur, bot ou équipe" : "Créer joueur ou bot"} accent={primary} onClick={() => setPremiumCreateMenu(true)}/>
+      </div>
+      {group ? <div style={{ border: `1px solid ${primary}55`, borderRadius: 16, padding: 9, background: "rgba(255,255,255,.027)" }}>
+        <div style={{ color: primary, fontSize: 11, fontWeight: 950, letterSpacing: .65, margin: "0 0 8px" }}>ÉQUIPES SÉLECTIONNÉES</div>
+        {summaryCards.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
+          {summaryCards.map((item: any) => <article key={item.id} style={{ borderRadius: 14, border: `1px solid ${primary}44`, background: "rgba(255,255,255,.025)", padding: "10px 5px", minWidth: 0, display: "grid", justifyItems: "center", gap: 6 }}>
+            <ProfileAvatar name={item.name || "Équipe"} dataUrl={item.logo || null} size={58} />
+            <div style={{ fontWeight: 950, fontSize: 12, color: primary, textAlign: "center", overflowWrap: "anywhere" }}>{item.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center", flexWrap: "wrap" }}>
+              {item.members.map((member: any) => <div key={member.id} title={member.name}><ProfileAvatar profile={member} size={31} /></div>)}
+            </div>
+            <div style={{ color: item.members.length === teamFormatSize ? "#b5c7d7" : "#ffb3a2", fontSize: 10, fontWeight: 800 }}>{item.members.length}/{teamFormatSize} membres</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+              <button type="button" aria-label={`Modifier ${item.name}`} title={`Modifier ${item.name}`} onClick={() => premiumEditTeam(item)} style={{ width: 33, height: 32, border: `1px solid ${primary}88`, borderRadius: 11, background: `${primary}17`, color: primary, cursor: "pointer", fontSize: 16 }}>✎</button>
+              <button type="button" aria-label={`Retirer ${item.name}`} title={`Retirer ${item.name}`} onClick={() => premiumRemoveTeam(item)} style={{ width: 33, height: 32, border: "1px solid #f0778b88", borderRadius: 11, background: "rgba(235,75,105,.09)", color: "#ff8da2", cursor: "pointer", fontSize: 19 }}>×</button>
+            </div>
+          </article>)}
+        </div> : <div style={{ textAlign: "center", fontSize: 12, color: "#9ca5bb", padding: 13 }}>Choisis les équipes avec les icônes ci-dessus.</div>}
+      </div> : <SelectedParticipantsCompactBlock items={selectedParticipantProfiles} accent={primary} onRemove={togglePlayer}
+        playerDartSets={playerDartSets} onDartSetChange={handleChangePlayerDartSet} allProfiles={humanProfiles} />}
+
+      {group && premiumTeamsOpen && <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setPremiumTeamsOpen(false); }}
+        style={{ position: "fixed", inset: 0, zIndex: 9970, background: "rgba(0,0,0,.79)", padding: 12, display: "grid", placeItems: "center" }}>
+        <div role="dialog" aria-modal="true" aria-label="CHOIX ÉQUIPES" style={{ width: "min(620px,100%)", boxSizing: "border-box", maxHeight: "89dvh", overflowY: "auto", background: "#090d1b", borderRadius: 18, border: `1px solid ${primary}77`, padding: 13, boxShadow: "0 18px 60px #000" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <strong style={{ color: primary, fontSize: 14, letterSpacing: .7 }}>{premiumBotDraftTeam ? "CHOIX BOTS" : "CHOIX ÉQUIPES"}</strong>
+            <button type="button" aria-label="Fermer" onClick={() => setPremiumTeamsOpen(false)} style={{ border: 0, background: "transparent", color: primary, fontSize: 26, cursor: "pointer" }}>×</button>
+          </div>
+          {!premiumBotDraftTeam && <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            {tabIcons.map((tab) => <MssSelectorIconButton key={tab.id} icon={tab.icon as any} label={tab.label} accent={primary} active={premiumTeamTab === tab.id} onClick={() => premiumOpenTeamTab(tab.id)} />)}
+            <MssSelectorIconButton icon="plus" label="Créer joueur, bot ou équipe" accent={primary} onClick={() => setPremiumCreateMenu(true)} />
+          </div>}
+          {!premiumBotDraftTeam && <div style={{ fontSize: 11, color: "#b9c2dc", borderRadius: 12, border: `1px solid ${primary}33`, padding: "8px 10px", marginBottom: 10 }}>
+            Format : <b style={{ color: primary }}>{teamFormatCount} équipes de {teamFormatSize} membres</b> · modifiable à l’étape précédente
+          </div>}
+          {premiumTeamTab === "bots" ? (premiumBotDraftTeam ? <div>
+            <button type="button" onClick={() => { setPremiumBotDraftTeam(null); setPremiumBotDraftIds([]); setPremiumBotEditInstance(null); }} style={{ ...pickerNavStyle, marginBottom: 12 }}>← ÉQUIPES BOTS</button>
+            <div style={{ color: primary, textAlign: "center", fontWeight: 950, marginBottom: 12 }}>{premiumBotDraftTeam.name} · {premiumBotDraftIds.length}/{teamFormatSize}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              {availableBotMembers.slice(premiumBotMembersPage * 9, premiumBotMembersPage * 9 + 9).map((bot: any) => {
+                const active = premiumBotDraftIds.includes(String(bot.id));
+                const occupied = premiumSelectedTeamCards.some((item: any) => item.id !== premiumBotEditInstance && item.ids.includes(String(bot.id)));
+                return <button type="button" key={bot.id} disabled={occupied} aria-pressed={active} onClick={() => premiumSelectBotMember(String(bot.id))} style={{ border: `1px solid ${active ? primary : `${primary}55`}`, borderRadius: 13, padding: "9px 4px", background: active ? `${primary}20` : "rgba(255,255,255,.03)", color: "white", display: "grid", justifyItems: "center", gap: 6, minWidth: 0, opacity: occupied ? .32 : 1 }}>
+                  <ProfileAvatar profile={bot} size={56} /><span style={{ fontSize: 11, fontWeight: 850, overflowWrap: "anywhere" }}>{bot.name}</span>
+                </button>;
+              })}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, marginTop: 12 }}>
+              <button type="button" disabled={premiumBotMembersPage === 0} onClick={() => setPremiumBotMembersPage((v) => Math.max(0,v - 1))} style={pickerNavStyle}>←</button>
+              <span style={{ color: primary, fontWeight: 900, fontSize: 12 }}>PAGE {premiumBotMembersPage + 1}/{botMemberCount}</span>
+              <button type="button" disabled={premiumBotMembersPage + 1 >= botMemberCount} onClick={() => setPremiumBotMembersPage((v) => Math.min(botMemberCount-1,v+1))} style={pickerNavStyle}>→</button>
+            </div>
+            <p style={{ textAlign: "center", color: "#a8b1c9", fontSize: 11 }}>Le choix du dernier bot confirme l’équipe et revient au catalogue.</p>
+          </div> : <div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              {botDartsTeams.slice(premiumBotCatalogPage * 9, premiumBotCatalogPage * 9 + 9).map((team: any) => <button type="button" key={team.id} onClick={() => { setPremiumBotDraftTeam(team); setPremiumBotDraftIds([]); setPremiumBotMembersPage(0); setPremiumSelectorError(""); }}
+                style={{ border: `1px solid ${primary}55`, borderRadius: 12, background: "rgba(255,255,255,.03)", color: "white", minWidth: 0, padding: "12px 5px", display: "grid", gap: 7, justifyItems: "center", cursor: "pointer" }}>
+                <ProfileAvatar name={team.name} dataUrl={team.logoDataUrl || team.logoUrl || null} size={58} /><span style={{ fontSize: 11, fontWeight: 900, overflowWrap: "anywhere", textAlign: "center" }}>{team.name}</span>
+              </button>)}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, marginTop: 12 }}>
+              <button type="button" disabled={premiumBotCatalogPage === 0} onClick={() => setPremiumBotCatalogPage((v) => Math.max(0, v-1))} style={pickerNavStyle}>←</button>
+              <span style={{ color: primary, fontWeight: 900, fontSize: 12 }}>PAGE {premiumBotCatalogPage+1}/{botTeamCount}</span>
+              <button type="button" disabled={premiumBotCatalogPage+1 >= botTeamCount} onClick={() => setPremiumBotCatalogPage((v) => Math.min(botTeamCount-1,v+1))} style={pickerNavStyle}>→</button>
+            </div>
+          </div>) : <TeamsSection profiles={teamProfiles} selectableProfiles={preferredHumanProfiles} selectedIds={teamsSourceMode === "manual" ? selectedIds.filter((id) => humanProfiles.some((p: any) => String(p.id) === String(id))) : selectedIds}
+            teamAssignments={teamAssignments} setPlayerTeam={setPlayerTeam} togglePlayer={togglePlayer}
+            playerDartSets={playerDartSets} handleChangePlayerDartSet={handleChangePlayerDartSet}
+            autoDartSetPicker={autoDartSetPicker} setAutoDartSetPicker={setAutoDartSetPicker} allProfiles={humanProfiles}
+            sourceMode={teamsSourceMode} setSourceMode={setTeamsSourceMode} storedTeams={humanStoredDartsTeams}
+            selectedStoredTeamIds={selectedStoredTeamIds} toggleStoredTeam={toggleStoredTeam}
+            removeStoredTeamSelection={removeStoredTeamSelection} addStoredTeamSelection={addStoredTeamSelection}
+            savedTeamMemberSelections={savedTeamMemberSelections} toggleSavedTeamMember={toggleSavedTeamMember}
+            teamCountOverride={teamFormatCount} teamSizeOverride={teamFormatSize} primary={primary} primarySoft={primarySoft} compactContent />}
+          {premiumSelectorError && <p role="alert" style={{ color: "#ff999e", fontSize: 12, textAlign: "center" }}>{premiumSelectorError}</p>}
+          {!premiumBotDraftTeam && <button type="button" onClick={() => setPremiumTeamsOpen(false)} style={{ width: "100%", minHeight: 42, marginTop: 12, background: `${primary}20`, border: `1px solid ${primary}`, borderRadius: 12, fontWeight: 950, color: primary, cursor: "pointer" }}>TERMINER</button>}
+        </div>
+      </div>}
+
+      {premiumCreateMenu && <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) { setPremiumCreateMenu(false); setPremiumResumeTeamDraft(null); } }} style={{ position: "fixed", inset: 0, zIndex: 10110, background: "rgba(0,0,0,.83)", padding: 14, display: "grid", placeItems: "center" }}>
+        <div role="dialog" aria-modal="true" aria-label="Choisir le type de création" style={{ width: "min(460px,100%)", border: `1px solid ${primary}88`, borderRadius: 18, background: "#090c19", padding: 15, boxSizing: "border-box" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}><strong style={{ color: primary }}>CRÉER</strong><button type="button" onClick={() => { setPremiumCreateMenu(false); setPremiumResumeTeamDraft(null); }} aria-label="Fermer" style={{ border: 0, background: "transparent", color: primary, fontSize: 24 }}>×</button></div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${group ? 4 : 2},minmax(0,1fr))`, gap: 7 }}>
+            {(premiumResumeTeamDraft ? (premiumResumeTeamDraft.kind === "bot-team" ? [{ id: "bot", icon: "bots", text: "BOT CPU" }] : [{ id: "profile", icon: "players", text: "JOUEUR" }]) : ([{ id: "profile", icon: "players", text: "JOUEUR" }, { id: "bot", icon: "bots", text: "BOT CPU" }, ...(group ? [{ id: "team", icon: "teams", text: "ÉQUIPE" }, { id: "bot-team", icon: "bot-teams", text: "TEAM BOT" }] : [])] as any[])).map((item) =>
+              <div key={item.id} style={{ display: "grid", justifyItems: "center", gap: 7 }}><MssSelectorIconButton icon={item.icon} label={item.text} accent={primary} onClick={() => premiumOpenCreate(item.id)} /><span style={{ color: primary, fontSize: 10, fontWeight: 900, textAlign: "center" }}>{item.text}</span></div>)}
+          </div>
+        </div>
+      </div>}
+
+      {premiumCreateKind && <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setPremiumCreateKind(null); }} style={{ position: "fixed", inset: 0, zIndex: 10120, background: "rgba(0,0,0,.85)", padding: 12, display: "grid", placeItems: "center" }}>
+        <form role="dialog" aria-modal="true" onSubmit={premiumSaveCreate} style={{ width: "min(500px,100%)", maxHeight: "88dvh", overflowY: "auto", boxSizing: "border-box", background: "#0b0e1b", border: `1px solid ${primary}88`, borderRadius: 18, padding: 14, display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: primary, fontSize: 14 }}>CRÉER {premiumCreateKind === "profile" ? "UN JOUEUR" : premiumCreateKind === "bot" ? "UN BOT CPU" : premiumCreateKind === "bot-team" ? "UNE TEAM BOT" : "UNE ÉQUIPE"}</strong><button type="button" onClick={() => setPremiumCreateKind(null)} style={{ color: primary, background: "transparent", border: 0, fontSize: 24 }}>×</button></div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button type="button" onClick={() => setPremiumAvatarPickerOpen(true)} title="Choisir un avatar ou un logo MSS" style={{ border: `1px solid ${primary}88`, borderRadius: "50%", width: 70, height: 70, minWidth: 70, background: "#121521", color: primary, overflow: "hidden", padding: 0, cursor: "pointer" }}>
+              {premiumCreateAvatar ? <img src={premiumCreateAvatar} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }}/> : isCreatingTeam ? "LOGO +" : "AVATAR +"}
+            </button>
+            <div style={{ display: "grid", gap: 8, minWidth: 0, flex: 1 }}><input required maxLength={35} autoFocus value={premiumCreateName} onChange={(e) => setPremiumCreateName(e.target.value)} placeholder={isCreatingTeam ? "Nom de l’équipe" : "Nom du participant"} style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${primary}55`, borderRadius: 11, background: "#151726", color: "#fff", padding: 11 }}/>
+              {!isCreatingTeam && <input value={premiumCreateCountry} onChange={(e) => setPremiumCreateCountry(e.target.value)} placeholder="Pays (facultatif)" style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ffffff26", borderRadius: 11, background: "#151726", color: "#fff", padding: 10 }}/>}</div>
+          </div>
+          {premiumCreateKind === "bot" && <label style={{ color: "#cbd0e2", display: "grid", gap: 5, fontSize: 12 }}>Niveau de performance<select value={premiumCreateLevel} onChange={(e) => setPremiumCreateLevel(e.target.value)} style={{ borderRadius: 11, padding: 10, background: "#151726", color: "white" }}><option value="easy">Débutant</option><option value="medium">Intermédiaire</option><option value="strong">Confirmé</option><option value="pro">Expert</option><option value="legend">Légende</option></select></label>}
+          {isCreatingTeam && <>
+            <div style={{ color: primary, fontWeight: 900, fontSize: 12 }}>MEMBRES · {premiumCreateMembers.length}/{teamFormatSize}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              {eligibleCreateMembers.slice(premiumCreatePage*9,premiumCreatePage*9+9).map((profile: any) => <button key={profile.id} type="button" aria-pressed={premiumCreateMembers.includes(String(profile.id))} onClick={() => setPremiumCreateMembers((prev) => prev.includes(String(profile.id)) ? prev.filter((id) => id !== String(profile.id)) : prev.length >= teamFormatSize ? prev : [...prev, String(profile.id)])}
+                style={{ minWidth: 0, background: premiumCreateMembers.includes(String(profile.id)) ? `${primary}22` : "rgba(255,255,255,.035)", border: `1px solid ${premiumCreateMembers.includes(String(profile.id)) ? primary : `${primary}44`}`, borderRadius: 12, padding: "8px 4px", color: "white", display: "grid", justifyItems: "center", gap: 5 }}><ProfileAvatar profile={profile} size={52}/><span style={{ fontSize: 10, fontWeight: 900, overflowWrap: "anywhere" }}>{profile.name}</span></button>)}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: primary, fontSize: 12, fontWeight: 900 }}><button type="button" disabled={premiumCreatePage === 0} onClick={() => setPremiumCreatePage((v) => Math.max(0,v-1))} style={pickerNavStyle}>←</button>PAGE {premiumCreatePage+1}/{createMemberPages}<button type="button" disabled={premiumCreatePage+1 >= createMemberPages} onClick={() => setPremiumCreatePage((v) => Math.min(createMemberPages-1,v+1))} style={pickerNavStyle}>→</button></div>
+            <button type="button" onClick={() => { setPremiumResumeTeamDraft({ kind: premiumCreateKind, name: premiumCreateName, avatar: premiumCreateAvatar, members: premiumCreateMembers }); setPremiumCreateKind(null); setPremiumCreateMenu(true); }} style={{ color: primary, background: "transparent", border: `1px solid ${primary}55`, borderRadius: 10, padding: 8, fontWeight: 800 }}>{premiumCreateKind === "bot-team" ? "+ CRÉER UN BOT CPU" : "+ CRÉER UN JOUEUR"}</button>
+          </>}
+          {premiumSelectorError && <p role="alert" style={{ color: "#ff9ba8", fontSize: 12 }}>{premiumSelectorError}</p>}
+          <button type="submit" disabled={!premiumCreateName.trim() || premiumCreateBusy || (isCreatingTeam && premiumCreateMembers.length !== teamFormatSize)} style={{ padding: 12, borderRadius: 12, border: `1px solid ${primary}`, background: `${primary}25`, color: primary, fontWeight: 950, opacity: !premiumCreateName.trim() || (isCreatingTeam && premiumCreateMembers.length !== teamFormatSize) ? .45 : 1 }}>CRÉER ET AJOUTER</button>
+        </form>
+        <MssIntegratedAvatarPicker open={premiumAvatarPickerOpen} onClose={() => setPremiumAvatarPickerOpen(false)} onChooseFile={(file) => premiumReadImage(file)} />
+      </div>}
+    </section>;
+  }
+
   // ---- Render ----
   return (
     <div
@@ -3863,11 +4290,29 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         })()}
       </header>
       <div data-mss-config-difficulty="1" style={{display:"flex",justifyContent:"center",marginTop:0,marginBottom:7}}><GameDifficultyStars game="x01" compact showValue={false} /></div>
-      <DartsRelatedModesPanel gameId="x01" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
 
       {/* CONTENU SCROLLABLE */}
       <div ref={contentRef} className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
-        {(configViewMode === "complete" || guidedStep === 0) && <section
+        {configViewMode === "guided" && (
+          <MssGuidedConfigNav
+            compactLikeKiller
+            steps={guidedSteps}
+            step={guidedStep}
+            selectionSummary={guidedStep >= 3 ? guidedSelectionLabel : undefined}
+            accent={primary}
+            onStepChange={(next) => {
+              setGuidedStep(next);
+              try { contentRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" }); } catch {}
+            }}
+            onPrev={guidedPrev}
+            onNext={guidedNext}
+            onComplete={() => selectConfigViewMode("complete")}
+            onAwenaExplain={() => setRulesVideoOpen(true)}
+          />
+        )}
+
+        {/* Même première étape que KILLER : présentation Awena complète, puis variantes apparentées. */}
+        {(configViewMode === "complete" || (configViewMode === "guided" && guidedStep === 0)) && <section
           className="x01-config-overview"
           style={{
             background: "rgba(10,12,24,0.94)",
@@ -3884,7 +4329,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 Configuration X01
               </div>
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {configViewMode === "complete" && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <PillButton
                   label="Guidée"
                   active={configViewMode === "guided"}
@@ -3899,10 +4344,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   primary={primary}
                   primarySoft={primarySoft}
                 />
-              </div>
+              </div>}
 
-              <div style={{ fontSize: 11, color: "#9298bb", lineHeight: 1.35 }}>
-                La configuration guidée va à l’essentiel. La configuration complète reste disponible avec tous les réglages avancés.
+              <div style={{ fontSize: 11, color: "#9298bb", lineHeight: 1.4 }}>
+                Configure les joueurs, les équipes, les scores de départ et les règles du X01. Awena peut aussi te présenter les règles en vidéo.
               </div>
 
               <div className="x01-config-awena-wide-banner" style={{ marginTop: "auto", width: "100%" }}>
@@ -4039,10 +4484,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             </button>
           </div>
         </section>}
-        {configViewMode === "guided" && guidedStep > 0 && (
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-            <MssAwenaExplainButton onClick={() => setRulesVideoOpen(true)} />
-          </div>
+        {(configViewMode === "complete" || guidedStep === 0) && (
+          <DartsRelatedModesPanel gameId="x01" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
         )}
 
         {awenaVoiceSetupActive && (
@@ -4060,225 +4503,58 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
         {configViewMode === "guided" ? (
           <>
-            <section
-              className="x01-config-progress-card"
-              style={{
-                background: cardBg,
-                borderRadius: 18,
-                padding: 12,
-                marginBottom: 14,
-                boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-                border: `1px solid ${primary}33`,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                <div>
-                  <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary }}>
-                    Configuration guidée
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: "#9298bb" }}>
-                    Étape {guidedStep + 1}/{guidedSteps.length} • {guidedSteps[guidedStep]} • {guidedSelectionLabel}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
-                  {guidedSteps.map((label, idx) => (
-                    <button
-                      key={`${label}-${idx}`}
-                      type="button"
-                      onClick={() => setGuidedStep(idx)}
-                      style={{
-                        minWidth: 26,
-                        height: 26,
-                        borderRadius: 999,
-                        border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,0.10)"}`,
-                        background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
-                        color: idx === guidedStep ? primary : "#b7bbd6",
-                        fontSize: 10,
-                        fontWeight: 950,
-                        cursor: "pointer",
-                      }}
-                      title={label}
-                    >
-                      {idx + 1}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${((guidedStep + 1) / Math.max(1, guidedSteps.length)) * 100}%`,
-                    borderRadius: 999,
-                    background: `linear-gradient(90deg, ${primary}, #ffe9a3)`,
-                    transition: "width .2s ease",
-                  }}
-                />
-              </div>
-            </section>
-
+            {/* MSS / KILLER : choix du type, puis FORMAT sur une étape séparée. */}
             {guidedStep === 1 && (
-              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>1. Type de partie</h3>
-                <p style={{ fontSize: 12, color: "#aeb2d3", lineHeight: 1.35, margin: "0 0 12px" }}>
-                  Commence par choisir si tu joues avec des profils individuels ou avec des équipes.
-                </p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
-                  <button type="button" onClick={() => { setParticipantMode("players"); if (matchMode === "teams") setMatchMode(totalPlayers >= 3 ? "multi" : "solo"); }} style={{ borderRadius: 18, border: `1px solid ${participantMode === "players" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "players" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
-                    <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Joueurs</div>
-                    <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>Duel 1v1 ou multi-joueurs.</div>
-                  </button>
-                  <button type="button" onClick={() => { setParticipantMode("teams"); setMatchMode("teams"); }} style={{ borderRadius: 18, border: `1px solid ${participantMode === "teams" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "teams" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
-                    <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Équipes</div>
-                    <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>Teams manuelles ou équipes enregistrées.</div>
-                  </button>
+              <section data-mss-guide-section="x01-participant-mode" style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 12px" }}>Participants</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }} role="group" aria-label="Type de participants">
+                  <MssParticipantTypeChoice kind="players" active={participantMode === "players"} accent={primary} onClick={() => { setParticipantMode("players"); if (matchMode === "teams") setMatchMode(totalPlayers >= 3 ? "multi" : "solo"); }} />
+                  <MssParticipantTypeChoice kind="teams" active={participantMode === "teams"} accent={primary} onClick={() => { setParticipantMode("teams"); setMatchMode("teams"); }} />
                 </div>
+              </section>
+            )}
 
+            {guidedStep === 2 && (
+              <section data-mss-guide-section="x01-match-format" style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 12px" }}>
+                  {participantMode === "teams" ? "FORMAT DES ÉQUIPES" : "FORMAT JOUEURS"}
+                </h3>
                 {participantMode === "players" ? (
-                  <div>
-                    <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Format joueurs</div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <PillButton label="Duel 1v1" active={matchMode === "solo"} onClick={() => setMatchMode("solo")} primary={primary} primarySoft={primarySoft} />
-                      <PillButton label="Multi" active={matchMode === "multi"} onClick={() => setMatchMode("multi")} primary={primary} primarySoft={primarySoft} />
-                    </div>
-                    <div style={{ marginTop: 10, fontSize: 11, color: "#8f94b5" }}>Duel = exactement 2 joueurs. Multi = 2 joueurs ou plus.</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }} role="group" aria-label="Format joueurs">
+                    {([ ["solo", "DUEL", "2 joueurs"], ["multi", "MULTI", "2 à 20 joueurs"] ] as const).map(([mode, name, subtitle]) => (
+                      <button key={mode} type="button" aria-pressed={matchMode === mode} onClick={() => {
+                        setMatchMode(mode);
+                        if (mode === "solo") { playersTouchedRef.current = true; setSelectedIds((ids) => ids.slice(0, 2)); }
+                      }} style={{ minWidth: 0, minHeight: 79, borderRadius: 14, cursor: "pointer", border: `1px solid ${matchMode === mode ? primary : primary + "55"}`, background: matchMode === mode ? `${primary}28` : "rgba(255,255,255,.035)", color: matchMode === mode ? primary : "#fff", display: "grid", justifyItems: "center", alignContent: "center", gap: 5 }}>
+                        <strong style={{ fontSize: 15 }}>{name}</strong><span style={{ fontSize: 11, opacity: .8 }}>{subtitle}</span>
+                      </button>
+                    ))}
                   </div>
                 ) : (
-                  <div>
-                    <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Source des équipes</div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <PillButton label="Manuel" active={teamsSourceMode === "manual"} onClick={() => setTeamsSourceMode("manual")} primary={primary} primarySoft={primarySoft} />
-                      <PillButton label="Équipes enregistrées" active={teamsSourceMode === "saved"} onClick={() => setTeamsSourceMode("saved")} primary={primary} primarySoft={primarySoft} />
-                      <PillButton label="Brassage auto" active={teamsSourceMode === "auto"} onClick={() => setTeamsSourceMode("auto")} primary={primary} primarySoft={primarySoft} />
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#cbd1e2", marginBottom: 7 }}>Nombre d'équipes</div>
+                      <div role="group" aria-label="Nombre d'équipes" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                        {([2,3,4] as const).map(n => <button key={n} type="button" aria-pressed={teamFormatCount === n} onClick={() => { setTeamFormatCount(n); if (n > 2) setTeamFormatSize(2); }} style={{ minHeight: 43, borderRadius: 12, border: `1px solid ${teamFormatCount === n ? primary : primary + "55"}`, background: teamFormatCount === n ? `${primary}28` : "rgba(255,255,255,.03)", color: teamFormatCount === n ? primary : "#fff", fontWeight: 900, cursor: "pointer" }}>{n}</button>)}
+                      </div>
                     </div>
-                    <div style={{ marginTop: 10, fontSize: 11, color: "#8f94b5" }}>
-                      Manuel = Gold/Pink/Blue/Green. Équipes enregistrées = teams existantes. Brassage auto = génération aléatoire ou équilibrée.
+                    <div>
+                      <div style={{ fontSize: 12, color: "#cbd1e2", marginBottom: 7 }}>Joueurs / bots par équipe</div>
+                      <div role="group" aria-label="Membres par équipe" style={{ display: "grid", gridTemplateColumns: `repeat(${teamFormatCount === 2 ? 3 : 1}, minmax(0,1fr))`, gap: 8 }}>
+                        {([2,3,4] as const).filter(n => teamFormatCount === 2 || n === 2).map(n => <button key={n} type="button" aria-pressed={teamFormatSize === n} onClick={() => setTeamFormatSize(n)} style={{ minHeight: 43, borderRadius: 12, border: `1px solid ${teamFormatSize === n ? primary : primary + "55"}`, background: teamFormatSize === n ? `${primary}28` : "rgba(255,255,255,.03)", color: teamFormatSize === n ? primary : "#fff", fontWeight: 900, cursor: "pointer" }}>{n}</button>)}
+                      </div>
                     </div>
+                    <div style={{ textAlign: "center", fontWeight: 850, fontSize: 12, color: primary }}>{teamFormatCount} équipes × {teamFormatSize} membres · {teamFormatCount * teamFormatSize} participants</div>
                   </div>
                 )}
               </section>
             )}
 
-            {guidedStep === 2 && participantMode === "players" && (
-              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>2. Joueurs</h3>
-                <SelectedParticipantsCompactBlock
-                  items={selectedParticipantProfiles}
-                  accent={primary}
-                  onRemove={(id: string) => togglePlayer(id)}
-                  playerDartSets={playerDartSets}
-                  onDartSetChange={handleChangePlayerDartSet}
-                  allProfiles={humanProfiles}
-                />
-                <PlayerPagedSelector
-                  usageMode="x01"
-                  profiles={preferredHumanProfiles}
-                  selectedIds={selectedIds}
-                  onToggle={togglePlayer}
-                  onAfterToggle={openDartSetPickerAfterPlayerSelection}
-                  accent={primary}
-                  pageSize={9}
-                  modalTitle="Choisir des joueurs"
-                  onClose={() => setAutoDartSetPicker(null)}
-                  renderAvatarOverlay={(p: any) => (
-                    <PlayerDartBadge
-                      profileId={p.id}
-                      dartSetId={playerDartSets[p.id] ?? null}
-                      onChange={(id) => handleChangePlayerDartSet(p.id, id)}
-                      compact
-                      allProfiles={humanProfiles}
-                      autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
-                    />
-                  )}
-                  showSelectedSummary={false}
-                />
-                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>Bots IA</div>
-                    <PillButton label={botsPanelEnabled ? "ON" : "OFF"} active={botsPanelEnabled} onClick={() => setBotsPanelEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
-                  </div>
-                  {botsPanelEnabled ? (
-                    <BotPagedSelector
-                      bots={botProfiles}
-                      selectedIds={selectedIds}
-                      onToggle={togglePlayer}
-                      accent={primary}
-                      label="BOTS IA"
-                      showCheckbox={false}
-                      showSelectedSummary={false}
-                    />
-                  ) : null}
-                </div>
-              </section>
-            )}
+            {guidedStep === 3 && renderMssPremiumParticipantSelector()}
 
-            {guidedStep === 2 && participantMode === "teams" && (
-              <>
-                <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                  <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>2. Équipes</h3>
-                  {selectedSavedTeams.length > 0 ? (
-                    <SelectionStickyBanner
-                      title="Équipes / joueurs sélectionnés"
-                      accent={primary}
-                      items={(selectedSavedTeams || []).map((team: any) => {
-                        const tid = String(team?.id || "");
-                        const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid] : (Array.isArray(team?.playerIds) ? team.playerIds : []);
-                        const names = chosen.map((id: any) => teamProfiles.find((p: any) => String(p?.id) === String(id))?.name).filter(Boolean).join(", ");
-                        return { id: tid, name: team?.name || "Équipe", logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null, subtitle: names || `${chosen.length || 0} joueur` };
-                      })}
-                    />
-                  ) : null}
-                  <TeamsSection
-                    profiles={teamProfiles}
-                    selectableProfiles={preferredHumanProfiles}
-                    selectedIds={selectedIds}
-                    teamAssignments={teamAssignments}
-                    setPlayerTeam={setPlayerTeam}
-                    togglePlayer={togglePlayer}
-                    playerDartSets={playerDartSets}
-                    handleChangePlayerDartSet={handleChangePlayerDartSet}
-                    autoDartSetPicker={autoDartSetPicker}
-                    setAutoDartSetPicker={setAutoDartSetPicker}
-                    allProfiles={humanProfiles}
-                    sourceMode={teamsSourceMode}
-                    setSourceMode={setTeamsSourceMode}
-                    storedTeams={storedDartsTeams}
-                    selectedStoredTeamIds={selectedStoredTeamIds}
-                    toggleStoredTeam={toggleStoredTeam}
-                    removeStoredTeamSelection={removeStoredTeamSelection}
-                    addStoredTeamSelection={addStoredTeamSelection}
-                    botTeams={botDartsTeams}
-                    botTeamsPanelEnabled={botTeamsPanelEnabled}
-                    setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
-                    selectedBotTeamIds={selectedBotTeamIds}
-                    toggleBotTeam={toggleBotTeam}
-                    removeBotTeamSelection={removeBotTeamSelection}
-                    savedTeamMemberSelections={savedTeamMemberSelections}
-                    toggleSavedTeamMember={toggleSavedTeamMember}
-                    primary={primary}
-                    primarySoft={primarySoft}
-                  />
-                </section>
-                <BotTeamsSection
-                  botTeams={botDartsTeams}
-                  selectedBotTeamIds={selectedBotTeamIds}
-                  toggleBotTeam={toggleBotTeam}
-                  addBotTeamSelection={addBotTeamSelection}
-                  removeBotTeamSelection={removeBotTeamSelection}
-                  botTeamsPanelEnabled={botTeamsPanelEnabled}
-                  setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
-                  profiles={teamProfiles}
-                  savedTeamMemberSelections={savedTeamMemberSelections}
-                  toggleSavedTeamMember={toggleSavedTeamMember}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                />
-              </>
-            )}
-
-            {guidedStep === 3 && (
+            {guidedStep === 4 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>3. Score et sortie</h3>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>Score et sortie</h3>
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Score de départ</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -4304,9 +4580,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 4 && (
+            {guidedStep === 5 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>4. Format</h3>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>Format</h3>
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Format des legs</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -4356,9 +4632,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 5 && (
+            {guidedStep === 6 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>5. Saisie et audio</h3>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>Saisie et audio</h3>
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Méthode de saisie</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -4411,15 +4687,16 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            {guidedStep === 6 && (
+            {guidedStep === 7 && (
               <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: `1px solid ${canStart ? primary + "66" : "rgba(255,255,255,0.08)"}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 10px" }}>6. Récapitulatif</h3>
-                <div style={{ display: "grid", gap: 8, fontSize: 12, color: "#dfe2ff" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Participants</span><b>{participantMode === "teams" ? "Équipes" : matchMode === "multi" ? "Multi" : "Duel 1v1"}</b></div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Sélection</span><b>{guidedSelectionLabel}</b></div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Score</span><b>{startScore} • {inMode.toUpperCase()} IN • {outMode.toUpperCase()} OUT</b></div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Format</span><b>{formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet)}</b></div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Saisie</span><b>{scoreInputMethod}</b></div>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 10px" }}>Récapitulatif</h3>
+                <div style={{ display: "grid", gap: 1, background: "rgba(0,0,0,.20)", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", padding: "5px 12px" }}>
+                  <MssConfigFact label="Mode" value={participantMode === "teams" ? "Équipes" : matchMode === "multi" ? "Multi" : "Duel 1v1"} />
+                  <MssConfigFact label="Participants" value={guidedSelectionLabel} />
+                  {participantMode === "teams" && <MssConfigFact label="Format équipes" value={`${teamFormatCount} équipes × ${teamFormatSize} membres`} />}
+                  <MssConfigFact label="Score" value={`${startScore} · ${inMode.toUpperCase()} IN · ${outMode.toUpperCase()} OUT`} />
+                  <MssConfigFact label="Format" value={formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet)} />
+                  <MssConfigFact label="Saisie" value={scoreInputMethod} />
                 </div>
                 {!canStart && (
                   <div style={{ marginTop: 12, borderRadius: 14, padding: 10, background: "rgba(255,90,90,0.10)", border: "1px solid rgba(255,90,90,0.25)", color: "#ffc9c9", fontSize: 12, fontWeight: 800 }}>
@@ -4434,256 +4711,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
-            <div className="x01-config-guided-nav" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, margin: "0 0 18px" }}>
-              <button type="button" onClick={guidedPrev} disabled={guidedStep <= 0} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: guidedStep <= 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)", color: guidedStep <= 0 ? "#565b76" : "#fff", fontWeight: 950, cursor: guidedStep <= 0 ? "default" : "pointer" }}>
-                ← Précédent
-              </button>
-              {guidedStep < guidedMaxStep ? (
-                <button type="button" onClick={guidedNext} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: primarySoft, color: primary, fontWeight: 950, cursor: "pointer" }}>
-                  Suivant →
-                </button>
-              ) : (
-                <div style={{ flex: "1 1 0" }} />
-              )}
-            </div>
           </>
         ) : (
           <>
-        {/* --------- BLOC PARTICIPANTS : JOUEURS / ÉQUIPES --------- */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: "20px 12px 16px",
-            marginBottom: 16,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.05)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              textTransform: "uppercase",
-              letterSpacing: 1,
-              fontWeight: 700,
-              color: primary,
-              marginBottom: 10,
-            }}
-          >
-            Participants
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-            <PillButton
-              label="Joueurs"
-              active={participantMode === "players"}
-              onClick={() => setParticipantMode("players")}
-              primary={primary}
-              primarySoft={primarySoft}
-            />
-            <PillButton
-              label="Équipes"
-              active={participantMode === "teams"}
-              onClick={() => {
-                setParticipantMode("teams");
-                setMatchMode("teams");
-              }}
-              primary={primary}
-              primarySoft={primarySoft}
-            />
-          </div>
-
-          {participantMode === "teams" && (selectedSavedTeams || []).length > 0 ? (
-            <SelectionStickyBanner
-              title="Équipes / joueurs sélectionnés"
-              accent={primary}
-              items={(selectedSavedTeams || []).map((team: any) => {
-                const tid = String(team?.id || "");
-                const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid] : (Array.isArray(team?.playerIds) ? team.playerIds : []);
-                const names = chosen.map((id: any) => teamProfiles.find((p: any) => String(p?.id) === String(id))?.name).filter(Boolean).join(", ");
-                return {
-                  id: tid,
-                  name: team?.name || "Équipe",
-                  logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null,
-                  subtitle: names || `${chosen.length || 0} joueur`,
-                };
-              })}
-            />
-          ) : null}
-
-          {participantMode === "players" ? (
-            humanProfiles.length === 0 ? (
-              <p style={{ fontSize: 13, color: "#b3b8d0", marginBottom: 8 }}>
-                {t(
-                  "x01v3.noProfiles",
-                  "Aucun profil local. Tu peux créer des joueurs et des BOTS dans le menu Profils."
-                )}
-              </p>
-            ) : (
-              <>
-                <SelectedParticipantsCompactBlock
-                  items={selectedParticipantProfiles}
-                  accent={primary}
-                  onRemove={(id: string) => togglePlayer(id)}
-                  playerDartSets={playerDartSets}
-                  onDartSetChange={handleChangePlayerDartSet}
-                  allProfiles={humanProfiles}
-                />
-
-                <PlayerPagedSelector
-                  usageMode="x01"
-                  profiles={preferredHumanProfiles}
-                  selectedIds={selectedIds}
-                  onToggle={togglePlayer}
-                  onAfterToggle={openDartSetPickerAfterPlayerSelection}
-                  accent={primary}
-                  pageSize={9}
-                  modalTitle="Choisir des joueurs"
-                  onClose={() => setAutoDartSetPicker(null)}
-                  renderAvatarOverlay={(p: any) => (
-                    <PlayerDartBadge
-                      profileId={p.id}
-                      dartSetId={playerDartSets[p.id] ?? null}
-                      onChange={(id) => handleChangePlayerDartSet(p.id, id)}
-                      compact
-                      allProfiles={humanProfiles}
-                      autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
-                    />
-                  )}
-                  showSelectedSummary={false}
-                />
-
-                <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
-                  {t("x01v3.playersHint", "2 joueurs pour un duel, 3+ pour Multi.")}
-                </p>
-              </>
-            )
-          ) : (
-            <TeamsSection
-              profiles={teamProfiles}
-              selectableProfiles={preferredHumanProfiles}
-              selectedIds={selectedIds}
-              teamAssignments={teamAssignments}
-              setPlayerTeam={setPlayerTeam}
-              togglePlayer={togglePlayer}
-              playerDartSets={playerDartSets}
-              handleChangePlayerDartSet={handleChangePlayerDartSet}
-              autoDartSetPicker={autoDartSetPicker}
-              setAutoDartSetPicker={setAutoDartSetPicker}
-              allProfiles={humanProfiles}
-              sourceMode={teamsSourceMode}
-              setSourceMode={setTeamsSourceMode}
-              storedTeams={storedDartsTeams}
-              selectedStoredTeamIds={selectedStoredTeamIds}
-              toggleStoredTeam={toggleStoredTeam}
-              removeStoredTeamSelection={removeStoredTeamSelection}
-              addStoredTeamSelection={addStoredTeamSelection}
-              botTeams={botDartsTeams}
-              botTeamsPanelEnabled={botTeamsPanelEnabled}
-              setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
-              selectedBotTeamIds={selectedBotTeamIds}
-              toggleBotTeam={toggleBotTeam}
-              removeBotTeamSelection={removeBotTeamSelection}
-              savedTeamMemberSelections={savedTeamMemberSelections}
-              toggleSavedTeamMember={toggleSavedTeamMember}
-              primary={primary}
-              primarySoft={primarySoft}
-            />
-          )}
-        </section>
-
-        {participantMode === "teams" && teamsSourceMode !== "auto" && (
-          <BotTeamsSection
-            botTeams={botDartsTeams}
-            selectedBotTeamIds={selectedBotTeamIds}
-            toggleBotTeam={toggleBotTeam}
-            addBotTeamSelection={addBotTeamSelection}
-            removeBotTeamSelection={removeBotTeamSelection}
-            botTeamsPanelEnabled={botTeamsPanelEnabled}
-            setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
-            profiles={teamProfiles}
-            savedTeamMemberSelections={savedTeamMemberSelections}
-            toggleSavedTeamMember={toggleSavedTeamMember}
-            primary={primary}
-            primarySoft={primarySoft}
-          />
-        )}
-
-        {participantMode === "players" && (
-          <>
-        {/* --------- BLOC BOTS IA --------- */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 16,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: `1px solid rgba(255,255,255,0.04)`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, margin: 0 }}>
-              {t("x01v3.bots.title", "Bots IA")}
-            </h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                aria-pressed={botsPanelEnabled}
-                onClick={() => setBotsPanelEnabled((v) => !v)}
-                style={{
-                  padding: "7px 11px",
-                  borderRadius: 999,
-                  border: `1px solid ${primary}88`,
-                  background: botsPanelEnabled ? `${primary}18` : "rgba(255,255,255,0.04)",
-                  color: primary,
-                  fontWeight: 900,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                }}
-              >
-                {botsPanelEnabled ? "☑ ON" : "☐ OFF"}
-              </button>
-              <button
-                type="button"
-                onClick={() => go && go("profiles_bots")}
-                style={{
-                  padding: "7px 11px",
-                  borderRadius: 999,
-                  border: `1px solid ${primary}`,
-                  background: "rgba(255,255,255,0.04)",
-                  color: primary,
-                  fontWeight: 900,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                }}
-              >
-                {t("x01v3.bots.manage", "Gérer les BOTS")}
-              </button>
-            </div>
-          </div>
-
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            {t("x01v3.bots.subtitle", 'Ajoute des BOTS IA : bots "pro" prédéfinis ou BOTS que tu as créés dans le menu Profils.')}
-          </p>
-
-          {botsPanelEnabled ? (
-            <BotPagedSelector
-              bots={botProfiles}
-              selectedIds={selectedIds}
-              onToggle={togglePlayer}
-              accent={primary}
-              label="BOTS IA"
-              showCheckbox={false}
-              showSelectedSummary={false}
-            />
-          ) : null}
-        </section>
-
-          </>
-        )}
+        {/* Sélecteur commun MSS, même parcours et mêmes galeries que KILLER. */}
+        {renderMssPremiumParticipantSelector()}
 
         {/* --------- BLOC PARAMÈTRES DE BASE + AUDIO + EXTERNAL --------- */}
         <section
@@ -4902,45 +4934,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             </div>
           </div>
 
-          <div>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.matchMode", "Mode de match")}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label={t("x01v3.mode.solo", "Solo (1v1)")}
-                active={matchMode === "solo"}
-                onClick={() => {
-                  if (soloDisabled) return;
-                  setMatchMode("solo");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={soloDisabled}
-              />
-              <PillButton
-                label={t("x01v3.mode.multi", "Multi (FFA)")}
-                active={matchMode === "multi"}
-                onClick={() => {
-                  if (multiDisabled) return;
-                  setMatchMode("multi");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={multiDisabled}
-              />
-              <PillButton
-                label={t("x01v3.mode.teams", "Équipes")}
-                active={matchMode === "teams"}
-                onClick={() => {
-                  if (teamsDisabled) return;
-                  setParticipantMode("teams");
-                  setMatchMode("teams");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={teamsDisabled}
-              />
-            </div>
-          </div>
+          {/* Le mode Duel / Multi / Équipes est défini uniquement dans le bloc Participants MSS. */}
 
           {matchMode === "multi" && (
             <div style={{ marginTop: 10 }}>

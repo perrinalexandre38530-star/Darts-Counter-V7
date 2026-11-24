@@ -208,7 +208,7 @@ export function mssChallengeDifficulty(challenge: { id?: string; title?: string;
   const text = `${id} ${title} ${challenge.description || ''}`.toLowerCase();
   const baseline: Record<string, MSSDifficulty> = {
     classic: 2, clock: 3, 'half-it': 4, sequence: 3, grouping: 3, jdc: 5, doubles8: 4,
-    'perfect-line': 5, 'perfect_line': 5, 'opposites': 4, 'les-opposes': 4,
+    'dont-break-the-chain': 3, 'perfect-line': 5, 'perfect_line': 5, 'opposites': 4, 'les-opposes': 4,
   };
   if (baseline[id]) return baseline[id];
   if (/impossible|hardcore|expert|parfait|perfect|sniper|triple precision|triple précision|sans filet|coffre.fort/.test(text)) return 5;

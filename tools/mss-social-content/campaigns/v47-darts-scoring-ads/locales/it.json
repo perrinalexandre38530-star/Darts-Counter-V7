@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "it",
+  "language_name": "Italiano",
+  "native_name": "Italiano",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Disponibile su Google Play",
+    "Disponibile su Microsoft Store"
+  ],
+  "footer": [
+    "Per tutti i livelli.",
+    "Per il piacere di giocare."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Il gioco delle freccette, in un altro modo.",
+      "headline": [
+        "GIOCA.",
+        "PROGREDISCI.",
+        "METTITI ALLA PROVA."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 modalità di gioco",
+      "section_title": "TUTTO L’UNIVERSO DELLE FRECCETTE IN UNA SOLA APP",
+      "feature_list": [
+        "156 modalità di gioco",
+        "Sfide e allenamento",
+        "Statistiche e record",
+        "Bot IA e profili locali",
+        "Competizioni e tornei",
+        "Schermi e punteggio",
+        "Gestione organizzazioni",
+        "Personalizzazione",
+        "Monitoraggio statistiche per set di freccette (dartset)",
+        "Universo e atmosfera Arcade"
+      ],
+      "cta": "SCARICA L’APP",
+      "caption_short": "156 modalità di gioco, 94 bot IA, allenamento, statistiche, gestione dei club e atmosfera arcade: Darts Scoring riunisce tutto l’universo delle freccette in una sola app.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "L’app completa per giocare, allenarti, metterti alla prova e organizzare le tue competizioni.",
+      "headline": [
+        "GIOCA.",
+        "PROGREDISCI.",
+        "DOMINA."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 modalità di gioco",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 bot IA",
+      "section_title": "PUNTI DI FORZA",
+      "feature_list": [
+        "156 modalità di gioco",
+        "94 bot IA",
+        "Sfide e allenamento",
+        "Statistiche e record",
+        "Bot IA e profili locali",
+        "Competizioni e tornei",
+        "Schermi e punteggio",
+        "Gestione organizzazioni (club / associazioni / leghe)",
+        "Personalizzazione",
+        "Monitoraggio statistiche per set di freccette (dartset)",
+        "Universo e atmosfera Arcade"
+      ],
+      "cta": "SCARICA L’APP",
+      "caption_short": "Migliora, allenati e domina le tue partite con 156 modalità, 94 bot IA, statistiche dettagliate e strumenti per club, associazioni e leghe.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "L’universo completo delle freccette.",
+      "headline": [
+        "L’APP CHE FA TUTTO."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 modalità di gioco",
+      "section_title": "CAMPAGNA ARCADE",
+      "feature_list": [
+        "156 modalità di gioco",
+        "94 bot IA e profili personalizzati",
+        "Centro di allenamento completo",
+        "Statistiche per set di freccette",
+        "Gestione club / associazione / squadra",
+        "Tornei, classifiche e competizioni",
+        "Personalizzazione completa dell’app",
+        "Universo e atmosfera Arcade"
+      ],
+      "cta": "SCARICA ORA!",
+      "caption_short": "Una versione campagna più esplosiva: Awena, l’universo arcade MSS, 156 modalità di gioco, 94 bot IA e tutti gli strumenti per giocare, seguire le statistiche e organizzare competizioni.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

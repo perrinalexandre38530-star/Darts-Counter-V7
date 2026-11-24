@@ -11,7 +11,7 @@ const RULE_KEYS = [
   'groupingMax', 'groupingHits', 'doublesBonusTarget', 'doublesTargets',
   'doublesTargetMode', 'catalogChallengeId', 'catalogLine', 'catalogVariant',
   'catalogRounds', 'catalogTarget', 'catalogStep', 'catalogMin', 'catalogMax',
-  'catalogLives', 'catalogSeed',
+  'catalogLives', 'catalogSeed', 'chainVariant', 'chainFormat', 'chainDarts', 'chainGoal',
 ] as const;
 
 export type ChallengeCoachSession = Pick<TrainingDetailedSession,

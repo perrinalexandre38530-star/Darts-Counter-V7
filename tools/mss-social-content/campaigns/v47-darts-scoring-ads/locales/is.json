@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "is",
+  "language_name": "Íslenska",
+  "native_name": "Íslenska",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Fáanlegt á Google Play",
+    "Fáanlegt í Microsoft Store"
+  ],
+  "footer": [
+    "Fyrir öll stig.",
+    "Fyrir leikgleðina."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Pílukast á annan hátt.",
+      "headline": [
+        "SPILAÐU.",
+        "BÆTTU ÞIG.",
+        "SKORAÐU Á SJÁLFAN ÞIG."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 leikhamir",
+      "section_title": "ALLUR PÍLUKASTSHEIMURINN Í EINU FORRITI",
+      "feature_list": [
+        "156 leikhamir",
+        "Áskoranir og æfingar",
+        "Tölfræði og met",
+        "Gervigreindarbotar og staðbundin snið",
+        "Keppnir og mót",
+        "Skjáir og stigagjöf",
+        "Stjórnun skipulagsheilda",
+        "Sérsníðing",
+        "Fylgjast með tölfræði eftir pílusetti",
+        "Arcade-heimur og stemning"
+      ],
+      "cta": "SÆKJA FORRITIÐ",
+      "caption_short": "156 leikhamir, 94 gervigreindarbotar, æfingar, tölfræði, klúbbastjórnun og arcade-stemning: Darts Scoring sameinar allan pílukastsheiminn í einu forriti.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Heildarlausnin til að spila, æfa, skora á sjálfan þig og skipuleggja keppnir.",
+      "headline": [
+        "SPILAÐU.",
+        "BÆTTU ÞIG.",
+        "RÁÐAÐU RÍKJUM."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 leikhamir",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 gervigreindarbotar",
+      "section_title": "HELSTU KOSTIR",
+      "feature_list": [
+        "156 leikhamir",
+        "94 gervigreindarbotar",
+        "Áskoranir og æfingar",
+        "Tölfræði og met",
+        "Gervigreindarbotar og staðbundin snið",
+        "Keppnir og mót",
+        "Skjáir og stigagjöf",
+        "Stjórnun skipulagsheilda (klúbbar / félög / deildir)",
+        "Sérsníðing",
+        "Fylgjast með tölfræði eftir pílusetti",
+        "Arcade-heimur og stemning"
+      ],
+      "cta": "SÆKJA FORRITIÐ",
+      "caption_short": "Bættu þig, æfðu og drottnaðu í leikjum með 156 hamum, 94 gervigreindarbotum, ítarlegri tölfræði og verkfærum fyrir klúbba, félög og deildir.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Heildarheimur pílukasts.",
+      "headline": [
+        "FORRITIÐ SEM GERIR ALLT."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 leikhamir",
+      "section_title": "ARCADE-HERFERÐ",
+      "feature_list": [
+        "156 leikhamir",
+        "94 gervigreindarbotar og sérsniðin snið",
+        "Fullkomin æfingamiðstöð",
+        "Tölfræði eftir pílusetti",
+        "Stjórnun klúbbs / félags / liðs",
+        "Mót, stigatöflur og keppnir",
+        "Fullkomin sérsníðing forrits",
+        "Arcade-heimur og stemning"
+      ],
+      "cta": "SÆKJA NÚNA!",
+      "caption_short": "Sprengikraftmeiri herferðarútgáfa: Awena, MSS arcade-heimurinn, 156 leikhamir, 94 gervigreindarbotar og öll verkfærin til að spila, fylgjast með tölfræði og skipuleggja keppnir.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

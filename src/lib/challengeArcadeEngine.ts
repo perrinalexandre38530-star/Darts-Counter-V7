@@ -1,3 +1,4 @@
+import {CHAIN_ID,chainFixed,chainFormat,chainGoal,chainLimit,chainTitle,chainVariant,evaluateChains,compareChainResults,type ChainConfig,type ChainEvaluation} from './challengeChains.ts';
 /** CHALLENGE : moteur d'arcade pur et déterministe.
  * L'unique source du score est le journal des impacts exacts (avec G/P distincts).
  * Le même journal sert à ANNULER, reprendre, enregistrer et analyser le résultat.
@@ -5,13 +6,14 @@
 export type ArcadeZone='G'|'P'|'D'|'T'|'BULL'|'DBULL'|'MISS';
 export type ArcadeHit={pid:string;zone:ArcadeZone;segment:number|null;choice?:ArcadeVariant;intendedSegment?:number|null;intendedZone?:ArcadeZone};
 export type ArcadeVariant='classic'|'doubles'|'triples';
-export type ArcadePlayConfig={
+export type ArcadePlayConfig=ChainConfig&{
  catalogChallengeId:string;catalogLine:number;catalogVariant:ArcadeVariant;catalogRounds:number;
  catalogTarget?:number;catalogStep?:number;catalogMin?:number;catalogMax?:number;catalogLives?:number;
  catalogSeed?:number;catalogAssignments?:Record<string,ArcadeObjective[]>;catalogGhost?:number[];
 };
 export type ArcadeObjective={zone:ArcadeZone|'S'|'ANY'|'NUMBER';segment:number|null;label:string};
 export type ArcadeProgress={
+ chains?:ChainEvaluation;
  attempts:number;successes:number;index:number;score:number;complete:boolean;remaining:number;
  accuracy:number;current:ArcadeObjective|null;hitResults:boolean[];streak:number;bestStreak:number;
  lives:number;visitScores:number[];scoreHistory:number[];message:string;totalObjectives:number;
@@ -51,6 +53,7 @@ const MULTI_IDS=new Set(['architects-duel','exact-copy','perfect-relay','territo
 const NO_ROUNDS=new Set(['perfect-line','compass','collector','contracts','bounty-hunt']);
 export function arcadeRuleDetails(c:ArcadePlayConfig):ArcadeRuleDetails{
  const id=mode(c);
+ if(id===CHAIN_ID)return {kind:'streak',roundUnit:'VOLÉES',minPlayers:1,hint:arcadeRuleDescription(c),usesLine:chainFixed(c),usesRounds:false,usesTarget:false,usesRange:false,usesStep:false,usesLives:false,usesVariant:false};
  const kind=id==='perfect-relay'?'team':PATH_IDS.has(id)?'path':STREAK_IDS.has(id)?'streak':'score';
  const usesTarget=['exact-count','upper-limit','milestones','hundred-streak','green-zone','controlled-roulette'].includes(id);
  return {kind,roundUnit:id==='opposites'||id==='zigzag'?'PAIRES':kind==='path'?'OBJECTIFS':'VOLÉES',
@@ -63,6 +66,7 @@ export function arcadeRuleDetails(c:ArcadePlayConfig):ArcadeRuleDetails{
 }
 export function arcadeRuleDescription(c:ArcadePlayConfig):string{
  const id=mode(c),n=starting(c),r=rounds(c),target=goal(c);
+ if(id===CHAIN_ID)return `${chainTitle(c)} · ${chainFormat(c)==='rounds'?chainLimit(c)+' fléchettes':chainFormat(c)==='goal'?'objectif '+chainGoal(c)+' maillons':chainFormat(c)==='single'?'première erreur = fin':'session libre'}. ${chainVariant(c)==='hybrid'?'67 chaînes suivies indépendamment ; classement principal sans MISS.':'Chaque impact conforme prolonge la chaîne ; toute erreur la brise.'}`;
  const overrides:Record<string,string>={
   'perfect-line':`D${n} → G${n} → T${n} → P${n} → BULL25 → DBULL50. Chaque bonne touche avance immédiatement.`,
   opposites:`${r} paires de secteurs diamétralement opposés, ${c.catalogVariant==='doubles'?'uniquement en double':c.catalogVariant==='triples'?'uniquement en triple':'en simple'}, au minimum de fléchettes.`,
@@ -295,6 +299,7 @@ export function arcadeTerritories(hits:readonly ArcadeHit[]):Record<number,Arcad
 }
 export function evaluateArcadeProgress(hits:readonly ArcadeHit[],config:ArcadePlayConfig,globalHits:readonly ArcadeHit[]=hits,playerId?:string):ArcadeProgress{
  const id=mode(config);
+ if(id===CHAIN_ID){const chains=evaluateChains(hits,config),p=baseProgress(),a=chains.primary;return finalise({...p,chains,attempts:chains.attempts,successes:a.successes,index:a.best,score:a.best,complete:chains.complete,hitResults:chains.hitResults,streak:a.current,bestStreak:a.best,visitScores:chains.visitScores,scoreHistory:chains.scoreHistory,totalObjectives:chainFormat(config)==='goal'?chainGoal(config):0,message:`Chaîne actuelle : ${a.current} · Record : ${a.best}`});}
  if(id==='perfect-relay'){
   const objectives=arcadeObjectives(config),p=baseProgress();let index=0;
   const all=globalHits;
@@ -326,6 +331,7 @@ export function currentArcadePlayer(hits:readonly ArcadeHit[],ids:readonly strin
  return null;
 }
 export const compareArcadeRanks=(a:ArcadeProgress,b:ArcadeProgress,c:ArcadePlayConfig)=>{
+ if(mode(c)===CHAIN_ID&&a.chains&&b.chains)return compareChainResults(a.chains,b.chains);
  const lower=arcadeRuleDetails(c).kind==='path'||arcadeRuleDetails(c).kind==='team';
  if(lower)return Number(b.complete)-Number(a.complete)||b.index-a.index||a.attempts-b.attempts||b.accuracy-a.accuracy;
  return b.score-a.score||b.bestStreak-a.bestStreak||b.accuracy-a.accuracy||a.attempts-b.attempts;

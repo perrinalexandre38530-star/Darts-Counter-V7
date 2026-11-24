@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "sr",
+  "language_name": "Srpski",
+  "native_name": "Srpski",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Dostupno na Google Play-u",
+    "Dostupno u Microsoft Store-u"
+  ],
+  "footer": [
+    "Za sve nivoe.",
+    "Za zadovoljstvo igre."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Pikado na drugačiji način.",
+      "headline": [
+        "IGRAJ.",
+        "NAPREDUJ.",
+        "IZAZOVI SEBE."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 režima igre",
+      "section_title": "CEO SVET PIKADA U JEDNOJ APLIKACIJI",
+      "feature_list": [
+        "156 režima igre",
+        "Izazovi i trening",
+        "Statistika i rekordi",
+        "AI botovi i lokalni profili",
+        "Takmičenja i turniri",
+        "Ekrani i bodovanje",
+        "Upravljanje organizacijom",
+        "Personalizacija",
+        "Praćenje statistike po setu strelica",
+        "Arcade univerzum i atmosfera"
+      ],
+      "cta": "PREUZMI APLIKACIJU",
+      "caption_short": "156 režima igre, 94 AI bota, trening, statistika, upravljanje klubovima i arcade atmosfera: Darts Scoring okuplja ceo svet pikada u jednoj aplikaciji.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "Kompletna aplikacija za igru, trening, izazove i organizovanje takmičenja.",
+      "headline": [
+        "IGRAJ.",
+        "NAPREDUJ.",
+        "DOMINIRAJ."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 režima igre",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "94 AI bota",
+      "section_title": "GLAVNE PREDNOSTI",
+      "feature_list": [
+        "156 režima igre",
+        "94 AI bota",
+        "Izazovi i trening",
+        "Statistika i rekordi",
+        "AI botovi i lokalni profili",
+        "Takmičenja i turniri",
+        "Ekrani i bodovanje",
+        "Upravljanje organizacijom (klubovi / udruženja / lige)",
+        "Personalizacija",
+        "Praćenje statistike po setu strelica",
+        "Arcade univerzum i atmosfera"
+      ],
+      "cta": "PREUZMI APLIKACIJU",
+      "caption_short": "Napreduj, treniraj i dominiraj uz 156 režima, 94 AI bota, detaljnu statistiku i alate za klubove, udruženja i lige.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "Kompletan svet pikada.",
+      "headline": [
+        "APLIKACIJA KOJA RADI SVE."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 režima igre",
+      "section_title": "ARCADE KAMPANJA",
+      "feature_list": [
+        "156 režima igre",
+        "94 AI bota i personalizovani profili",
+        "Kompletan trening centar",
+        "Statistika po setu strelica",
+        "Upravljanje klubom / udruženjem / timom",
+        "Turniri, rang liste i takmičenja",
+        "Potpuna personalizacija aplikacije",
+        "Arcade univerzum i atmosfera"
+      ],
+      "cta": "PREUZMI ODMAH!",
+      "caption_short": "Eksplozivnija kampanja: Awena, MSS arcade univerzum, 156 režima igre, 94 AI bota i svi alati za igru, praćenje statistike i organizovanje takmičenja.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Darts",
+        "#Arcade",
+        "#ScoringApp"
+      ],
+      "localized_render_required": true
+    }
+  }
+}

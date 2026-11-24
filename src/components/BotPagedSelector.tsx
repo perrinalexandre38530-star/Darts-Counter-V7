@@ -128,6 +128,7 @@ export default function BotPagedSelector({
   showSelectedSummary = true,
   showChooser = true,
   hideToolbar = false,
+  hideCompactSelectedSummary = false,
   controlledOpen,
   onControlledOpenChange,
 }: {
@@ -143,6 +144,7 @@ export default function BotPagedSelector({
   /** Hide only the chooser, never an already-selected bot avatar. */
   showChooser?: boolean;
   hideToolbar?: boolean;
+  hideCompactSelectedSummary?: boolean;
   controlledOpen?: boolean;
   onControlledOpenChange?: (next: boolean) => void;
 }) {
@@ -223,7 +225,7 @@ export default function BotPagedSelector({
         </div>
       ) : null}
 
-      {selectedCount > 0 && !showSelectedSummary ? (
+      {selectedCount > 0 && !showSelectedSummary && !hideCompactSelectedSummary ? (
         <section data-mss-selected-bots="compact" aria-label={`${selectedCount} bot(s) sélectionné(s)`} style={{
           marginTop: 10, borderRadius: 15, padding: "10px 8px 9px",
           background: "rgba(255,255,255,.035)", border: `1px solid ${accent}44`,

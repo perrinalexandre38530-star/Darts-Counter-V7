@@ -1,3 +1,4 @@
+import {CHAIN_ID,chainConfigKey,chainTitle,chainFormat,chainLimit,chainGoal} from './challengeChains.ts';
 /** CHALLENGE archive, stored in the canonical History V4 pipeline.
  * Display filtering MUST NOT delete these records or change their statistics.
  * The normalized read model is shared by the game chooser and Stats > Training.
@@ -66,6 +67,7 @@ export function isFinishedChallengeRecord(rec:any):boolean{
 export function challengeRecordConfigKey(rec:any):string{
   const cfg=rec?.payload?.config||rec?.decoded?.config||rec?.resume?.config||{};
   const mode=challengeRecordModeId(rec);
+  if(mode==='arcade:'+CHAIN_ID)return mode+':'+chainConfigKey(cfg);
   const official=txt(cfg.leaderboardTarget||rec?.game?.leaderboardTarget||rec?.summary?.leaderboardTarget);
   // A target alone is NOT a complete configuration: classic 20 with 5 vs 30 rounds
   // or SO vs DO must never share a personal record. Arcade seed/steps also matter.
@@ -93,6 +95,7 @@ export function challengeRecordConfigKey(rec:any):string{
 export function challengeConfigDisplay(rec:any):string{
  const cfg=rec?.payload?.config||rec?.decoded?.config||rec?.resume?.config||{};
  const mode=challengeRecordModeId(rec);
+ if(mode==='arcade:'+CHAIN_ID)return `${chainTitle(cfg)} · ${chainFormat(cfg)==='rounds'?chainLimit(cfg)+' FLÉCHETTES':chainFormat(cfg)==='goal'?chainGoal(cfg)+' MAILLONS':chainFormat(cfg)==='single'?'CHAÎNE UNIQUE':'LIBRE'}`;
  if(mode.startsWith('arcade:')){
   if(!cfg.catalogVariant&&!cfg.catalogLine&&!cfg.catalogRounds)return 'CONFIGURATION NON DOCUMENTÉE';
   const fields=[cfg.catalogVariant&&cfg.catalogVariant!=='classic'?txt(cfg.catalogVariant).toUpperCase():'CLASSIQUE',cfg.catalogLine?'N° '+cfg.catalogLine:'',cfg.catalogRounds?cfg.catalogRounds+' OBJECTIFS':''];

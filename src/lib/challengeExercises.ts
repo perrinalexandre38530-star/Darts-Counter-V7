@@ -1,9 +1,11 @@
+import {CHAIN_ID,parseChainOnlineTarget,chainLabel,chainConfigKey,chainKey,chainOnlineVisits,type ChainConfig} from './challengeChains.ts';
 export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8'|'jdc'|'arcade';
 export type ChallengeScoreMode='challenge'|'real';
 export type ChallengeObjectiveToken='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'any-double'|'any-triple';
 export type ChallengeHit='S'|'D'|'T'|'25'|'50'|'MISS';
 
-export type ChallengeExerciseConfigLike={
+export type ChallengeExerciseConfigLike=ChainConfig & {
+ catalogChallengeId?:string;
  target:string;
  rule:string;
  visits:number;
@@ -58,6 +60,7 @@ const classicValues:Record<ChallengeHit,number>={S:1,D:2,T:3,'25':1,'50':2,MISS:
 const clampSector=(value:any,fallback:number)=>Math.max(1,Math.min(20,Math.round(Number(value)||fallback)));
 
 export function challengeExerciseType(cfg:ChallengeExerciseConfigLike):ChallengeExerciseType{
+ if(cfg?.exerciseType==='arcade'&&cfg.catalogChallengeId===CHAIN_ID)return 'arcade';
  const value=String(cfg?.exerciseType||'classic').toLowerCase();
  return value==='clock'||value==='half-it'||value==='sequence'||value==='grouping'||value==='doubles8'||value==='jdc'?value:'classic';
 }
@@ -125,6 +128,7 @@ export function objectiveBoardKey(objective:string,cfg?:ChallengeExerciseConfigL
 
 export function exerciseTitle(cfg:ChallengeExerciseConfigLike):string{
  switch(challengeExerciseType(cfg)){
+  case 'arcade':return 'NE BRISE PAS LA CHAÎNE !';
   case 'clock':return 'HORLOGE 1 → 20';
   case 'half-it':return 'HALF-IT';
   case 'sequence':return 'SÉQUENCE';
@@ -137,6 +141,7 @@ export function exerciseTitle(cfg:ChallengeExerciseConfigLike):string{
 
 export function challengeObjectiveKeyTarget(cfg:ChallengeExerciseConfigLike):string{
  const type=challengeExerciseType(cfg);
+ if(type==='arcade')return chainConfigKey(cfg);
  if(type==='classic')return String(cfg.target||'20');
  if(type==='clock')return `clock-${cfg.clockScoreMode==='real'?'real':'hits'}-${cfg.clockIncludeBull?'bull':'20'}`;
  if(type==='half-it')return `halfit-${Math.max(0,Math.round(Number(cfg.halfItStartScore??40)||0))}-${normalizedSequence(cfg).join('.')}`;
@@ -153,6 +158,8 @@ export function challengeObjectiveKeyTarget(cfg:ChallengeExerciseConfigLike):str
 }
 
 export function challengeOnlineTargetLabel(value:string):string{
+ const chain=parseChainOnlineTarget(value);if(chain){const c=chain.config;const label=c.chainVariant==='hybrid'?`FREE HYBRIDE · ${chainLabel(chain.key)}`:chainLabel(chain.key);return `${label} · ${c.chainFormat==='rounds'?c.chainDarts+' FL.':c.chainFormat==='goal'?c.chainGoal+' MAILLONS':c.chainFormat==='single'?'UNIQUE':'LIBRE'}`;}
+
  if(value.startsWith('clock-'))return 'HORLOGE';
  if(value.startsWith('halfit-'))return 'HALF-IT';
  if(value.startsWith('sequence-'))return 'SÉQUENCE';
@@ -566,6 +573,11 @@ export function compareChallengeRankRows(a:ChallengeRankLike,b:ChallengeRankLike
  const scoreDelta=metric(b?.score)-metric(a?.score);
  if(scoreDelta)return scoreDelta;
  const type=challengeExerciseType(cfg);
+ if(type==='arcade'){
+  const key=chainKey(cfg);const ar=(a.exerciseStats as any)?.chainStats?.[key]?.runs,br=(b.exerciseStats as any)?.chainStats?.[key]?.runs;
+  if(Array.isArray(ar)&&Array.isArray(br)){const aa=[...ar].sort((x,y)=>y-x),bb=[...br].sort((x,y)=>y-x);for(let i=0;i<Math.max(aa.length,bb.length);i++){const d=metric(bb[i])-metric(aa[i]);if(d)return d;}}
+  return metric(b.accuracy??(b.exerciseStats as any)?.accuracy)-metric(a.accuracy??(a.exerciseStats as any)?.accuracy);
+ }
  if(type!=='classic'){
   const ax=a?.exerciseStats||{},bx=b?.exerciseStats||{};
   const validation=metric((bx as any).validationRate)-metric((ax as any).validationRate);
@@ -599,6 +611,7 @@ export function compareChallengeRankRows(a:ChallengeRankLike,b:ChallengeRankLike
 export function challengeExerciseConfigFromRules(rules:any,objectiveOverride?:string|null):ChallengeExerciseConfigLike{
  const stored=(rules?.exerciseConfig&&typeof rules.exerciseConfig==='object')?rules.exerciseConfig:rules||{};
  const type=challengeExerciseType(stored);
+ if(type==='arcade'){const config={...stored,chainEnded:false};return {...config,target:chainConfigKey(config),rule:'arcade',visits:chainOnlineVisits(config),exerciseType:'arcade'};}
  if(type==='classic'){
   const target=String(objectiveOverride||rules?.target||stored?.target||'20');
   const rule=target==='any-double'?'double':target==='any-triple'?'triple':target==='bull'||target==='bull25'||target==='bull50'?'bull':String(rules?.rule||stored?.rule||'all');

@@ -1,0 +1,132 @@
+{
+  "schema": "mss.social.localized-campaign-copy.v1",
+  "campaign": "v47-darts-scoring-ads",
+  "language_code": "fr",
+  "language_name": "Français",
+  "native_name": "Français",
+  "app_brand": "MULTISPORTS SCORING",
+  "mode_brand": "DARTS SCORING",
+  "stores": [
+    "Disponible sur Google Play",
+    "Disponible sur Microsoft Store"
+  ],
+  "footer": [
+    "Pour tous les niveaux.",
+    "Pour le plaisir de jouer."
+  ],
+  "posters": {
+    "campaign_01": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_01_FR.png",
+      "master_language": "fr",
+      "style": "clean_structured",
+      "theme": "structured_features",
+      "title": "DARTS SCORING",
+      "subtitle": "Le jeu de fléchettes, autrement.",
+      "headline": [
+        "JOUEZ.",
+        "PROGRESSEZ.",
+        "DÉFIEZ-VOUS."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 modes de jeu",
+      "section_title": "TOUT L’UNIVERS DARTS DANS UNE SEULE APPLICATION",
+      "feature_list": [
+        "156 modes de jeu",
+        "Défis & Entraînements",
+        "Stats & Records",
+        "Bots IA & Profils locaux",
+        "Compétitions & Tournois",
+        "Écrans & Scoring",
+        "Gestion d’organisation",
+        "Personnalisation",
+        "Suivi des statistiques par jeu de fléchettes (dartset)",
+        "Univers et ambiance Arcade"
+      ],
+      "cta": "TÉLÉCHARGEZ L’APPLICATION",
+      "caption_short": "156 modes de jeu, 94 bots IA, entraînement, stats, organisation de clubs et ambiance arcade : Darts Scoring regroupe tout l’univers fléchettes dans une seule application.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Fléchettes",
+        "#Arcade",
+        "#DartsApp"
+      ],
+      "localized_render_required": false
+    },
+    "campaign_02": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_02_FR.png",
+      "master_language": "fr",
+      "style": "hero_benefits",
+      "theme": "benefits_banner",
+      "title": "DARTS SCORING",
+      "subtitle": "L’application complète pour jouer, vous entraîner, vous challenger et organiser vos compétitions.",
+      "headline": [
+        "JOUEZ.",
+        "PROGRESSEZ.",
+        "DOMINEZ."
+      ],
+      "hero_badge_left": "156",
+      "hero_badge_left_label": "156 modes de jeu",
+      "hero_badge_right": "94",
+      "hero_badge_right_label": "Bots IA",
+      "section_title": "LES POINTS FORTS",
+      "feature_list": [
+        "156 modes de jeu",
+        "94 bots IA",
+        "Défis & Entraînements",
+        "Stats & Records",
+        "Bots IA & Profils locaux",
+        "Compétitions & Tournois",
+        "Écrans & Scoring",
+        "Gestion d’organisation (clubs / associations / ligues)",
+        "Personnalisation",
+        "Suivi des statistiques par jeu de fléchettes (dartset)",
+        "Univers et ambiance Arcade"
+      ],
+      "cta": "TÉLÉCHARGEZ L’APPLICATION",
+      "caption_short": "Progressez, entraînez-vous et dominez vos parties avec 156 modes, 94 bots IA, des statistiques détaillées et des outils pour vos clubs, associations et ligues.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Fléchettes",
+        "#Arcade",
+        "#DartsApp"
+      ],
+      "localized_render_required": false
+    },
+    "campaign_03": {
+      "asset": "assets/fr/MSS_DARTS_SCORING_CAMPAIGN_03_FR.png",
+      "master_language": "fr",
+      "style": "arcade_awena",
+      "theme": "arcade_campaign",
+      "title": "DARTS SCORING",
+      "subtitle": "L’univers complet des fléchettes.",
+      "headline": [
+        "L’APPLICATION QUI FAIT TOUT."
+      ],
+      "hero_badge": "156",
+      "hero_badge_label": "156 modes de jeu",
+      "section_title": "CAMPAGNE ARCADE",
+      "feature_list": [
+        "156 modes de jeu",
+        "94 bots IA & profils personnalisés",
+        "Centre d’entraînement complet",
+        "Statistiques par jeu de fléchettes (dartset)",
+        "Organisation de club / association / équipe",
+        "Tournois, classements et compétitions",
+        "Personnalisation complète de l’application",
+        "Univers et ambiance Arcade"
+      ],
+      "cta": "TÉLÉCHARGEZ DÈS MAINTENANT !",
+      "caption_short": "Une version plus explosive pour la campagne : Awena, l’univers arcade MSS, 156 modes de jeu, 94 bots IA et tous les outils pour jouer, suivre vos stats et organiser vos compétitions.",
+      "hashtags": [
+        "#MultisportsScoring",
+        "#DartsScoring",
+        "#Fléchettes",
+        "#Arcade",
+        "#DartsApp"
+      ],
+      "localized_render_required": false
+    }
+  }
+}

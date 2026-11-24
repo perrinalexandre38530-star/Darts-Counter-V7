@@ -9,6 +9,9 @@ const sources: Record<string, string> = {
   miss: "/sounds/challenge/miss.mp3",
   intro: "/sounds/challenge/intro.mp3",
   victory: "/sounds/challenge/end-game.mp3",
+  "chain-link": "/sounds/challenge/chain-link.mp3",
+  "chain-break": "/sounds/challenge/chain-break.mp3",
+  "chain-record": "/sounds/challenge/chain-record.mp3",
 };
 
 function audioFor(key: string) {
@@ -36,7 +39,7 @@ export async function unlockNewModeAudio() {
   } catch {}
 }
 
-export function playNewModeSfx(key: "simple"|"double"|"triple"|"miss"|"intro"|"victory", enabled = true, restart = true) {
+export function playNewModeSfx(key: "simple"|"double"|"triple"|"miss"|"intro"|"victory"|"chain-link"|"chain-break"|"chain-record", enabled = true, restart = true) {
   if (!enabled) return;
   try {
     const base = audioFor(key);
