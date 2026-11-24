@@ -9,27 +9,21 @@ import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
 import { MSS_HIT } from "../lib/mssVisualCharter";
 import MssSelectorIconButton from "../components/MssSelectorIconButton";
 import { MssConfigCaption, MssConfigFact } from "../components/config/MssPremiumConfig";
-import { MssStartOrderSection } from "../components/config/MssMatchFormatPanel";
+import MssMatchFormatPanel, { MssStartOrderSection } from "../components/config/MssMatchFormatPanel";
+import MssParticipantModeIcon from "../components/config/MssParticipantModeIcon";
 
 type QuickMode = "duel" | "teams" | "multi";
 type VictoryMode = "best_of" | "first_to";
-type FormatUnit = "legs" | "sets";
 
 const LS_KEY = "mss:x01:quick-config:v1";
-const BO_VALUES = [1, 3, 5, 7];
-const FT_VALUES = [1, 3, 5, 7, 9, 11, 13];
-
-/** Même tracé BottomNav que les sélecteurs de profils de la configuration Arcade. */
-function QuickParticipantsIcon({ kind }: { kind: QuickMode }) {
-  const heads = kind === "duel" ? [7.5, 16.5] : kind === "teams" ? [5.5, 12, 18.5] : [4, 9.4, 14.6, 20];
-  const radius = kind === "multi" ? 1.55 : 2.2;
-  return <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {heads.map((x, i) => <g key={x}>
-      <circle cx={x} cy={i % 2 === 0 ? 7.5 : 8} r={radius}/>
-      <path d={`M${Math.max(1, x - 2.6)} 19v-1.3a2.6 2.6 0 0 1 5.2 0V19`}/>
-    </g>)}
-  </svg>;
-}
+// Référence des formats X01 Arcade, sans restriction arbitraire sur la partie rapide.
+const LEG_BEST_OF = [1, 3, 5, 7, 9, 11, 13, 15];
+const LEG_FIRST_TO = [1, 3, 5, 7, 9, 10, 11, 13, 15, 16, 17, 18];
+const SET_VALUES = [1, 3, 5, 7, 9, 11, 13];
+const legOptionsFor = (mode: VictoryMode) => mode === "best_of" ? LEG_BEST_OF : LEG_FIRST_TO;
+const countFromSelection = (mode: VictoryMode, target: number) => mode === "first_to" ? target * 2 - 1 : target;
+const formatPart = (mode: VictoryMode, target: number, kind: string) =>
+  `${mode === "best_of" ? "BO" : "First to "}${target} ${kind}`;
 
 export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void; onStart: (cfg: X01ConfigV3) => void }) {
   const { theme } = useTheme();
@@ -41,9 +35,11 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
   const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901 | 1001>(501);
   const [inMode, setInMode] = React.useState<"single" | "double">("single");
   const [outMode, setOutMode] = React.useState<"single" | "double">("double");
-  const [victoryMode, setVictoryMode] = React.useState<VictoryMode>("best_of");
-  const [target, setTarget] = React.useState(1);
-  const [unit, setUnit] = React.useState<FormatUnit>("legs");
+  // Deux réglages indépendants, identiques à l'Arcade : BO/FT LEGS et BO/FT SETS.
+  const [legVictoryMode, setLegVictoryMode] = React.useState<VictoryMode>("best_of");
+  const [legVictoryTarget, setLegVictoryTarget] = React.useState(3);
+  const [setVictoryMode, setSetVictoryMode] = React.useState<VictoryMode>("best_of");
+  const [setVictoryTarget, setSetVictoryTarget] = React.useState(1);
   const [names, setNames] = React.useState<string[]>(["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10"]);
 
   React.useEffect(() => {
@@ -56,17 +52,35 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
       if ([301, 501, 701, 901, 1001].includes(Number(v?.startScore))) setStartScore(Number(v.startScore) as any);
       if (["single", "double"].includes(v?.inMode)) setInMode(v.inMode);
       if (["single", "double"].includes(v?.outMode)) setOutMode(v.outMode);
-      if (["best_of", "first_to"].includes(v?.victoryMode)) setVictoryMode(v.victoryMode);
-      if (["legs", "sets"].includes(v?.unit)) setUnit(v.unit);
-      if (Number.isFinite(Number(v?.target))) setTarget(Math.max(1, Number(v.target)));
+      // Migration douce de l'ancien format unique BO/FT + LEGS/SETS.
+      const oldMode: VictoryMode = v?.victoryMode === "first_to" ? "first_to" : "best_of";
+      const legMode: VictoryMode = v?.legVictoryMode === "first_to" ? "first_to" :
+        v?.legVictoryMode === "best_of" ? "best_of" : v?.unit === "legs" ? oldMode : "best_of";
+      const restoredSetMode: VictoryMode = v?.setVictoryMode === "first_to" ? "first_to" :
+        v?.setVictoryMode === "best_of" ? "best_of" : v?.unit === "sets" ? oldMode : "best_of";
+      const requestedLegs = Number(v?.legVictoryTarget ?? (v?.unit === "legs" ? v?.target : 3));
+      const requestedSets = Number(v?.setVictoryTarget ?? (v?.unit === "sets" ? v?.target : 1));
+      setLegVictoryMode(legMode);
+      setSetVictoryMode(restoredSetMode);
+      setLegVictoryTarget(legOptionsFor(legMode).includes(requestedLegs) ? requestedLegs : 3);
+      setSetVictoryTarget(SET_VALUES.includes(requestedSets) ? requestedSets : 1);
       if (Number.isFinite(Number(v?.multiCount))) setMultiCount(Math.max(3, Math.min(10, Number(v.multiCount))));
     } catch {}
   }, []);
 
-  React.useEffect(() => {
-    const allowed = victoryMode === "best_of" ? BO_VALUES : FT_VALUES;
-    if (!allowed.includes(target)) setTarget(allowed[0]);
-  }, [victoryMode, target]);
+  const legVictoryOptions = legOptionsFor(legVictoryMode);
+  const formatSummary = setVictoryTarget <= 1
+    ? formatPart(legVictoryMode, legVictoryTarget, "legs")
+    : `${formatPart(setVictoryMode, setVictoryTarget, "sets")} • ${formatPart(legVictoryMode, legVictoryTarget, "legs")}`;
+
+  function selectLegVictoryMode(next: VictoryMode) {
+    setLegVictoryMode(next);
+    setLegVictoryTarget(current => legOptionsFor(next).includes(current) ? current : legOptionsFor(next)[0]);
+  }
+  function selectSetVictoryMode(next: VictoryMode) {
+    setSetVictoryMode(next);
+    setSetVictoryTarget(current => SET_VALUES.includes(current) ? current : SET_VALUES[0]);
+  }
 
   const playerCount = mode === "duel" ? 2 : mode === "teams" ? 4 : multiCount;
   const shownNames = names.slice(0, playerCount);
@@ -97,11 +111,14 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
 
     const isTeams = mode === "teams";
     const isMulti = mode === "multi";
-    const selectedTarget = Math.max(1, target);
-    const matchFormat = { type: victoryMode, target: selectedTarget, unit };
-    const setTarget = unit === "sets" ? selectedTarget : 1;
-    const legTarget = unit === "legs" ? selectedTarget : 1;
-    const legsPerSet = victoryMode === "best_of" ? legTarget : 1;
+    // Le moteur attend les cibles BO/FT ainsi que le nombre équivalent
+    // de manches/sets possibles (voir X01ConfigV3 et x01FlowV3).
+    const setsToWin = countFromSelection(setVictoryMode, setVictoryTarget);
+    const legsPerSet = countFromSelection(legVictoryMode, legVictoryTarget);
+    const matchFormat = {
+      type: setVictoryMode, target: setVictoryTarget,
+      unit: setVictoryTarget <= 1 ? "legs" : "sets",
+    };
 
     const cfg: any = {
       id: `x01v3-${sessionId}`,
@@ -122,16 +139,16 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
         : undefined,
       multiFinishMode: isMulti ? "stop_on_first" : "stop_on_first",
       serveMode,
-      matchVictoryMode: victoryMode,
-      victoryMode,
+      matchVictoryMode: setVictoryMode,
+      victoryMode: setVictoryMode,
       matchFormat,
-      setVictoryMode: victoryMode,
-      setVictoryTarget: setTarget,
-      setFormat: { type: victoryMode, target: setTarget, unit: "sets" },
-      legVictoryMode: victoryMode,
-      legVictoryTarget: legTarget,
-      legFormat: { type: victoryMode, target: legTarget, unit: "legs" },
-      setsToWin: setTarget,
+      setVictoryMode,
+      setVictoryTarget,
+      setFormat: { type: setVictoryMode, target: setVictoryTarget, unit: "sets" },
+      legVictoryMode,
+      legVictoryTarget,
+      legFormat: { type: legVictoryMode, target: legVictoryTarget, unit: "legs" },
+      setsToWin,
       legsPerSet,
       scoringSource: "manual",
       externalScoring: false,
@@ -146,7 +163,14 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
     };
 
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ mode, multiCount, startScore, inMode, outMode, victoryMode, target: selectedTarget, unit, serveMode }));
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        mode, multiCount, startScore, inMode, outMode, serveMode,
+        legVictoryMode, legVictoryTarget, setVictoryMode, setVictoryTarget,
+        // Pour une éventuelle ancienne version encore déployée.
+        victoryMode: setVictoryTarget > 1 ? setVictoryMode : legVictoryMode,
+        target: setVictoryTarget > 1 ? setVictoryTarget : legVictoryTarget,
+        unit: setVictoryTarget > 1 ? "sets" : "legs",
+      }));
     } catch {}
     onStart(cfg as X01ConfigV3);
   }
@@ -216,7 +240,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
                 style={{ minWidth: 0, minHeight: 88, borderRadius: 15, cursor: 'pointer', display: 'grid', placeContent: 'center', justifyItems: 'center', gap: 8,
                   background: mode === key ? `${accent}20` : 'rgba(255,255,255,.025)', border: `1px solid ${mode === key ? accent : accent+'60'}`,
                   color: accent, boxShadow: mode === key ? `0 0 15px ${accent}2c` : 'none' }}>
-                <QuickParticipantsIcon kind={key} /><span style={{ fontSize: 11.5, fontWeight: 950, letterSpacing: .4 }}>{text}</span>
+                <MssParticipantModeIcon kind={key} size={36} /><span style={{ fontSize: 11.5, fontWeight: 950, letterSpacing: .4 }}>{text}</span>
               </button>
             ))}
           </div>
@@ -255,26 +279,26 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
         </section>
 
         <section style={card}>
-          <h3 style={heading}>FORMAT DE MATCH</h3>
-          <div role="group" aria-label="Best Of ou First To" style={{ display: 'flex', justifyContent: 'center', gap: 9, marginTop: 12 }}>
-            {([['best_of','BO','BEST OF'],['first_to','FT','FIRST TO']] as const).map(([key,short,name]) =>
-              <button type="button" key={key} aria-pressed={victoryMode===key} aria-label={name} title={name} onClick={() => setVictoryMode(key)}
-                style={{ width: 45, height: 43, borderRadius: 13, border: `1px solid ${victoryMode===key?accent:accent+'65'}`,
-                  background: victoryMode===key?`${accent}22`:'rgba(255,255,255,.035)', color:accent, fontSize:15, fontWeight:1000,
-                  boxShadow: victoryMode===key?`0 0 13px ${accent}35`:'none', cursor:'pointer' }}>{short}</button>)}
-          </div>
-          <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 950, color: accent, marginTop: 8 }}>{victoryMode==='best_of'?'BEST OF':'FIRST TO'}</div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }} role="group" aria-label="Legs ou sets">
-            {([['legs','LEGS'],['sets','SETS']] as const).map(([key,text]) => <button key={key} type="button" onClick={() => setUnit(key)} aria-pressed={unit===key}
-              style={{ ...compactChoice(unit===key), minWidth: 86 }}>{text}</button>)}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(7,(victoryMode==='best_of'?BO_VALUES:FT_VALUES).length)},minmax(0,1fr))`, gap: 6, maxWidth: 440, margin: '12px auto 0' }}>
-            {(victoryMode==='best_of'?BO_VALUES:FT_VALUES).map(v => <button key={v} type="button" aria-label={`${v} ${unit}`} aria-pressed={target===v}
-              style={{ ...roundChoice(target===v), minWidth:0, width:'100%', maxWidth:41, justifySelf:'center' }} onClick={() => setTarget(v)}>{v}</button>)}
-          </div>
-          <div aria-live="polite" style={{ textAlign:'center', marginTop:12, padding:'8px 6px', borderRadius:11, border:`1px solid ${accent}3c`, background:`${accent}0c`, fontSize:11.5 }}>
-            <span style={{ color:'#aeb7cb' }}>FORMAT CHOISI </span><strong style={{ color:accent }}>{victoryMode==='best_of'?'BO':'FT'}{target} {unit.toUpperCase()}</strong>
-          </div>
+          <MssMatchFormatPanel
+            accent={accent}
+            legMode={legVictoryMode}
+            legValue={legVictoryTarget}
+            legOptions={legVictoryOptions}
+            setMode={setVictoryMode}
+            setValue={setVictoryTarget}
+            setOptions={SET_VALUES}
+            startOrder={serveMode}
+            selectedSummary={formatSummary}
+            onLegMode={selectLegVictoryMode}
+            onLegValue={setLegVictoryTarget}
+            onSetMode={selectSetVictoryMode}
+            onSetValue={setSetVictoryTarget}
+            onStartOrder={setServeMode}
+            proExpanded={false}
+            onTogglePro={() => {}}
+            showAdvancedFormats={false}
+            showStartOrder={false}
+          />
         </section>
 
         <section style={card}>
@@ -309,7 +333,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
               <MssConfigFact label="Score" value={startScore}/>
               <MssConfigFact label="Entrée" value={`${inMode==='double'?'Double':'Simple'} IN`}/>
               <MssConfigFact label="Sortie" value={`${outMode==='double'?'Double':'Simple'} OUT`}/>
-              <MssConfigFact label="Format" value={`${victoryMode==='best_of'?'BO':'FT'}${target} ${unit}`}/>
+              <MssConfigFact label="Format" value={formatSummary}/>
               <MssConfigFact label="Départ" value={({random:'Aléatoire',alternate:'Alterné',manual:'Manuel',bull:'Bull'} as const)[serveMode]}/>
               <MssConfigFact label="Saisie" value="Score volée"/>
             </div>

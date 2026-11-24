@@ -30,6 +30,8 @@ type Props = {
   proContent?: React.ReactNode;
   /** L’ordre de départ a sa propre étape en X01 guidé. */
   showStartOrder?: boolean;
+  /** Cache uniquement la sélection des presets Pro sur les écrans Partie rapide. */
+  showAdvancedFormats?: boolean;
 };
 
 const serviceChoices = [
@@ -148,7 +150,7 @@ export function MssStartOrderSection({ accent, value, onChange }: {
 export default function MssMatchFormatPanel({
   accent, legMode, legValue, legOptions, setMode, setValue, setOptions,
   startOrder, selectedSummary, onLegMode, onLegValue, onSetMode, onSetValue,
-  onStartOrder, proExpanded, onTogglePro, proContent, showStartOrder = true,
+  onStartOrder, proExpanded, onTogglePro, proContent, showStartOrder = true, showAdvancedFormats = true,
 }: Props) {
   return (
     <section aria-label="Configuration du format de match" style={{ minWidth: 0 }}>
@@ -163,7 +165,7 @@ export default function MssMatchFormatPanel({
         <span style={{ color: "#acb7ce", fontWeight: 700 }}>FORMAT CHOISI </span>
         <strong style={{ color: accent }}>{selectedSummary}</strong>
       </div>
-      <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.07)" }}>
+      {showAdvancedFormats && <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.07)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
           <strong style={{ color: accent, fontSize: 12, letterSpacing: .6 }}>FORMATS PRO / AVANCÉS</strong>
           <button type="button" onClick={onTogglePro} aria-expanded={proExpanded} aria-label={proExpanded ? "Masquer les formats professionnels" : "Afficher les formats professionnels"}
@@ -173,7 +175,7 @@ export default function MssMatchFormatPanel({
           </button>
         </div>
         {proExpanded && <div style={{ marginTop: 9 }}>{proContent}</div>}
-      </div>
+      </div>}
       {showStartOrder && <MssStartOrderSection accent={accent} value={startOrder} onChange={onStartOrder} />}
     </section>
   );
