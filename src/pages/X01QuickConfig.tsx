@@ -6,9 +6,12 @@ import BackDot from "../components/BackDot";
 import GameDifficultyStars from "../components/GameDifficultyStars";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
 import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
-import x01AwenaRulesPoster from "../assets/videos/x01_awena_rules_poster.webp";
+import { MSS_HIT } from "../lib/mssVisualCharter";
+import MssSelectorIconButton from "../components/MssSelectorIconButton";
+import { MssConfigCaption, MssConfigFact } from "../components/config/MssPremiumConfig";
+import { MssStartOrderSection } from "../components/config/MssMatchFormatPanel";
 
-type QuickMode = "solo" | "duel" | "teams" | "multi";
+type QuickMode = "duel" | "teams" | "multi";
 type VictoryMode = "best_of" | "first_to";
 type FormatUnit = "legs" | "sets";
 
@@ -16,30 +19,26 @@ const LS_KEY = "mss:x01:quick-config:v1";
 const BO_VALUES = [1, 3, 5, 7];
 const FT_VALUES = [1, 3, 5, 7, 9, 11, 13];
 
-function chip(active: boolean, accent: string): React.CSSProperties {
-  return {
-    borderRadius: 14,
-    border: `1px solid ${active ? accent : "rgba(255,255,255,.13)"}`,
-    background: active ? `${accent}22` : "rgba(255,255,255,.035)",
-    color: active ? accent : "rgba(255,255,255,.86)",
-    fontWeight: 950,
-    minHeight: 44,
-    padding: "8px 12px",
-    cursor: "pointer",
-    boxShadow: active ? `0 0 0 1px ${accent}22 inset, 0 0 18px ${accent}12` : "none",
-  };
+/** Même tracé BottomNav que les sélecteurs de profils de la configuration Arcade. */
+function QuickParticipantsIcon({ kind }: { kind: QuickMode }) {
+  const heads = kind === "duel" ? [7.5, 16.5] : kind === "teams" ? [5.5, 12, 18.5] : [4, 9.4, 14.6, 20];
+  const radius = kind === "multi" ? 1.55 : 2.2;
+  return <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {heads.map((x, i) => <g key={x}>
+      <circle cx={x} cy={i % 2 === 0 ? 7.5 : 8} r={radius}/>
+      <path d={`M${Math.max(1, x - 2.6)} 19v-1.3a2.6 2.6 0 0 1 5.2 0V19`}/>
+    </g>)}
+  </svg>;
 }
 
 export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void; onStart: (cfg: X01ConfigV3) => void }) {
   const { theme } = useTheme();
   const accent = theme?.primary || "#55e6ff";
-  const primarySoft = `${accent}22`;
-  const warm = "#ffc857";
   const [rulesVideoOpen, setRulesVideoOpen] = React.useState(false);
   const [mode, setMode] = React.useState<QuickMode>("duel");
   const [serveMode, setServeMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
   const [multiCount, setMultiCount] = React.useState(4);
-  const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(501);
+  const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901 | 1001>(501);
   const [inMode, setInMode] = React.useState<"single" | "double">("single");
   const [outMode, setOutMode] = React.useState<"single" | "double">("double");
   const [victoryMode, setVictoryMode] = React.useState<VictoryMode>("best_of");
@@ -52,9 +51,9 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return;
       const v = JSON.parse(raw);
-      if (["solo", "duel", "teams", "multi"].includes(v?.mode)) setMode(v.mode);
+      if (["duel", "teams", "multi"].includes(v?.mode)) setMode(v.mode);
       if (["random", "alternate", "manual", "bull"].includes(v?.serveMode)) setServeMode(v.serveMode);
-      if ([301, 501, 701, 901].includes(Number(v?.startScore))) setStartScore(Number(v.startScore) as any);
+      if ([301, 501, 701, 901, 1001].includes(Number(v?.startScore))) setStartScore(Number(v.startScore) as any);
       if (["single", "double"].includes(v?.inMode)) setInMode(v.inMode);
       if (["single", "double"].includes(v?.outMode)) setOutMode(v.outMode);
       if (["best_of", "first_to"].includes(v?.victoryMode)) setVictoryMode(v.victoryMode);
@@ -69,9 +68,8 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
     if (!allowed.includes(target)) setTarget(allowed[0]);
   }, [victoryMode, target]);
 
-  const playerCount = mode === "solo" ? 1 : mode === "duel" ? 2 : mode === "teams" ? 4 : multiCount;
+  const playerCount = mode === "duel" ? 2 : mode === "teams" ? 4 : multiCount;
   const shownNames = names.slice(0, playerCount);
-  const summary = `${startScore} · ${inMode === "double" ? "DOUBLE IN" : "SIMPLE IN"} · ${outMode === "double" ? "DOUBLE OUT" : "SIMPLE OUT"} · ${victoryMode === "best_of" ? "BO" : "FT"}${target} ${unit.toUpperCase()}`;
 
   function updateName(index: number, value: string) {
     setNames((prev) => {
@@ -153,214 +151,176 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
     onStart(cfg as X01ConfigV3);
   }
 
-  const card: React.CSSProperties = {
-    background: "rgba(10,12,24,0.94)",
-    borderRadius: 18,
-    padding: 12,
-    boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-    border: `1px solid ${accent}33`,
-  };
-  const block: React.CSSProperties = {
-    border: "1px solid rgba(255,255,255,.10)",
-    borderRadius: 18,
-    background: "rgba(255,255,255,.035)",
-    padding: 12,
-    display: "grid",
-    gap: 9,
-  };
-  const label: React.CSSProperties = { fontSize: 11, opacity: .62, fontWeight: 950, letterSpacing: .85, textTransform: "uppercase" };
 
+  const card: React.CSSProperties = { background: "rgba(10,12,24,.96)", borderRadius: 19,
+    border: `1px solid ${accent}43`, padding: 15, minWidth: 0,
+    boxShadow: "0 12px 25px rgba(0,0,0,.32)" };
+  const heading: React.CSSProperties = { margin: 0, fontSize: 13.5, fontWeight: 1000, color: accent, letterSpacing: .7 };
+  const subtle: React.CSSProperties = { marginTop: 4, fontSize: 10.5, color: "#abb4c8" };
+  const miniHeading: React.CSSProperties = { fontSize: 11, fontWeight: 950, color: "#c5cde0", letterSpacing: .2 };
+  const roundChoice = (active: boolean): React.CSSProperties => ({ width: 36, height: 36, borderRadius: '50%',
+    border:`1px solid ${active?accent:'rgba(255,255,255,.14)'}`,
+    background:active?`${accent}22`:'rgba(255,255,255,.025)',
+    color:active?accent:'#e3e7f3', fontSize:12, fontWeight:950, cursor:'pointer' });
+  const compactChoice = (active: boolean): React.CSSProperties => ({ borderRadius:999,
+    border:`1px solid ${active?accent:'rgba(255,255,255,.14)'}`,
+    background:active?`${accent}18`:'rgba(255,255,255,.02)',
+    color:active?accent:'#d5d9e8', padding:'8px 13px', fontWeight:900, fontSize:11, cursor:'pointer' });
+  const keypadChoice = (active: boolean, color: string): React.CSSProperties => ({
+    borderRadius: 12, minHeight: 42, cursor: 'pointer', padding: '8px 6px', fontSize: 11.5, fontWeight: 950,
+    border: `1px solid ${active?accent:color+'66'}`,
+    boxShadow: active?`0 0 0 2px ${accent}65, 0 0 12px ${accent}24`:'none',
+    background: `${color}${active?'28':'10'}`, color: '#f7f7fb',
+  });
   return (
-    <div
-      className="screen x01-config-v3-screen msc-mode-config"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        minHeight: "100vh",
-        padding: "12px 12px 76px",
-        background: "radial-gradient(circle at top, #15192c 0, #05060c 50%, #020308 100%)",
-        color: "#fff",
-      }}
-    >
-      <header className="msc-mode-config-header" style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
-        <div className="msc-config-ticker-frame" style={{ position: "relative", width: "100%", paddingTop: "max(6px, env(safe-area-inset-top))" }}>
-          <img className="msc-config-ticker-image" src={tickerX01} alt="X01" style={{ width: "100%", height: "auto", display: "block", userSelect: "none", pointerEvents: "none" }} draggable={false} />
-          <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}>
-            <BackDot onClick={onBack} title="Retour" size={36} color={accent} glow={`${accent}88`} />
+    <div className="screen x01-config-v3-screen msc-mode-config" style={{
+      minHeight: "100vh", display: "flex", flexDirection: "column", color: "#f7f7fb",
+      padding: "12px 12px max(88px, env(safe-area-inset-bottom))",
+      background: "radial-gradient(circle at top, #15192c 0, #070913 48%, #03040b 100%)",
+    }}>
+      <header className="msc-mode-config-header" style={{ position: "relative", margin: "0 -12px 9px" }}>
+        <div className="msc-config-ticker-frame" style={{ position: "relative", paddingTop: "env(safe-area-inset-top)" }}>
+          <img className="msc-config-ticker-image" src={tickerX01} alt="X01" draggable={false}
+            style={{ display: "block", width: "100%", height: "auto", maxHeight: 116, objectFit: "cover" }} />
+          <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }}>
+            <BackDot onClick={onBack} title="Retour" size={40} color={accent} glow={`${accent}88`} />
           </div>
         </div>
       </header>
-      <div data-mss-config-difficulty="1" style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 9 }}><GameDifficultyStars game="x01" compact showValue={false} /></div>
-
-      <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12, display: "grid", gap: 14 }}>
-        <section style={card}>
-          <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: accent }}>Configuration X01</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" style={{ ...chip(true, accent), minHeight: 38, padding: "8px 16px" }}>Partie rapide</button>
-                <button type="button" style={{ ...chip(false, accent), minHeight: 38, padding: "8px 16px", opacity: .88 }}>Arcade disponible</button>
-              </div>
-              <div style={{ fontSize: 11, color: "#9298bb", lineHeight: 1.35 }}>
-                La configuration rapide va à l’essentiel. Tu lances un vrai match X01 sans profils, avec saisie volée par défaut et sons coupés.
-              </div>
-              <div style={{ marginTop: "auto", width: "100%" }}>
-                <div style={{ position: "relative", height: 44, borderRadius: 14, overflow: "hidden", boxShadow: `0 0 16px ${accent}20`, border: `1px solid ${accent}30` }}>
-                  <svg viewBox="0 0 760 88" preserveAspectRatio="none" style={{ display: "block", width: "100%", height: "100%" }} aria-hidden="true">
-                    <defs>
-                      <linearGradient id="awenaExplainGradientQuick" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor={accent} stopOpacity="0.96" />
-                        <stop offset="55%" stopColor="#ffe09a" stopOpacity="0.96" />
-                        <stop offset="100%" stopColor="#ff9adf" stopOpacity="0.96" />
-                      </linearGradient>
-                      <mask id="awenaExplainCutoutMaskQuick">
-                        <rect x="0" y="0" width="760" height="88" rx="16" ry="16" fill="white" />
-                        <text x="380" y="57" textAnchor="middle" fontSize="28" fontWeight="900" letterSpacing="1.6" fill="black" style={{ textTransform: "uppercase" }}>AWENA VOUS EXPLIQUE</text>
-                      </mask>
-                    </defs>
-                    <rect x="0" y="0" width="760" height="88" rx="16" ry="16" fill="url(#awenaExplainGradientQuick)" mask="url(#awenaExplainCutoutMaskQuick)" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setRulesVideoOpen(true)}
-              aria-label="Voir la vidéo Awena des règles du X01"
-              title="Awena · Voir l’explication vidéo"
-              style={{
-                flex: "0 0 auto",
-                width: 98,
-                alignSelf: "stretch",
-                borderRadius: 18,
-                border: `1px solid ${accent}66`,
-                background: "linear-gradient(180deg, rgba(10,14,28,.98), rgba(6,8,18,.98))",
-                padding: 5,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                cursor: "pointer",
-                boxShadow: `0 0 20px ${accent}1c`,
-              }}
-            >
-              <div style={{ position: "relative", width: "100%", aspectRatio: "9 / 16", borderRadius: 14, overflow: "hidden", background: "#050713", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)" }}>
-                <img src={x01AwenaRulesPoster} alt="Awena vous explique les règles du X01" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.36))" }} />
-                <div style={{ position: "absolute", inset: "auto 0 8px 0", display: "flex", justifyContent: "center" }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 999, border: `1px solid ${accent}aa`, background: "rgba(5,10,24,.78)", color: "#fff", display: "grid", placeItems: "center", boxShadow: `0 0 0 1px ${accent}18 inset, 0 0 14px ${accent}2b` }}>▶</div>
-                </div>
-                <div style={{ position: "absolute", right: 7, bottom: 7, borderRadius: 999, background: "rgba(0,0,0,.72)", color: "#fff", fontWeight: 900, fontSize: 10, padding: "4px 8px" }}>35 s</div>
-              </div>
-              <div style={{ padding: "0 4px 3px", textAlign: "left" }}>
-                <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: .7, color: accent }}>AWENA · RÈGLES X01</div>
-                <div style={{ fontSize: 9.5, color: "#fff", fontWeight: 900, lineHeight: 1.22 }}>Voir la vidéo</div>
-              </div>
-            </button>
-          </div>
-        </section>
-
-        <section style={card}>
-          <div style={{ display: "grid", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: accent }}>Configuration rapide</div>
-              <div style={{ marginTop: 4, fontSize: 11, color: "#9aa1bf" }}>Même moteur X01 que l’Arcade · profils temporaires · sauvegarde dans PARTIES RAPIDES.</div>
-            </div>
-
-            <div style={block}>
-              <div style={label}>Format joueurs</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 7 }}>
-                {([['solo','SOLO'],['duel','1 VS 1'],['teams','2 VS 2'],['multi','MULTI']] as any[]).map(([key, text]) => (
-                  <button key={key} type="button" onClick={() => setMode(key)} style={chip(mode === key, "#52f5b2")}>{text}</button>
-                ))}
-              </div>
-              {mode === "multi" ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                  <button type="button" style={chip(false, accent)} onClick={() => setMultiCount((n) => Math.max(3, n - 1))}>−</button>
-                  <strong>{multiCount} JOUEURS</strong>
-                  <button type="button" style={chip(false, accent)} onClick={() => setMultiCount((n) => Math.min(10, n + 1))}>+</button>
-                </div>
-              ) : null}
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 7 }}>
-                {shownNames.map((name, i) => (
-                  <label key={i} style={{ display: "grid", gap: 4 }}>
-                    <span style={{ fontSize: 9, opacity: .48, fontWeight: 900 }}>{mode === "teams" ? `ÉQUIPE ${i < 2 ? 1 : 2} · J${i + 1}` : `J${i + 1}`}</span>
-                    <input
-                      value={name}
-                      onFocus={(e) => (e.currentTarget.select())}
-                      onChange={(e) => updateName(i, e.target.value)}
-                      placeholder={`J${i + 1}`}
-                      maxLength={22}
-                      style={{ borderRadius: 11, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.24)", color: "#fff", padding: "10px 11px", fontWeight: 850, outline: "none" }}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div style={block}>
-              <div style={label}>Score de départ</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 7 }}>
-                {[301,501,701,901].map((v) => <button key={v} type="button" style={chip(startScore === v, accent)} onClick={() => setStartScore(v as any)}>{v}</button>)}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10 }}>
-              <div style={block}>
-                <div style={label}>IN</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-                  <button type="button" style={chip(inMode === "single", accent)} onClick={() => setInMode("single")}>SIMPLE IN</button>
-                  <button type="button" style={chip(inMode === "double", accent)} onClick={() => setInMode("double")}>DOUBLE IN</button>
-                </div>
-              </div>
-              <div style={block}>
-                <div style={label}>OUT</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-                  <button type="button" style={chip(outMode === "single", accent)} onClick={() => setOutMode("single")}>SIMPLE OUT</button>
-                  <button type="button" style={chip(outMode === "double", accent)} onClick={() => setOutMode("double")}>DOUBLE OUT</button>
-                </div>
-              </div>
-            </div>
-
-            <div style={block}>
-              <div style={label}>Format match</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-                <button type="button" style={chip(victoryMode === "best_of", warm)} onClick={() => setVictoryMode("best_of")}>BEST OF</button>
-                <button type="button" style={chip(victoryMode === "first_to", warm)} onClick={() => setVictoryMode("first_to")}>FIRST TO</button>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(48px, 1fr))", gap: 6 }}>
-                {(victoryMode === "best_of" ? BO_VALUES : FT_VALUES).map((v) => <button key={v} type="button" style={chip(target === v, warm)} onClick={() => setTarget(v)}>{v}</button>)}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-                <button type="button" style={chip(unit === "legs", warm)} onClick={() => setUnit("legs")}>LEGS</button>
-                <button type="button" style={chip(unit === "sets", warm)} onClick={() => setUnit("sets")}>SETS</button>
-              </div>
-            </div>
-
-            <div style={block}>
-              <div style={label}>SERVICE / ORDRE DE DÉPART</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                {([['random', 'ALÉATOIRE'], ['alternate', 'ALTERNÉ'], ['manual', 'MANUEL'], ['bull', 'BULL']] as const).map(([value, text]) => (
-                  <button key={value} type="button" aria-pressed={serveMode === value} style={chip(serveMode === value, warm)} onClick={() => setServeMode(value)}>{text}</button>
-                ))}
-              </div>
-              {(serveMode === 'manual' || serveMode === 'bull') && <div style={{ color: '#c9d2e5', fontSize: 12 }}>
-                {serveMode === 'bull' ? 'Après le lancer de bull, classe les participants au démarrage.' : 'Définis l’ordre des participants juste avant de jouer.'}
-              </div>}
-            </div>
-
-            <div style={{ borderRadius: 16, border: `1px solid ${accent}44`, background: `${accent}0d`, padding: 10, textAlign: "center", fontSize: 12, fontWeight: 900 }}>
-              {summary}
-            </div>
-
-            <button type="button" onClick={start} style={{ minHeight: 58, border: `1px solid ${accent}aa`, borderRadius: 17, background: `linear-gradient(180deg, ${accent}3a, ${accent}14)`, color: "#e8fff7", fontWeight: 1000, fontSize: 18, letterSpacing: .6, cursor: "pointer", boxShadow: `0 0 22px ${accent}18` }}>
-              JOUER
-            </button>
-          </div>
-        </section>
+      <div data-mss-config-difficulty="1" style={{ display: "flex", justifyContent: "center", marginBottom: 11 }}>
+        <GameDifficultyStars game="x01" compact showValue={false} />
       </div>
 
+      <main style={{ display: "grid", gap: 12, width: "100%", maxWidth: 760, margin: "0 auto", minWidth: 0 }}>
+        <section style={card} aria-label="Partie rapide X01">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 9 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={heading}>PARTIE RAPIDE X01</div>
+              <div style={subtle}>Sans création de profil · Prête à jouer</div>
+            </div>
+            <button type="button" title="Awena vous explique" aria-label="Awena vous explique le X01" onClick={() => setRulesVideoOpen(true)}
+              style={{ width: 43, height: 43, flexShrink: 0, borderRadius: 13, border: `1px solid ${accent}80`,
+                background: "rgba(255,255,255,.035)", color: accent, cursor: "pointer", display: "grid", placeItems: "center" }}>
+              <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 8 6 4-6 4z"/>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <section style={card}>
+          <h3 style={heading}>PARTICIPANTS</h3>
+          <div role="group" aria-label="Format des participants" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 11 }}>
+            {([['duel','DUEL'],['teams','ÉQUIPES'],['multi','MULTI']] as const).map(([key,text]) => (
+              <button type="button" key={key} onClick={() => setMode(key)} aria-pressed={mode === key}
+                style={{ minWidth: 0, minHeight: 88, borderRadius: 15, cursor: 'pointer', display: 'grid', placeContent: 'center', justifyItems: 'center', gap: 8,
+                  background: mode === key ? `${accent}20` : 'rgba(255,255,255,.025)', border: `1px solid ${mode === key ? accent : accent+'60'}`,
+                  color: accent, boxShadow: mode === key ? `0 0 15px ${accent}2c` : 'none' }}>
+                <QuickParticipantsIcon kind={key} /><span style={{ fontSize: 11.5, fontWeight: 950, letterSpacing: .4 }}>{text}</span>
+              </button>
+            ))}
+          </div>
+          {mode === "multi" && <div style={{ display: "flex", justifyContent: "center", gap: 10, alignItems: "center", marginTop: 12 }}>
+            <button type="button" style={roundChoice(false)} onClick={() => setMultiCount(n => Math.max(3, n-1))} aria-label="Un joueur de moins">−</button>
+            <strong style={{ fontSize: 12, minWidth: 75, textAlign: "center" }}>{multiCount} JOUEURS</strong>
+            <button type="button" style={roundChoice(false)} onClick={() => setMultiCount(n => Math.min(10, n+1))} aria-label="Un joueur de plus">+</button>
+          </div>}
+          {mode === 'teams' && <div style={{ textAlign: 'center', color: '#aeb6cb', fontSize: 11, marginTop: 10 }}>2 équipes · 2 joueurs par équipe</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 12 }}>
+            {shownNames.map((name,i) => <label key={i} style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.025)", minWidth: 0 }}>
+              <span style={{ fontSize: 10, fontWeight: 950, color: accent, flexShrink: 0 }}>{mode === "teams" ? `${i<2 ? 'A' : 'B'}${i%2+1}` : `J${i+1}`}</span>
+              <input value={name} maxLength={22} aria-label={`Nom du joueur ${i+1}`} onChange={e => updateName(i,e.target.value)} onFocus={e => e.currentTarget.select()}
+                style={{ border: 0, background: "transparent", outline: 0, fontSize: 12, fontWeight: 850, color: "#fff", width: "100%", minWidth: 0 }} />
+            </label>)}
+          </div>
+        </section>
+
+        <section style={card}>
+          <h3 style={heading}>SCORE ET SORTIE</h3>
+          <div style={{ ...miniHeading, marginTop: 13 }}>SCORE DE DÉPART</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 6, marginTop: 7 }}>
+            {[301,501,701,901,1001].map(v => <button type="button" key={v} aria-pressed={startScore===v}
+              style={{ ...keypadChoice(startScore===v,MSS_HIT.simple), fontSize: 12, padding: 3 }} onClick={() => setStartScore(v as any)}>{v}</button>)}
+          </div>
+          <div style={{ ...miniHeading, marginTop: 13 }}>ENTRÉE</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 7 }}>
+            <button type="button" aria-pressed={inMode==='single'} style={keypadChoice(inMode==='single',MSS_HIT.simple)} onClick={() => setInMode('single')}>SIMPLE IN</button>
+            <button type="button" aria-pressed={inMode==='double'} style={keypadChoice(inMode==='double',MSS_HIT.double)} onClick={() => setInMode('double')}>DOUBLE IN</button>
+          </div>
+          <div style={{ ...miniHeading, marginTop: 13 }}>SORTIE</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 7 }}>
+            <button type="button" aria-pressed={outMode==='single'} style={keypadChoice(outMode==='single',MSS_HIT.simple)} onClick={() => setOutMode('single')}>SIMPLE OUT</button>
+            <button type="button" aria-pressed={outMode==='double'} style={keypadChoice(outMode==='double',MSS_HIT.double)} onClick={() => setOutMode('double')}>DOUBLE OUT</button>
+          </div>
+        </section>
+
+        <section style={card}>
+          <h3 style={heading}>FORMAT DE MATCH</h3>
+          <div role="group" aria-label="Best Of ou First To" style={{ display: 'flex', justifyContent: 'center', gap: 9, marginTop: 12 }}>
+            {([['best_of','BO','BEST OF'],['first_to','FT','FIRST TO']] as const).map(([key,short,name]) =>
+              <button type="button" key={key} aria-pressed={victoryMode===key} aria-label={name} title={name} onClick={() => setVictoryMode(key)}
+                style={{ width: 45, height: 43, borderRadius: 13, border: `1px solid ${victoryMode===key?accent:accent+'65'}`,
+                  background: victoryMode===key?`${accent}22`:'rgba(255,255,255,.035)', color:accent, fontSize:15, fontWeight:1000,
+                  boxShadow: victoryMode===key?`0 0 13px ${accent}35`:'none', cursor:'pointer' }}>{short}</button>)}
+          </div>
+          <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 950, color: accent, marginTop: 8 }}>{victoryMode==='best_of'?'BEST OF':'FIRST TO'}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }} role="group" aria-label="Legs ou sets">
+            {([['legs','LEGS'],['sets','SETS']] as const).map(([key,text]) => <button key={key} type="button" onClick={() => setUnit(key)} aria-pressed={unit===key}
+              style={{ ...compactChoice(unit===key), minWidth: 86 }}>{text}</button>)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(7,(victoryMode==='best_of'?BO_VALUES:FT_VALUES).length)},minmax(0,1fr))`, gap: 6, maxWidth: 440, margin: '12px auto 0' }}>
+            {(victoryMode==='best_of'?BO_VALUES:FT_VALUES).map(v => <button key={v} type="button" aria-label={`${v} ${unit}`} aria-pressed={target===v}
+              style={{ ...roundChoice(target===v), minWidth:0, width:'100%', maxWidth:41, justifySelf:'center' }} onClick={() => setTarget(v)}>{v}</button>)}
+          </div>
+          <div aria-live="polite" style={{ textAlign:'center', marginTop:12, padding:'8px 6px', borderRadius:11, border:`1px solid ${accent}3c`, background:`${accent}0c`, fontSize:11.5 }}>
+            <span style={{ color:'#aeb7cb' }}>FORMAT CHOISI </span><strong style={{ color:accent }}>{victoryMode==='best_of'?'BO':'FT'}{target} {unit.toUpperCase()}</strong>
+          </div>
+        </section>
+
+        <section style={card}>
+          <MssStartOrderSection accent={accent} value={serveMode} onChange={setServeMode}/>
+        </section>
+
+        <section style={{ ...card, borderColor: `${accent}66`, background:'linear-gradient(155deg,rgba(22,23,35,.97),rgba(8,10,21,.97))' }} aria-label="Fiche de partie rapide">
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+            <div>
+              <h3 style={{ ...heading, fontSize:15 }}>FICHE DE PARTIE</h3>
+              <div style={{ ...subtle, fontSize:11 }}>{mode==='teams'?'2 équipes · 2 membres / équipe':mode==='duel'?'Duel · 2 joueurs':`Multi · ${playerCount} joueurs`}</div>
+            </div>
+            <span style={{ border:`1px solid ${accent}80`, borderRadius:99, padding:'5px 9px', color:accent, fontSize:10, fontWeight:950, whiteSpace:'nowrap' }}>✓ PRÊT</span>
+          </div>
+          <div style={{ borderTop:'1px solid rgba(255,255,255,.09)', marginTop:12, paddingTop:10 }}>
+            <MssConfigCaption accent={accent}>{mode==='teams'?'ÉQUIPES EN JEU':'JOUEURS EN JEU'}</MssConfigCaption>
+            {mode==='teams' ? <div style={{ display:'grid', gap:7 }}>
+              {[0,1].map(teamIndex => <div key={teamIndex} style={{ display:'flex', alignItems:'center', gap:9, borderLeft:`2px solid ${accent}`, borderRadius:10, background:'rgba(255,255,255,.03)', padding:'8px 10px' }}>
+                <strong style={{ fontSize:11, color:accent, minWidth:63 }}>ÉQUIPE {teamIndex===0?'A':'B'}</strong>
+                <span style={{ fontSize:11, color:'#d5d9e5', overflowWrap:'anywhere' }}>{shownNames.slice(teamIndex*2,teamIndex*2+2).map((n,i)=>String(n||'').trim()||`J${teamIndex*2+i+1}`).join(' · ')}</span>
+              </div>)}
+            </div> : <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:6 }}>
+              {shownNames.map((name,i)=><div key={i} style={{ display:'flex', alignItems:'center', gap:7, minWidth:0, padding:'5px 2px' }}>
+                <span style={{ background:`${accent}18`, border:`1px solid ${accent}70`, borderRadius:'50%', width:27, height:27, flex:'0 0 27px', display:'grid', placeItems:'center', color:accent, fontWeight:950, fontSize:9 }}>J{i+1}</span>
+                <span style={{ fontWeight:800, fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{String(name||'').trim()||`J${i+1}`}</span>
+              </div>)}
+            </div>}
+          </div>
+          <div style={{ borderTop:'1px solid rgba(255,255,255,.09)', marginTop:10, paddingTop:9 }}>
+            <MssConfigCaption accent={accent}>RÈGLES DE LA PARTIE</MssConfigCaption>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', columnGap:14 }}>
+              <MssConfigFact label="Score" value={startScore}/>
+              <MssConfigFact label="Entrée" value={`${inMode==='double'?'Double':'Simple'} IN`}/>
+              <MssConfigFact label="Sortie" value={`${outMode==='double'?'Double':'Simple'} OUT`}/>
+              <MssConfigFact label="Format" value={`${victoryMode==='best_of'?'BO':'FT'}${target} ${unit}`}/>
+              <MssConfigFact label="Départ" value={({random:'Aléatoire',alternate:'Alterné',manual:'Manuel',bull:'Bull'} as const)[serveMode]}/>
+              <MssConfigFact label="Saisie" value="Score volée"/>
+            </div>
+          </div>
+          <button type="button" onClick={start}
+            style={{ display:'block', width:'100%', marginTop:16, minHeight:49, borderRadius:999, border:'none', cursor:'pointer', fontSize:15, fontWeight:1000,
+              background:`linear-gradient(90deg, ${accent}, #ffe4a4)`, color:'#161823', boxShadow:`0 0 19px ${accent}30` }}>
+            LANCER LA PARTIE
+          </button>
+        </section>
+      </main>
       <X01AwenaRulesVideo open={rulesVideoOpen} onDone={() => setRulesVideoOpen(false)} />
     </div>
   );

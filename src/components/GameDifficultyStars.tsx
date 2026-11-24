@@ -6,8 +6,10 @@ type Props = { game?: string | {id?: string; category?: string; subCategory?: st
 /**
  * Compact difficulty indicator.
  * Rules requested by user:
- * - half star must appear first on the LEFT of the cluster
+ * - full stars appear first, then the half star on the RIGHT
+ * - the left half of the final star is colored, facing the full stars
  * - no grey remainder must be visible on the half star
+ * - shared by Arcade, Partie rapide, and every other MSS difficulty display
  */
 export default function GameDifficultyStars({ game, level, compact = false, showValue = true }: Props) {
   const rating = level ?? mssGameDifficulty(game || '');
@@ -29,24 +31,6 @@ export default function GameDifficultyStars({ game, level, compact = false, show
       style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 2, whiteSpace: 'nowrap', flex: '0 0 auto', pointerEvents: 'none' }}
     >
       <span aria-hidden="true" style={{ display: 'inline-flex', gap: 0, alignItems: 'center', paddingRight: 2 }}>
-        {hasHalf ? (
-          <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', flexShrink: 0, marginRight: -2 }}>
-            <defs>
-              <clipPath id={`${clipPrefix}-half-right`}>
-                <rect x="12" y="0" width="12" height="24" />
-              </clipPath>
-            </defs>
-            <path
-              d={starPath}
-              fill={starColor}
-              stroke={starColor}
-              strokeWidth="0.8"
-              clipPath={`url(#${clipPrefix}-half-right)`}
-              style={{ filter: `drop-shadow(0 0 4px ${starColor}88)` }}
-            />
-          </svg>
-        ) : null}
-
         {Array.from({ length: fullStars }, (_, i) => (
           <svg key={i} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', flexShrink: 0, marginRight: -2 }}>
             <path
@@ -58,6 +42,24 @@ export default function GameDifficultyStars({ game, level, compact = false, show
             />
           </svg>
         ))}
+
+        {hasHalf ? (
+          <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', flexShrink: 0, marginRight: -2 }}>
+            <defs>
+              <clipPath id={`${clipPrefix}-half-left`}>
+                <rect x="0" y="0" width="12" height="24" />
+              </clipPath>
+            </defs>
+            <path
+              d={starPath}
+              fill={starColor}
+              stroke={starColor}
+              strokeWidth="0.8"
+              clipPath={`url(#${clipPrefix}-half-left)`}
+              style={{ filter: `drop-shadow(0 0 4px ${starColor}88)` }}
+            />
+          </svg>
+        ) : null}
       </span>
       {showValue ? <span aria-hidden="true" style={{ marginLeft: 2, fontSize: compact ? 10 : 12, color: '#ffe28a', fontWeight: 900, fontVariantNumeric: 'tabular-nums', textShadow: '0 1px 3px #000' }}>
         {Number.isInteger(rating) ? rating : rating.toFixed(1)}

@@ -19,19 +19,26 @@ function log(msg) {
   console.log(line);
   try { appendFileSync(logfile, line+'\n', 'utf8'); } catch (err) { console.error('Journal indisponible :',err.message); }
 }
+// A versioned page title is not a health check. Accept only our stable protocol.
 function probe() {
   return new Promise(done => {
     let finished = false;
     const complete = v => { if (!finished) { finished=true; done(v); } };
-    const req = get(url,{timeout:1200},res=>{
+    const req = get(new URL('api/health',url),{timeout:1200},res=>{
       let content='';
       res.setEncoding('utf8');
-      res.on('data',d=>{if(content.length<32000)content+=d;});
-      res.on('end',()=>complete(res.statusCode===200 && content.includes('Robot développeur V23')));
-      res.on('error',()=>complete(false));
+      res.on('data',d=>{if(content.length<4096)content+=d;});
+      res.on('end',()=>{
+        try {
+          const data=JSON.parse(content);
+          if(res.statusCode===200 && data.service==='mss-ai-control-dev-agent' && data.protocol===1 && data.status==='ready')return complete('ready');
+        } catch {}
+        complete('occupied');
+      });
+      res.on('error',()=>complete('unavailable'));
     });
     req.on('timeout',()=>req.destroy());
-    req.on('error',()=>complete(false));
+    req.on('error',()=>complete('unavailable'));
   });
 }
 function browser() {
@@ -44,7 +51,11 @@ function browser() {
 log('--- Démarrage du robot développeur ---');
 log('Node : '+process.version+' | Projet : '+root);
 log('Journal : '+logfile);
-if(await probe()) {
+const initial=await probe();
+if(initial==='occupied') {
+  log('ECHEC : port 4184 occupé par un serveur non reconnu ou une ancienne console MSS. Fermer uniquement cette console, puis relancer.');
+  process.exitCode=1;
+} else if(initial==='ready') {
   log('Port 4184 déjà actif et interface MSS reconnue.');
   browser();
 } else {
@@ -54,6 +65,7 @@ if(await probe()) {
   });
   let exited=false, exitCode=null, exitSignal=null;
   child.on('error', e => {exited=true;log('ERREUR démarrage Node : '+e.stack);});
+  const childExit=new Promise(done=>child.once('close',done));
   child.on('exit',(code,signal)=>{
     exited=true;exitCode=code;exitSignal=signal;
     log(`Processus serveur terminé : code=${code} signal=${signal}`);
@@ -67,8 +79,9 @@ if(await probe()) {
     });
   }
   let ready=false;
-  for(let t=0;t<30000 && !exited;t+=300){
-    if(await probe()){ready=true;break;}
+  const deadline=Date.now()+30000;
+  for(;Date.now()<deadline && !exited;){
+    if(await probe()==='ready'){ready=true;break;}
     await new Promise(r=>setTimeout(r,300));
   }
   if(!ready) {
@@ -80,7 +93,7 @@ if(await probe()) {
     log('SERVEUR PRET : '+url);
     browser();
     // Reste actif tant que le serveur écoute et signale tout arrêt ultérieur.
-    await new Promise(done=>child.once('exit',done));
+    await childExit;
     log('ALERTE : console arrêtée après ouverture du navigateur.');
     if(exitCode!==0)process.exitCode=1;
   }

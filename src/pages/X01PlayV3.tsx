@@ -5932,6 +5932,53 @@ try {
     />
   );
 
+  // Partie rapide MULTI / ÉQUIPES : même carte joueur/équipe active que X01 Arcade.
+  // La liste des participants ci-dessous porte les scores individuels ; aucune
+  // mosaïque de scores imbriquée dans la carte de score principale.
+  const quickUsesArcadeHeader = isQuickParty && (isTeamsMode || players.length > 2);
+  const quickArcadeActiveHeader = quickUsesArcadeHeader ? (
+    isTeamsMode && activeTeam ? (
+      <TeamHeaderBlock
+        teamColor={activeTeam.color}
+        teamId={activeTeam.id}
+        teamName={activeTeam.name}
+        teamPlayers={activeTeam.players}
+        teamLogoUrl={(activeTeam as any).avatarUrl || (activeTeam as any).logoDataUrl || null}
+        activePlayerId={activePlayerId}
+        teamScore={activeTeam.score}
+        currentThrow={currentThrow}
+        liveRanking={liveRanking}
+        curDarts={curDarts}
+        curM3D={curM3D}
+        bestVisit={bestVisit}
+        useSets={useSetsUi}
+        teamLegsWon={(state as any).teamLegsWon ?? {}}
+        teamSetsWon={(state as any).teamSetsWon ?? {}}
+        checkoutText={checkoutText}
+        showThrowCounter={showThrowCounter}
+        configuredScoreInputMethod={configuredScoreInputMethod}
+      />
+    ) : (
+      <HeaderBlock
+        currentPlayer={activePlayer}
+        currentAvatar={activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null}
+        currentRemaining={currentScore}
+        currentThrow={currentThrow}
+        doubleOut={doubleOut}
+        liveRanking={liveRanking}
+        curDarts={curDarts}
+        curM3D={curM3D}
+        bestVisit={bestVisit}
+        legsWon={(state as any).legsWon ?? {}}
+        setsWon={(state as any).setsWon ?? {}}
+        useSets={useSetsUi}
+        checkoutText={checkoutText}
+        showThrowCounter={showThrowCounter}
+        configuredScoreInputMethod={configuredScoreInputMethod}
+      />
+    )
+  ) : null;
+
   return (
     <div
       className={`x01play-container theme-${theme.id}`}
@@ -6021,7 +6068,7 @@ try {
           <main className="x01ql-stage">
             <section className="x01ql-left">
               <div className="x01ql-score">
-                <QuickPartyScoreboard
+                {quickUsesArcadeHeader ? quickArcadeActiveHeader : <QuickPartyScoreboard
                   players={players}
                   teams={teamsView}
                   scores={scores}
@@ -6037,7 +6084,7 @@ try {
                   showSeriesScore={false}
                   seriesUnit={matchFormatUnitForUi}
                   compactLandscape
-                />
+                />}
               </div>
               <div className="x01ql-players">{quickLandscapePlayers}</div>
             </section>
@@ -6201,7 +6248,9 @@ try {
         ) : null}
         activeProfileHeader={
           <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
-            {isQuickParty && !isGameplayLandscape ? (
+            {quickUsesArcadeHeader ? (
+              quickArcadeActiveHeader
+            ) : isQuickParty && !isGameplayLandscape ? (
               <QuickPartyScoreboard
                 players={players}
                 teams={teamsView}

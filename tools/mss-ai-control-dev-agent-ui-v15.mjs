@@ -27,6 +27,8 @@ createServer(async(req,res)=>{
  try{
   const pathname=new URL(req.url||'/',`http://${host}:${port}`).pathname;
   if(req.headers.host!==host+':'+port)return json(res,403,{error:'Hôte refusé'});
+  // Stable launcher handshake: independent of the displayed UI version.
+  if(req.method==='GET'&&pathname==='/api/health')return json(res,200,{service:'mss-ai-control-dev-agent',protocol:1,status:'ready'});
   if(pathname.startsWith('/graphic/'))return await graphic(req,res);
   if(req.method==='GET'&&pathname==='/'){const nonce=randomBytes(16).toString('base64');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':`default-src 'none'; connect-src 'self'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`});return res.end(page.replace('__NONCE__',nonce).replace('__TOKEN__',token));}
   if(req.method==='GET'&&pathname==='/api/readiness'){if(req.headers['x-mss-token']!==token)return json(res,403,{error:'Session refusée'});return json(res,200,checkDevReadiness(root));}
@@ -83,4 +85,4 @@ createServer(async(req,res)=>{
    return json(res,200,{decision:gate.decision,changed,pilot:gate.pilot.verdict,auditor:gate.auditor.verdict,tests:regression.tests.map(t=>({id:t.id,status:t.status})),report,zip:zipPath});
   }catch(e){if(context.queued){try{transitionQueuedMission(root,context.requestId,'FAILED',{decision:'ERROR',missionId:context.missionId});}catch{}}throw e;}finally{busy=false;}
  }catch(e){json(res,400,{error:String(e.message||e).slice(0,300)});}
-}).listen(port,host,()=>console.log(`MSS AI CONTROL DEVELOPPEUR V23 : http://${host}:${port}/`));
+}).listen(port,host,()=>console.log(`MSS AI CONTROL DEVELOPPEUR V29 : http://${host}:${port}/`));

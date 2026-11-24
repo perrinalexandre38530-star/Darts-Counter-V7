@@ -113,3 +113,27 @@ Le présent fichier est la référence écrite **V1** ; `src/styles/mss-ui-contr
 - Le format fixé à l’étape précédente reste **autoritaire** pour la capacité, la sélection, les contrôles de cohérence et le démarrage. Un joueur ou bot ne peut être retenu deux fois dans les équipes d’un même match. La liste d’une équipe enregistrée peut comporter plus de membres que le format demandé ; choisir exactement le nombre requis.
 - La création contextuelle **+** propose Joueur/Bot pour une partie individuelle, et Joueur/Bot/Équipe/Team BOT pour une partie en équipes. Les nouveaux éléments sont enregistrés dans les magasins existants puis proposés directement dans la sélection, sans nouvelle route.
 - Les sélecteurs en mode guidé et en mode complet utilisent le **même composant**, sans deux implémentations divergentes. Conserver les contrôles Guidée/Complète, l’étape Awena et le récapitulatif final.
+
+## 7. Audio des configurations — contrat commun MSS
+
+- **Toute configuration de mode jouable possède un bloc MODE AUDIO**, en étape dédiée de la vue guidée et en section compacte de la vue complète. La présentation est celle de `src/components/config/MssGuidedAudioPanel.tsx` (référence X01). Les trois commandes sont **SONS ARCADE**, **BRUITAGES** et **ANNONCES VOCALES**, avec interrupteurs ronds, iconographie BottomNav, intitulés et aide courte ; les voix se choisissent dans la même modale à cartes et comprennent Awena lorsqu'elle est disponible.
+- **BRUITAGES** = sons/impacts, donc icône d'onde sonore, jamais une cible (la cible représente un mode de saisie). Tous les autres modes réutilisent cette icône partagée : pas de copie de SVG dans les pages.
+- Les options de son sont initialisées depuis `getAudioPreferences()` et sauvegardées via `updateAudioPreferences()` ; les préférences de partie priment lors de la restauration de « Dernière partie ». Préserver les options audio spécifiques d'un jeu et ne pas substituer une voix qui n'est pas disponible dans son moteur.
+- En **PARTIE RAPIDE**, conserver une sélection directe sans détour par la configuration guidée ; les mêmes titres, palettes, boutons et récapitulatif premium s'appliquent. Les écrans doivent conserver leur propre logique de jeu et leur mode de saisie par défaut. Le bouton **LANCER LA PARTIE** suit un récapitulatif compact, sans fausse étape supplémentaire.
+- **Référence migrée en premier** : X01 (audio partagé, partie rapide) et KILLER (nouvelle section audio). Les autres configurations doivent migrer progressivement sur ce composant à la prochaine intervention, en vérifiant leur câblage réel de lecture audio et en évitant les changements massifs sans tests ciblés.
+
+## 8. Partie rapide X01 — cohérence avec la configuration Arcade (V7(59))
+
+- **Participants** : partie rapide compétitive uniquement, choix **DUEL / ÉQUIPES / MULTI** ; le SOLO reste dans les parcours Training. Icônes de silhouettes au trait BottomNav MSS, centrées et de dimensions identiques, sans pictogrammes emoji. Le choix ÉQUIPES rapide reste **2 équipes de 2 joueurs** tant qu'un format supplémentaire n'est pas câblé au moteur rapide.
+- **Format** : commutateur compact **BO / FT** identique à la configuration Arcade, valeurs numériques en pastilles rondes et indication claire de l'unité (LEGS / SETS). Les fonctionnalités avancées non prises en charge par la partie rapide ne sont pas proposées artificiellement.
+- **Ordre de départ** : employer `MssStartOrderSection` / `MssSelectorIconButton` plutôt que redessiner des SVG locaux ; l'intitulé et l'explication du choix sélectionné apparaissent sous les quatre icônes.
+- **Fiche de partie** : structure alignée sur le récapitulatif KILLER (statut, liste des joueurs ou composition des équipes, règles essentielles, lancement), sans tableau dense de valeurs juxtaposées ; toutes les options affichées doivent correspondre à celles réellement envoyées au moteur.
+- **Jeu X01, MULTI et ÉQUIPES** : en partie rapide, ne jamais afficher plusieurs cartes de scores imbriquées **dans** le bloc du score actif. Utiliser les blocs de joueur/équipe actif du mode Arcade (`HeaderBlock` / `TeamHeaderBlock`) et conserver les scores des autres participants dans la liste JOUEURS/ÉQUIPES (portrait comme paysage). Le mode SCORE VOLÉE reste une méthode de saisie, pas une raison de dupliquer les scores.
+- **Prévention des régressions** : les données temporaires, le score de départ, la sauvegarde et la logique BO/FT de la partie rapide ne sont pas refactorisés lors d'un patch uniquement visuel.
+
+## 9. Étoiles de difficulté — orientation obligatoire (Arcade / Partie rapide / tous modes)
+
+- **Ordre visuel unique :** afficher toutes les étoiles **pleines à gauche**, puis l'éventuelle **demi-étoile à droite** en dernière position. Exemple 2,5 : ★ ★ ◀demi-étoile ; ne jamais placer une demi-étoile au début.
+- **Effet miroir de la demi-étoile :** colorer exclusivement sa **moitié gauche**, au contact des étoiles pleines ; sa moitié droite reste transparente (sans gris de remplissage). Conserver la couleur du niveau MSS sans ajouter d'autre teinte.
+- **Source normative :** `src/components/GameDifficultyStars.tsx`. Réutiliser ce composant sous les tickers des configurations Arcade, Partie rapide, menus de modes et des autres vues. Le sélecteur de niveaux `GameDifficultyFilter.tsx` utilise déjà le même ordre et la même orientation ; préserver son alignement.
+- **Non-régression :** aucun changement de note de difficulté, de gameplay, d'évaluation des modes ou de règles de sélection ; uniquement rendu et placement de la demi-étoile.

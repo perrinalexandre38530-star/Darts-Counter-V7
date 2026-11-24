@@ -61,6 +61,8 @@ import { DARTS_KILLER_BOTS } from "../lib/dartsKillerBots";
 import { KILLER_INPUT_METHODS, normalizeKillerInputMethod, isKillerVoiceAvailable, hasKillerAutoDartsBridge, type KillerInputMethod } from "../lib/scoreInput/killerInput";
 import { MssConfigCaption, MssConfigFact, MssInputMethodChoice } from "../components/config/MssPremiumConfig";
 import { loadCameraCalibration } from "../lib/cameraCalibrationStore";
+import MssGuidedAudioPanel from "../components/config/MssGuidedAudioPanel";
+import { getAudioPreferences, updateAudioPreferences } from "../lib/audioPreferences";
 
 // --------------------------------------------------
 // Types exportés (utilisés par KillerPlay.tsx)
@@ -96,6 +98,8 @@ export type KillerConfig = {
   teamSize?: number;
   playerFormat?: "duel" | "multi";
   inputMode?: KillerInputMethod; // Méthode active transmise et mémorisée par KillerPlay
+  audio?: { arcadeEnabled: boolean; hitEnabled: boolean; voiceEnabled: boolean; voiceId: string; sfxVolume: number };
+  voice?: boolean; // Compatibilité avec la voix existante du moteur Killer
   teamAssignments?: Record<string, number>;
   teamNames?: string[];
   teamsSourceMode?: "manual" | "saved" | "auto";
@@ -786,6 +790,31 @@ export default function KillerConfigPage(props: Props) {
   const [teamSize, setTeamSize] = React.useState<number>(clampInt(savedCfg?.teamSize, 2, 5, 2));
   const [playerFormat, setPlayerFormat] = React.useState<"duel" | "multi">(savedCfg?.playerFormat === "multi" ? "multi" : "duel");
   const [inputMode, setInputMode] = React.useState<KillerInputMethod>(() => normalizeKillerInputMethod(savedCfg?.inputMode));
+  // Réglages audio MSS communs à X01 et KILLER : moteur inchangé, préférences globales conservées.
+  const [arcadeEnabled, setArcadeEnabled] = React.useState<boolean>(() => {
+    const prefs = getAudioPreferences();
+    return typeof savedCfg?.audio?.arcadeEnabled === "boolean" ? savedCfg.audio.arcadeEnabled : prefs.gameplaySfxEnabled && prefs.arcadeSfxEnabled;
+  });
+  const [hitEnabled, setHitEnabled] = React.useState<boolean>(() => {
+    const prefs = getAudioPreferences();
+    return typeof savedCfg?.audio?.hitEnabled === "boolean" ? savedCfg.audio.hitEnabled : prefs.gameplaySfxEnabled && prefs.impactSfxEnabled;
+  });
+  const [voiceEnabled, setVoiceEnabled] = React.useState<boolean>(() =>
+    typeof savedCfg?.audio?.voiceEnabled === "boolean" ? savedCfg.audio.voiceEnabled : savedCfg?.voice !== false
+  );
+  const [voiceId, setVoiceId] = React.useState<string>(() => String(savedCfg?.audio?.voiceId || "default"));
+  const killerVoiceChoices = React.useMemo(() => [
+    { id: "default", label: "Défaut" }, { id: "female", label: "Voix féminine" },
+    { id: "male", label: "Voix masculine" }, { id: "robot", label: "Voix robot" },
+    { id: "awena", label: "Awena · voix officielle" },
+  ], []);
+  React.useEffect(() => {
+    updateAudioPreferences({
+      gameplaySfxEnabled: arcadeEnabled || hitEnabled,
+      arcadeSfxEnabled: arcadeEnabled,
+      impactSfxEnabled: hitEnabled,
+    });
+  }, [arcadeEnabled, hitEnabled]);
   const cameraReady = React.useMemo(() => {
     try { return !!(typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia && loadCameraCalibration()); }
     catch { return false; }
@@ -1274,6 +1303,13 @@ export default function KillerConfigPage(props: Props) {
     const c = pref.config || {};
     if (!isProgressive) {
       setLives(clampInt(c.lives, 1, 9, 3));
+      if (c.audio && typeof c.audio === "object") {
+        setArcadeEnabled(c.audio.arcadeEnabled === true);
+        setHitEnabled(c.audio.hitEnabled === true);
+        setVoiceEnabled(c.audio.voiceEnabled !== false);
+        setVoiceId(String(c.audio.voiceId || "default"));
+      } else if (typeof c.voice === "boolean") setVoiceEnabled(c.voice);
+
       setBecomeRule(c.becomeRule === "double" ? "double" : "single");
       setDamageRule(c.damageRule === "multiplier" ? "multiplier" : "one");
       setNumberAssignMode(["none", "random", "throw"].includes(String(c.numberAssignMode)) ? c.numberAssignMode! : "random");
@@ -1851,6 +1887,9 @@ export default function KillerConfigPage(props: Props) {
       resurrection: isProgressive ? false : resurrectionMode !== "off",
       resurrectionLives: isProgressive ? 1 : clampInt(resurrectionLives, 1, 6, 1),
 
+      // Les effets utilisent le registre global audio et la voix existante de Killer.
+      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId, sfxVolume: 0.8 },
+      voice: voiceEnabled,
       players: finalPlayers,
     };
 
@@ -3024,6 +3063,13 @@ export default function KillerConfigPage(props: Props) {
                 </div>
               </div>
 
+              {/* Étape audio commune aux configurations MSS ; pas de réécriture du moteur Killer. */}
+              <div data-mss-guide-section="killer-audio" data-mss-guide-label="Mode audio" style={{ marginBottom: 13 }}>
+                <MssGuidedAudioPanel accent={primary} arcade={arcadeEnabled} hits={hitEnabled} voice={voiceEnabled}
+                  onArcadeChange={setArcadeEnabled} onHitsChange={setHitEnabled} onVoiceChange={setVoiceEnabled}
+                  voiceId={voiceId} voices={killerVoiceChoices} onVoiceIdChange={setVoiceId} />
+              </div>
+
               {/* Fiche de match premium : composition et choix réellement appliqués, sans répétitions. */}
               <div data-mss-guide-section="killer-recap" data-mss-guide-label="Récapitulatif"
                 style={{ border: `1px solid ${primary}55`, borderRadius: 16, background: "linear-gradient(155deg,rgba(25,26,37,.9),rgba(9,11,21,.94))", padding: "12px 12px 10px", display: "grid", gap: 12, minWidth: 0 }}>
@@ -3078,6 +3124,7 @@ export default function KillerConfigPage(props: Props) {
                 <div style={{ borderTop: "1px solid rgba(255,255,255,.09)", paddingTop: 8 }}>
                   <MssConfigCaption accent={primary}>SAISIE & VARIANTES</MssConfigCaption>
                   <MssConfigFact label="Saisie" value={KILLER_INPUT_METHODS.find((method) => method.id === effectiveInputMode)?.label || "KEYPAD"} />
+                  <MssConfigFact label="Audio" value={`${arcadeEnabled ? "Arcade" : "Sans arcade"} · ${hitEnabled ? "Bruitages" : "Sans impacts"} · ${voiceEnabled ? killerVoiceChoices.find(v => v.id === voiceId)?.label || "Voix" : "Voix OFF"}`} />
                   <div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}>
                     {[
                       selfHitWhileKiller ? `Auto-pénalité${selfHitUsesMultiplier ? " ×S/D/T" : ""}` : null,
