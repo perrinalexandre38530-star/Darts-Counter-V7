@@ -152,3 +152,16 @@ Le présent fichier est la référence écrite **V1** ; `src/styles/mss-ui-contr
 - **Tests de non-régression :** 2 joueurs temporaires KILLER, 2×2 KILLER avec logos d'équipes et portraits des 4 tireurs, X01 rapide multi, arrivée au récapitulatif, blocage du lancement lorsque la composition est insuffisante, retour en arrière sans perte de sélection, mode complet, tirage stable et sans doublons pour les participants d’une même session, renouvelé à la partie suivante.
 
 **État du patch V64 :** gabarit commun introduit pour Cricket, Shanghai, Battle Royale, Warfare, Les 5 vies et Golf. X01/KILLER restent les références déjà en place. GROS 6 et CAPITAL disposent déjà de configurations guidées autonomes qui ne doivent pas être écrasées sans recette spécifique. L'harmonisation parfaite de toutes les variantes et des écrans avancés reste une migration distincte, à valider par mode.
+
+
+## 11. CLASSIQUE — PARTIE RAPIDE — gabarit V66
+
+- Composants normatifs : `src/components/config/MssQuickClassicControls.tsx`
+  (`MssQuickPanel`, `MssQuickPlayers`, `MssQuickChoices`, `MssQuickRecap`, `MssQuickStart`).
+  Toute future migration d'une configuration rapide CLASSIQUE doit réutiliser ces blocs et `DartsQuickHeader` / `DartsQuickIntro`, plutôt que recréer ses propres couleurs ou pictogrammes.
+- Sélection : SOLO uniquement si le mode l'autorise ; DUEL et MULTI via pictogrammes du catalogue de `MssParticipantModeIcon`. Le nombre de participants respecte les contraintes métier de chaque jeu ; les écrans SCRAM gardent deux camps équilibrés.
+- Le thème actif `ThemeContext` détermine couleurs, contours, fonds actifs ; pas de cyan ou vert codé en dur dans une page. Pas de descriptions superflues dans l'entête Partie rapide.
+- Prévisualisation de la même photo que celle transmise au moteur du jeu : `quickPartyAvatar(index, sessionId)` ; identifiant de session stable pour toute la configuration et renouvelé à l'ouverture d'une nouvelle partie. Les joueurs restent temporaires ; aucun profil enregistré ou statistique personnelle n'est modifié.
+- Inventaire de la V7(64) fournie : seuls `avatar-common-001` à `avatar-common-012.webp` sont présents dans l'archive. Le tirage rapide est donc limité aux **12 images réellement disponibles**, avec non-duplication jusqu'à 12 joueurs ; au-delà de 12, la réutilisation d'une image est inévitable tant que le pack galerie complet n'est pas fourni. **Ne pas masquer ni changer le catalogue des profils Arcade.**
+- Chaque écran affiche ses règles spécifiques, un récapitulatif concis, puis un bouton « LANCER LA PARTIE ». Les paramètres passés au moteur doivent rester identiques à ceux du mode avant migration.
+- Première vague V66 : parties rapides BOB'S 27, KNOCKOUT, SCRAM, BATTLE ROYALE, COUNT UP / HAPPY MILLE / 170 / ENCULETTE, GROS 6 / WARFARE / PRISONER / GOLF. Les autres modes devront migrer par lots vérifiés.

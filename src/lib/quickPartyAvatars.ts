@@ -19,7 +19,10 @@ function seedFromString(input: string): number {
 }
 
 function shuffledGallery(seed: string): string[] {
-  const gallery = [...MSS_COMMON_PREBUILT_AVATARS];
+  // La base V7(64) fournie contient précisément 12 portraits common.
+  // Éviter de tirer des URL de portraits absents de cette archive.
+  // La galerie de profils reste inchangée pour ne pas supprimer ses choix.
+  const gallery = MSS_COMMON_PREBUILT_AVATARS.slice(0, 12);
   let state = seedFromString(seed) || 0x9e3779b9;
   // Fisher-Yates, avec un PRNG initialisé par la session (stable et sans doublons).
   for (let i = gallery.length - 1; i > 0; i -= 1) {
