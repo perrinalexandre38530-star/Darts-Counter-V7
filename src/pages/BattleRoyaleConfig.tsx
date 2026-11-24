@@ -8,6 +8,7 @@ import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // ============================================
 
 import React from "react";
+import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 import { loadBotPlayers } from "../lib/bots";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -15,8 +16,8 @@ import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 
-import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
-import tickerImg from "../assets/tickers/ticker_battle_royale.png";
+// L'archive de référence V7(63) ne fournit pas ticker_battle_royale.png.
+// Le bandeau de repli utilise le thème MSS sans importer un fichier absent.
 import { setSfxEnabled } from "../lib/sfx";
 import { getAudioPreferences, updateAudioPreferences } from "../lib/audioPreferences";
 import { setVoiceEnabled } from "../lib/voice";
@@ -128,6 +129,10 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   }, [voiceEnabled]);
 
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
+  const [configStep, setConfigStep] = React.useState(0);
+  const guided = configView === "guided";
+  const classicSteps = ["Awena", "Participants", "Règles", "Récapitulatif"];
   const [tacticalMapEnabled, setTacticalMapEnabled] = React.useState(false);
   const [inputMethod, setInputMethod] = React.useState("keypad");
 
@@ -186,12 +191,13 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   }}
 >
   <div style={{ position: "relative", marginLeft: -14, marginRight: -14 }}>
-    <img
-      src={tickerBattleRoyale as any}
-      alt="Battle Royale"
-      draggable={false}
-      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
-    />
+    <div role="img" aria-label="BATTLE ROYALE" style={{ width: "100%", height: 92,
+      display: "grid", placeItems: "center", padding: "0 62px",
+      background: `radial-gradient(circle at 50% 120%, ${theme.primary}50, transparent 72%), linear-gradient(120deg, #07111d, #17223c 53%, #090d19)`,
+      borderBlock: `1px solid ${theme.primary}44`, boxSizing: "border-box" }}>
+      <strong style={{ fontWeight: 1000, color: "#fff", fontSize: "clamp(16px,5vw,27px)",
+        letterSpacing: 1, textShadow: `0 0 16px ${theme.primary}b0`, whiteSpace: "nowrap" }}>BATTLE ROYALE</strong>
+    </div>
 
     <div
       style={{
@@ -219,8 +225,13 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   </div>
 </div>
 
+      <MssClassicConfigFlow title="Battle Royale" steps={classicSteps} step={configStep} view={configView}
+        accent={theme.primary} summary={`${selectedIds.length} participants`} onStep={setConfigStep}
+        onView={setConfigView} onHelp={() => setInfoOpen(true)} />
+      {guided && configStep === 0 && <MssClassicOverview accent={theme.primary} title="BATTLE ROYALE · AWENA VOUS EXPLIQUE" onHelp={() => setInfoOpen(true)}
+        description="Choisis les combattants, les vies et la règle d'élimination. Le dernier survivant gagne." />}
       {/* Players */}
-      <div style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
+      <div hidden={guided && configStep !== 1} style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
         <div
           style={{
             display: "flex",
@@ -332,7 +343,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
       </div>
 
       {/* Bots IA */}
-      <div style={{ ...cardShell, padding: 12, marginTop: 10, marginBottom: 10 }}>
+      <div hidden={guided && configStep !== 1} style={{ ...cardShell, padding: 12, marginTop: 10, marginBottom: 10 }}>
         <div
           style={{
             display: "flex",
@@ -424,7 +435,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
       </div>
 
       {/* Rules */}
-      <div style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
+      <div hidden={guided && configStep !== 2} style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
         <div style={{ fontWeight: 1000, letterSpacing: 0.6, marginBottom: 10 }}>
           {t("battle.config.rules", "Règles")}
         </div>
@@ -498,7 +509,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
       </div>
 
       {/* Audio */}
-      <div style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
+      <div hidden={guided && configStep !== 2} style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
         <div style={{ fontWeight: 1000, letterSpacing: 0.6, marginBottom: 10 }}>
           {t("battle.config.audio", "Audio")}
         </div>
@@ -529,7 +540,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
       </div>
 
       {/* Réglages d'interface : en fin de configuration, après joueurs/règles/audio. */}
-      <section style={{...cardShell,padding:12,marginBottom:10}}>
+      <section hidden={guided && configStep !== 2} style={{...cardShell,padding:12,marginBottom:10}}>
         <div style={{fontWeight:900,color:theme.primary,fontSize:14,marginBottom:10}}>CARTE TACTIQUE</div>
         <label style={{display:'flex',alignItems:'center',gap:10,fontSize:13,lineHeight:1.4,cursor:'pointer'}}>
           <input type="checkbox" checked={tacticalMapEnabled} onChange={e=>setTacticalMapEnabled(e.target.checked)}/>
@@ -544,8 +555,16 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
         </div>
       </section>
 
+      {guided && configStep === 3 && <MssClassicRecap accent={theme.primary} ready={canStart} entries={[
+        ["Participants", `${selectedIds.length} joueurs / bots`],
+        ["Élimination", eliminationRule === "life_system" ? "Vies" : eliminationRule === "miss_x" ? "Ratés" : "Score zéro"],
+        ["Vies", String(lives)],
+        ["Fléchettes par tour", String(dartsPerTurn)],
+        ["Carte tactique", tacticalMapEnabled ? "Oui" : "Non"],
+        ["Saisie", inputMethod.toUpperCase()],
+      ]} />}
       {/* CTA sticky */}
-      <div
+      <div hidden={guided && configStep !== 3}
         style={{
           position: "fixed",
           left: 0,

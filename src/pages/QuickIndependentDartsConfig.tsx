@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import { makeGros6Segment } from "../lib/gros6Engine";
 
@@ -18,7 +19,7 @@ export default function QuickIndependentDartsConfig({ modeId, onBack, go }: {mod
   const chip = (active:boolean):React.CSSProperties => ({borderRadius:14,padding:"10px 15px",fontWeight:950,background:active?"#55e6ff22":"rgba(255,255,255,.035)",border:`1px solid ${active?"#55e6ff":"#ffffff20"}`,color:active?"#a8f5ff":"white"});
   const players = () => {
     const session=`quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
-    return names.slice(0,count).map((value,i)=>({id:`${session}-p${i+1}`,profileId:null,temporaryPlayerId:`${session}-p${i+1}`,isTemporary:true,isBot:false,name:value.trim()||`J${i+1}`,avatarDataUrl:null,dartSetId:null}));
+    return names.slice(0,count).map((value,i)=>({id:`${session}-p${i+1}`,profileId:null,temporaryPlayerId:`${session}-p${i+1}`,isTemporary:true,isBot:false,name:value.trim()||`J${i+1}`,avatarDataUrl:quickPartyAvatar(i, session),avatarUrl:quickPartyAvatar(i, session),dartSetId:null}));
   };
   const quickMeta={quickParty:true,partyMode:"quick",temporaryParticipants:true,profileStatsDeferred:true};
   function launch() {

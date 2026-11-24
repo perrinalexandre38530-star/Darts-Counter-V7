@@ -13,6 +13,7 @@ import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // ============================================
 
 import React from "react";
+import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 import { loadBotPlayers } from "../lib/bots";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -155,6 +156,10 @@ export default function ShanghaiConfigPage({ store, go, onBack }: Props) {
   >("chronological");
 
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
+  const [configStep, setConfigStep] = React.useState(0);
+  const guided = configView === "guided";
+  const classicSteps = ["Awena", "Choix joueurs", "Règles", "Récapitulatif"];
 
   React.useEffect(() => {
     try {
@@ -378,8 +383,13 @@ export default function ShanghaiConfigPage({ store, go, onBack }: Props) {
           </div>
         </div>
 
+        <MssClassicConfigFlow title="Shanghai" steps={classicSteps} step={configStep} view={configView}
+          accent={theme.primary} summary={`${selectedIds.length} participants`} onStep={setConfigStep}
+          onView={setConfigView} onHelp={() => setInfoOpen(true)} />
+        {guided && configStep === 0 && <MssClassicOverview accent={theme.primary} title="SHANGHAI · AWENA VOUS EXPLIQUE" onHelp={() => setInfoOpen(true)}
+          description="Accumule des points sur le secteur désigné à chaque manche et tente de réaliser un Shanghai. Choisis les joueurs et les variantes avant de lancer." />}
         {/* JOUEURS — carrousel X01Multi (sans cartes) */}
-        <div style={{ ...cardShell, padding: 14 }}>
+        <div hidden={guided && configStep !== 1} style={{ ...cardShell, padding: 14 }}>
           <div
             style={{
               fontWeight: 950,
@@ -470,7 +480,7 @@ export default function ShanghaiConfigPage({ store, go, onBack }: Props) {
         </div>
 
         {/* PARAMÈTRES DE BASE */}
-        <div style={{ marginTop: 12, ...cardShell, padding: 14 }}>
+        <div hidden={guided && configStep !== 2} style={{ marginTop: 12, ...cardShell, padding: 14 }}>
           <div
             style={{
               fontWeight: 950,
@@ -618,8 +628,15 @@ export default function ShanghaiConfigPage({ store, go, onBack }: Props) {
         </div>
       </div>
 
+      {guided && configStep === 3 && <MssClassicRecap accent={theme.primary} ready={canStart} entries={[
+        ["Participants", `${selectedIds.length} joueurs / bots`],
+        ["Manches", String(maxRounds)],
+        ["Victoire", winRule === "points_only" ? "Points uniquement" : "Shanghai ou points"],
+        ["Ordre des cibles", targetOrderMode === "random" ? "Aléatoire" : "Chronologique"],
+        ["Audio", `${sfxEnabled ? "Bruitage ON" : "Bruitage OFF"} · ${voiceEnabled ? "Voix ON" : "Voix OFF"}`],
+      ]} />}
       {/* CTA sticky bas */}
-      <div
+      <div hidden={guided && configStep !== 3}
         style={{
           position: "fixed",
           left: 0,

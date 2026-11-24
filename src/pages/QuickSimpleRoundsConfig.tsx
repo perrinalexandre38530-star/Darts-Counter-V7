@@ -1,4 +1,5 @@
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import { SIMPLE_ROUND_VARIANTS } from "../lib/simpleRounds/variants";
 
@@ -30,7 +31,7 @@ export default function QuickSimpleRoundsConfig({ modeId, onBack, onStart }: {
     const players = names.slice(0, count).map((name, index) => ({
       id: `${session}-p${index + 1}`,
       name: name.trim() || `J${index + 1}`,
-      profileId: null, isTemporary: true, isBot: false, avatarDataUrl: null,
+      profileId: null, isTemporary: true, isBot: false, avatarDataUrl: quickPartyAvatar(index, session), avatarUrl: quickPartyAvatar(index, session),
     }));
     onStart({
       config: {

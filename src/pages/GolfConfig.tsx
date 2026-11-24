@@ -1,4 +1,5 @@
 import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
+import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 // =============================================================
 // src/pages/GolfConfig.tsx
 // GOLF (Darts) — Config PRO (UX alignée sur DepartementsConfig / X01Config)
@@ -230,6 +231,12 @@ export default function GolfConfig(props: any) {
   const primary = (theme as any)?.primary ?? "#7dffca";
   const cardBg = "radial-gradient(120% 160% at 0% 0%, rgba(125,255,202,0.14), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.34))";
 
+  const [golfHelpOpen, setGolfHelpOpen] = React.useState(false);
+  const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
+  const [configStep, setConfigStep] = React.useState(0);
+  const guided = configView === "guided";
+  const classicSteps = ["Awena", "Participants", "Règles", "Récapitulatif"];
+
   const [teamsEnabled, setTeamsEnabled] = React.useState(false);
   const [teamCount, setTeamCount] = React.useState<2 | 3 | 4>(2);
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamKey>>({});
@@ -432,8 +439,20 @@ export default function GolfConfig(props: any) {
       />
 
       <div style={{ padding: 12, paddingTop: 10 }}>
-        {/* HERO banner (style X01/Killer) */}
-        <div
+        <MssClassicConfigFlow title="Golf" steps={classicSteps} step={configStep} view={configView}
+          accent={primary} summary={`${selectedIds.length} joueurs · ${teamsEnabled ? `${teamCount} équipes` : "individuel"}`}
+          onStep={setConfigStep} onView={setConfigView}
+          onHelp={() => setGolfHelpOpen(v => !v)} />
+        {guided && configStep === 0 && <MssClassicOverview title="GOLF · AWENA VOUS EXPLIQUE" onHelp={() => setGolfHelpOpen(v => !v)}
+          description="Choisis tes joueurs ou équipes, configure les trous et la pénalité, puis vérifie le récapitulatif avant de lancer."
+          accent={primary} />}
+        {golfHelpOpen && <div style={{ border: `1px solid ${primary}55`, borderRadius: 14,
+          padding: 12, marginBottom: 12, fontSize: 12, color: "#bac4d9" }}>
+          Un trou est joué en trois fléchettes maximum. Le score dépend du dernier tir validé :
+          en Strokes, le plus petit total gagne ; en Points, le plus grand total gagne.
+        </div>}
+        {/* HERO banner : conserver pour la vue complète uniquement */}
+        <div hidden={guided}
           style={{
             borderRadius: 18,
             overflow: "hidden",
@@ -535,6 +554,7 @@ export default function GolfConfig(props: any) {
           </div>
         </div>
 
+        <div hidden={guided && configStep !== 1}>
         <Section title={t("players") || "JOUEURS"}>
           <div
             style={{
@@ -781,7 +801,9 @@ export default function GolfConfig(props: any) {
             )}
           </div>
         </Section>
+        </div>
 
+        <div hidden={guided && configStep !== 2}>
         <Section title="RÈGLES">
           <div
             style={{
@@ -840,10 +862,20 @@ export default function GolfConfig(props: any) {
             </OptionRow>
           </div>
         </Section>
+        </div>
+
+        {guided && configStep === 3 && <MssClassicRecap accent={primary} ready={canStart} entries={[
+          ["Participants", `${selectedIds.length} joueurs / bots`],
+          ["Équipes", teamsEnabled ? `${teamCount} équipes · ${teamNonEmptyCount} composées` : "Partie individuelle"],
+          ["Parcours", `${holes} trous · ${holeOrderMode === "random" ? "Aléatoire" : "Chronologique"}`],
+          ["Scoring", scoringMode === "strokes" ? "Strokes · total bas gagnant" : "Points · total haut gagnant"],
+          ["Pénalité MISS", `${missStrokes} coups`],
+          ["Départ", startOrderMode === "random" ? "Aléatoire" : "Chronologique"],
+        ]} />}
 
         {/* CTA collée au-dessus de la barre de nav (même design que X01/Killer) */}
         <div style={{ height: 96 }} />
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
+        <div hidden={guided && configStep !== 3} style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto" }}>
             <button
               type="button"

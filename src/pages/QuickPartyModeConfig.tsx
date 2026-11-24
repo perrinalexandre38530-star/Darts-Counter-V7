@@ -1,6 +1,9 @@
 // @ts-nocheck
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
+import teamGoldLogo from "../ui_assets/teams/team_gold.png";
+import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 import MssParticipantModeIcon from "../components/config/MssParticipantModeIcon";
 import { useTheme } from "../contexts/ThemeContext";
 import MssKillerQuickSettings, { DEFAULT_KILLER_QUICK_RULES } from "../components/config/MssKillerQuickSettings";
@@ -51,8 +54,8 @@ function buildTempPlayers(names: string[], count: number) {
       temporaryPlayerId: id,
       isTemporary: true,
       name: String(names[index] || "").trim() || `J${index + 1}`,
-      avatarDataUrl: null,
-      avatarUrl: null,
+      avatarDataUrl: quickPartyAvatar(index, sessionId),
+      avatarUrl: quickPartyAvatar(index, sessionId),
       dartSetId: null,
       isBot: false,
     };
@@ -154,10 +157,11 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
             id: `killer-quick-team-${Date.now()}-${index + 1}`,
             teamId: team.id,
             name: team.name,
-            avatarDataUrl: null,
+            avatarDataUrl: index === 0 ? teamGoldLogo : teamPinkLogo,
+            avatarUrl: index === 0 ? teamGoldLogo : teamPinkLogo,
             isBot: false,
             teamMembers: players.slice(index * 2, index * 2 + 2).map((member) => ({
-              id: member.id, name: member.name, avatarDataUrl: null, isBot: false,
+              id: member.id, name: member.name, avatarDataUrl: member.avatarDataUrl, avatarUrl: member.avatarUrl, isBot: false,
             })),
           }))
         : players;

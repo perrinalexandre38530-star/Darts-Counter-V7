@@ -12,6 +12,7 @@
 // =============================================================
 
 import React from "react";
+import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 import type { Store, Profile } from "../lib/types";
@@ -391,6 +392,10 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
     }
   });
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
+  const [configStep, setConfigStep] = React.useState(0);
+  const guided = configView === "guided";
+  const classicSteps = ["Awena", "Joueurs", "Règles", "Récapitulatif"];
   const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(false);
 
   const userBots = React.useMemo(() => loadUserBots(), []);
@@ -570,14 +575,20 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
 
       <DartsRelatedModesPanel gameId={chaseActive ? "chase" : "five_lives"} accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
 
+      <MssClassicConfigFlow title={chaseActive ? "Chase" : "Les 5 vies"} steps={classicSteps}
+        step={configStep} view={configView} accent={primary} summary={`${selectedIds.length} participants`}
+        onStep={setConfigStep} onView={setConfigView} onHelp={() => setInfoOpen(true)} />
       {/* CONTENT */}
       <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         <DartsPendingFinalCard mode={chaseActive ? "chase" : "five_lives"} accent={primary}
           onRecovered={() => go?.("statsHub", { tab: "history" })} />
         <DartsResumeDraftCard mode={chaseActive ? "chase" : "five_lives"} accent={primary}
           onResume={(savedConfig) => go?.("five_lives_play", { config: savedConfig, resumeDraft: true })} />
+        {guided && configStep === 0 && <MssClassicOverview accent={primary}
+          title={(chaseActive ? "CHASE" : "LES 5 VIES") + " · AWENA VOUS EXPLIQUE"} onHelp={() => setInfoOpen(true)}
+          description="Chaque tireur vise à atteindre ou dépasser le score à battre selon la variante. Règle les vies, l'ordre et le mode de saisie avant de jouer." />}
         {/* JOUEURS */}
-        <section
+        <section hidden={guided && configStep !== 1}
           style={{
             background: cardBg,
             borderRadius: 18,
@@ -617,7 +628,7 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
         </section>
 
         {/* BOTS */}
-        <section
+        <section hidden={guided && configStep !== 1}
           style={{
             background: cardBg,
             borderRadius: 18,
@@ -688,7 +699,7 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
         </section>
 
         {/* OPTIONS */}
-        <section
+        <section hidden={guided && configStep !== 2}
           style={{
             background: cardBg,
             borderRadius: 18,
@@ -769,8 +780,15 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
         </section>
       </div>
 
+      {guided && configStep === 3 && <MssClassicRecap accent={primary} ready={canStart} entries={[
+        ["Participants", `${selectedIds.length} joueurs / bots`],
+        ["Variante", chasePreset ? "CHASE" : allowEqualScore ? "RELAIS" : "CLASSIQUE"],
+        ["Vies", String(startingLives)],
+        ["Ordre de départ", startOrderMode.toUpperCase()],
+        ["Saisie", scoreInputMethod.toUpperCase()],
+      ]} />}
       {/* CTA */}
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
+      <div hidden={guided && configStep !== 3} style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
         <div style={{ pointerEvents: "auto" }}>
           <button
             type="button"

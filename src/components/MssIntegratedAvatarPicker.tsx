@@ -1,13 +1,12 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { MSS_COMMON_PREBUILT_AVATARS, MSS_FR_PREBUILT_AVATARS, MSS_EN_PREBUILT_AVATARS } from "../lib/prebuiltAvatarCatalog";
 
 /** Galerie MSS : même catalogue, pagination et présentation que Profils locaux. */
-const COMMON = Array.from({ length: 141 }, (_, i) => i + 1)
-  .filter((n) => n !== 137)
-  .map((n) => `/images/prebuilt-avatars/common/avatar-common-${String(n).padStart(3, "0")}.webp`);
-const FR = Array.from({ length: 73 }, (_, i) => `/images/prebuilt-avatars/fr/avatar-fr-${String(i + 1).padStart(3, "0")}.webp`);
-const EN = Array.from({ length: 73 }, (_, i) => `/images/prebuilt-avatars/en/avatar-en-${String(i + 1).padStart(3, "0")}.webp`);
+const COMMON = MSS_COMMON_PREBUILT_AVATARS;
+const FR = MSS_FR_PREBUILT_AVATARS;
+const EN = MSS_EN_PREBUILT_AVATARS;
 const PAGE_SIZE = 12;
 
 type Props = {

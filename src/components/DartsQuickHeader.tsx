@@ -1,6 +1,7 @@
 import React from "react";
 import BackDot from "./BackDot";
 import { useLang } from "../contexts/LangContext";
+import { useTheme } from "../contexts/ThemeContext";
 
 // Same asset convention as GameModeEntryChoice; eager Vite URLs work in WebView/Android.
 const tickerAssets = import.meta.glob("../assets/tickers/ticker_*.{png,webp,jpg,jpeg}", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
@@ -34,10 +35,21 @@ export default function DartsQuickHeader({ modeId, title, onBack }: { modeId: st
     </div>
   </header>;
 }
+/** Compact quick-play heading: the ticker already carries the game identity. */
 export function DartsQuickIntro({ title }: { title: string }) {
-  return <section style={{background:"rgba(10,12,24,.94)",border:"1px solid rgba(85,230,255,.20)",borderRadius:18,padding:12,boxShadow:"0 16px 40px rgba(0,0,0,.38)",display:"grid",gap:9}}>
-    <div style={{fontSize:12,color:"#55e6ff",fontWeight:950,letterSpacing:1}}>CONFIGURATION {title.toUpperCase()}</div>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><span style={{border:"1px solid #55e6ff77",borderRadius:14,background:"#55e6ff22",color:"#a8f5ff",fontWeight:950,padding:"9px 15px",fontSize:12}}>PARTIE RAPIDE</span></div>
-    <p style={{fontSize:11,color:"#9298bb",lineHeight:1.4,margin:0}}>Noms libres · sans profil enregistré · réglages essentiels du jeu</p>
+  const { theme } = useTheme();
+  const accent = theme?.primary || "#f6c256";
+  return <section aria-label={`Configuration ${title} · Partie rapide`} style={{
+    background: "rgba(10,12,24,.94)", border: `1px solid ${accent}4d`,
+    borderRadius: 18, padding: "12px 14px", display: "flex",
+    justifyContent: "space-between", alignItems: "center", gap: 10,
+    flexWrap: "wrap", boxShadow: "0 12px 30px rgba(0,0,0,.29)"
+  }}>
+    <strong style={{ fontSize: 13, color: accent, fontWeight: 950, letterSpacing: .65 }}>
+      CONFIGURATION {title.toUpperCase()}
+    </strong>
+    <span style={{ border: `1px solid ${accent}88`, borderRadius: 12,
+      background: `${accent}18`, color: accent, padding: "7px 10px",
+      fontSize: 11, fontWeight: 950, whiteSpace: "nowrap" }}>PARTIE RAPIDE</span>
   </section>;
 }

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import type { X01ConfigV3 } from "../types/x01v3";
 import { useTheme } from "../contexts/ThemeContext";
 import BackDot from "../components/BackDot";
@@ -104,7 +105,8 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
         temporaryPlayerId: id,
         isTemporary: true,
         name,
-        avatarDataUrl: `/images/prebuilt-avatars/common/avatar-common-${String(1 + Math.floor(Math.random()*12)).padStart(3,"0")}.webp`,
+        avatarDataUrl: quickPartyAvatar(idx, sessionId),
+        avatarUrl: quickPartyAvatar(idx, sessionId),
         dartSetId: null,
       };
     });

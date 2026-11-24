@@ -1,4 +1,5 @@
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import type { Bobs27ConfigPayload } from "../lib/gameEngines/bobs27Engine";
 
@@ -17,7 +18,7 @@ export default function QuickBobs27Config({ onBack, onStart }: Props) {
     const playersList = names.slice(0, count).map((value, i) => ({
       id: `${sessionId}-p${i + 1}`, profileId: null, temporaryPlayerId: `${sessionId}-p${i + 1}`,
       isTemporary: true, isBot: false, name: value.trim() || `J${i + 1}`,
-      avatarDataUrl: null, dartSetId: null,
+      avatarDataUrl: quickPartyAvatar(i, sessionId), avatarUrl: quickPartyAvatar(i, sessionId), dartSetId: null,
     }));
     const ordered = randomOrder ? [...playersList].sort(() => Math.random() - .5) : playersList;
     onStart({

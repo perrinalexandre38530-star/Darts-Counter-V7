@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 
 export default function QuickScramConfig({ go, onBack }: {go:(route:string, params?:any)=>void;onBack:()=>void}) {
@@ -12,7 +13,7 @@ export default function QuickScramConfig({ go, onBack }: {go:(route:string, para
   const chip=(v:boolean):React.CSSProperties=>({padding:"10px 15px",borderRadius:12,border:`1px solid ${v?"#55e6ff":"#ffffff30"}`,background:v?"#55e6ff28":"#151827",color:"white",fontWeight:900});
   function start(){
     const session=`scram-quick-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-    const players=names.slice(0,count).map((name,i)=>({id:`${session}-p${i+1}`,temporaryPlayerId:`${session}-p${i+1}`,profileId:null,isTemporary:true,isBot:false,name:name.trim()||`J${i+1}`}));
+    const players=names.slice(0,count).map((name,i)=>({id:`${session}-p${i+1}`,temporaryPlayerId:`${session}-p${i+1}`,profileId:null,isTemporary:true,isBot:false,name:name.trim()||`J${i+1}`,avatarDataUrl:quickPartyAvatar(i, session),avatarUrl:quickPartyAvatar(i, session)}));
     const a=players.filter((_,i)=>i%2===0),b=players.filter((_,i)=>i%2===1);
     const teams=[{id:`${session}-a`,name:"ÉQUIPE A",side:"A",playerIds:a.map(p=>p.id)},{id:`${session}-b`,name:"ÉQUIPE B",side:"B",playerIds:b.map(p=>p.id)}];
     const arranged=Array.from({length:count},(_,i)=>players[i]);

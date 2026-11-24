@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 
 /** Quick players are session-scoped: never resolve these IDs against saved profiles. */
@@ -12,7 +13,7 @@ export default function QuickBattleRoyaleConfig({ go, onBack }: { go: (route: st
   const chip = (active: boolean): React.CSSProperties => ({ borderRadius: 12, padding: "10px 14px", border: `1px solid ${active ? "#55e6ff" : "#ffffff30"}`, background: active ? "#55e6ff25" : "#161a27", color: active ? "#8df3ff" : "#fff", fontWeight: 900, cursor: "pointer" });
   function start() {
     const session = `battle-quick-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const players = names.slice(0, count).map((n, i) => ({ id: `${session}-p${i + 1}`, temporaryPlayerId: `${session}-p${i + 1}`, profileId: null, isTemporary: true, isBot: false, name: n.trim() || `J${i + 1}`, avatarDataUrl: null }));
+    const players = names.slice(0, count).map((n, i) => ({ id: `${session}-p${i + 1}`, temporaryPlayerId: `${session}-p${i + 1}`, profileId: null, isTemporary: true, isBot: false, name: n.trim() || `J${i + 1}`, avatarDataUrl: quickPartyAvatar(i, session), avatarUrl: quickPartyAvatar(i, session) }));
     const meta = { quickParty: true, partyMode: "quick", temporaryParticipants: true, profileStatsDeferred: true };
     go("battle_royale_play", { ...meta, matchId: session, config: { ...meta, players, lives, dartsPerTurn: 3, eliminationRule: rule, missLimit: 6, sfxEnabled: false, voiceEnabled: false } });
   }

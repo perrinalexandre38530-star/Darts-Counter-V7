@@ -11,6 +11,9 @@ import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // ============================================
 
 import React from "react";
+import { useTheme } from "../contexts/ThemeContext";
+import { MssParticipantTypeChoice } from "../components/config/MssGuidedConfigNav";
+import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 import type { Profile } from "../lib/types";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
@@ -50,6 +53,13 @@ type Props = {
 };
 
 export default function CricketConfig({ profiles, value, onChange, onStart }: Props) {
+  const { theme } = useTheme();
+  const accent = theme?.primary || "#F6C256";
+  const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
+  const [configStep, setConfigStep] = React.useState(0);
+  const [helpOpen, setHelpOpen] = React.useState(false);
+  const guided = configView === "guided";
+  const classicSteps = ["Awena", "Participants", "Choix joueurs", "Règles", "Récapitulatif"];
   const selectedCount = value.selectedIds.length;
 
   const canStartSolo =
@@ -159,7 +169,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
             fontWeight: 900,
             letterSpacing: 2,
             textTransform: "uppercase",
-            color: T.gold,
+            color: accent,
             textShadow:
               "0 0 6px rgba(246,194,86,0.8), 0 0 18px rgba(246,194,86,0.6)",
           }}
@@ -171,8 +181,29 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
         </div>
       </div>
 
+      <MssClassicConfigFlow title="Cricket" steps={classicSteps} step={configStep} view={configView}
+        accent={accent} summary={`${selectedCount} profils / bots`} onStep={setConfigStep}
+        onView={setConfigView} onHelp={() => setHelpOpen(v => !v)} />
+      {guided && configStep === 0 && <MssClassicOverview title="CRICKET · AWENA VOUS EXPLIQUE" onHelp={() => setHelpOpen(v => !v)}
+        description="Ferme les secteurs 15 à 20 et la BULL avant tes adversaires. Choisis ensuite les joueurs, le score et les manches." accent={accent} />}
+      {helpOpen && <section style={{ border: `1px solid ${accent}55`, padding: 12, borderRadius: 14,
+        color: "#dbe3f6", marginBottom: 12, fontSize: 12 }}>
+        Chaque secteur demande trois marques pour être fermé. Le jeu reste contrôlé par les règles CRICKET d'origine.
+      </section>}
+      {(!guided || configStep === 1) && <section aria-label="Type de participants" style={{
+        border: `1px solid ${accent}44`, background: "rgba(9,12,24,.96)", borderRadius: 18,
+        padding: 13, marginBottom: 14 }}>
+        <strong style={{ color: accent, fontWeight: 950, fontSize: 13 }}>PARTICIPANTS</strong>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 10 }}>
+          <MssParticipantTypeChoice kind="players" accent={accent} active={value.mode !== "teams"} onClick={() => set({ mode: "solo" })} />
+          <MssParticipantTypeChoice kind="teams" accent={accent} active={value.mode === "teams"} onClick={() => set({ mode: "teams" })} />
+        </div>
+        <p style={{ fontSize: 11, color: "#aeb6cb", marginBottom: 0 }}>
+          {value.mode === "teams" ? "2 équipes de 2 joueurs · affectation dans le sélecteur suivant." : "Entre 2 et 4 joueurs · sans équipes."}
+        </p>
+      </section>}
       {/* JOUEURS */}
-      <div
+      <div hidden={guided && configStep !== 2}
         style={{
           borderRadius: 18,
           background: T.card,
@@ -202,7 +233,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
           profiles={allPlayers}
           selectedIds={value.selectedIds}
           onToggle={toggleId}
-          accent={T.gold}
+          accent={accent}
           pageSize={9}
           modalTitle="Choisir des joueurs"
           renderActions={(p: any) => value.mode === "teams" && value.selectedIds.includes(p.id) ? (
@@ -218,9 +249,9 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
                       minWidth: 42,
                       padding: "5px 8px",
                       borderRadius: 999,
-                      border: active ? `1px solid ${T.gold}` : `1px solid ${T.borderSoft}`,
+                      border: active ? `1px solid ${accent}` : `1px solid ${T.borderSoft}`,
                       background: active ? "rgba(246,194,86,0.16)" : "rgba(0,0,0,0.25)",
-                      color: active ? T.gold : T.textSoft,
+                      color: active ? accent : T.textSoft,
                       fontSize: 11,
                       fontWeight: 900,
                       cursor: "pointer",
@@ -274,7 +305,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
       </div>
 
       {/* OPTIONS */}
-      <div
+      <div hidden={guided && configStep !== 3}
         style={{
           borderRadius: 18,
           background: T.card,
@@ -285,43 +316,6 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
       >
         <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1.2, color: T.textSoft, marginBottom: 10 }}>
           Options
-        </div>
-
-        {/* Mode: solo/teams */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 13, color: T.textSoft }}>Mode de jeu</span>
-          <div style={{ display: "inline-flex", gap: 6 }}>
-            <button
-              type="button"
-              onClick={() => set({ mode: "solo" })}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "none",
-                background: value.mode === "solo" ? "rgba(246,194,86,0.20)" : "rgba(255,255,255,0.08)",
-                color: value.mode === "solo" ? T.gold : T.textSoft,
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              SOLO
-            </button>
-            <button
-              type="button"
-              onClick={() => set({ mode: "teams" })}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "none",
-                background: value.mode === "teams" ? "rgba(246,194,86,0.20)" : "rgba(255,255,255,0.08)",
-                color: value.mode === "teams" ? T.gold : T.textSoft,
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              2v2
-            </button>
-          </div>
         </div>
 
         {/* Score mode */}
@@ -376,9 +370,9 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
                     width: 42,
                     height: 28,
                     borderRadius: 999,
-                    border: active ? `1px solid ${T.gold}` : `1px solid ${T.borderSoft}`,
+                    border: active ? `1px solid ${accent}` : `1px solid ${T.borderSoft}`,
                     background: active ? "rgba(246,194,86,0.14)" : "rgba(0,0,0,0.35)",
-                    color: active ? T.gold : T.textSoft,
+                    color: active ? accent : T.textSoft,
                     fontWeight: 900,
                     cursor: "pointer",
                   }}
@@ -455,8 +449,15 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
         )}
       </div>
 
+      {guided && configStep === 4 && <MssClassicRecap accent={accent} ready={canStart} entries={[
+        ["Participants", `${selectedCount} joueurs / bots`],
+        ["Mode", value.mode === "teams" ? "Équipes · 2v2" : "Multi joueurs"],
+        ["Score", value.scoreMode === "points" ? "Avec points" : "Sans points"],
+        ["Manches maximum", String(value.maxRounds)],
+        ["Départ", value.startOrder === "random" ? "Aléatoire" : "Ordre sélectionné"],
+      ]} />}
       {/* START */}
-      <div
+      <div hidden={guided && configStep !== 4}
         style={{
           position: "fixed",
           left: 0,

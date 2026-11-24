@@ -11,6 +11,7 @@ import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
+import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 import { loadBotPlayers } from "../lib/bots";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -429,6 +430,10 @@ export default function WarfareConfigPage({ store, go }: Props) {
   const [bullBomb, setBullBomb] = React.useState(false);
   const [bullHeal, setBullHeal] = React.useState(false);
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
+  const [configStep, setConfigStep] = React.useState(0);
+  const guided = configView === "guided";
+  const classicSteps = ["Awena", "Armées", "Règles", "Récapitulatif"];
   const [tacticalMapEnabled, setTacticalMapEnabled] = React.useState(false);
   const [inputMethod, setInputMethod] = React.useState("keypad");
 
@@ -546,7 +551,12 @@ export default function WarfareConfigPage({ store, go }: Props) {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <MssClassicConfigFlow title="Warfare" steps={classicSteps} step={configStep} view={configView}
+        accent={theme.primary} summary={`${total} participants · 2 camps`} onStep={setConfigStep}
+        onView={setConfigView} onHelp={() => setInfoOpen(true)} />
+      {guided && configStep === 0 && <MssClassicOverview accent={theme.primary} title="WARFARE · AWENA VOUS EXPLIQUE" onHelp={() => setInfoOpen(true)}
+        description="Constitue deux armées, puis choisis les zones, les dégâts et les fonctions spéciales avant de lancer." />}
+      <div style={{ marginTop: 16, display: guided && configStep !== 1 ? "none" : "flex", flexDirection: "column", gap: 12 }}>
         <TeamBlock
           teamKey="TOP"
           teams={teams}
@@ -575,7 +585,7 @@ export default function WarfareConfigPage({ store, go }: Props) {
         />
       </div>
 
-      <div
+      <div hidden={guided && configStep !== 2}
         style={{
           marginTop: 14,
           padding: 14,
@@ -822,7 +832,16 @@ export default function WarfareConfigPage({ store, go }: Props) {
         </div>
       )}
 
-      <div
+      {guided && configStep === 3 && <MssClassicRecap accent={theme.primary} ready={canStart} entries={[
+        ["Participants", `${total} joueurs / bots`],
+        ["Armée 1", `${countTop} membres`],
+        ["Armée 2", `${countBottom} membres`],
+        ["Zones", zoneRule === "ANY" ? "Toutes" : zoneRule === "DOUBLE_ONLY" ? "Doubles" : "Simples / doubles"],
+        ["Tirs alliés", friendlyFire ? "Actifs" : "Désactivés"],
+        ["BULL", bullRule],
+        ["Saisie", inputMethod.toUpperCase()],
+      ]} />}
+      <div hidden={guided && configStep !== 3}
         style={{
           position: "fixed",
           left: 0,
@@ -856,7 +875,7 @@ export default function WarfareConfigPage({ store, go }: Props) {
         </button>
       </div>
     
-      <NativeStartOrderConfig />
+      <div hidden={guided && configStep !== 2}><NativeStartOrderConfig /></div>
       </div>
   );
 }

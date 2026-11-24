@@ -1,4 +1,5 @@
 import React from "react";
+import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 
 const panel: React.CSSProperties = { padding: 16, borderRadius: 18, display: "grid", gap: 12, background: "#0d101d", border: "1px solid #ffffff25" };
@@ -10,7 +11,7 @@ export default function QuickKnockoutConfig({ onBack, onStart }: { onBack: () =>
   const [names, setNames] = React.useState(["J1", "J2", "J3", "J4"]);
   function start() {
     const session = `quick-knockout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    const players = names.slice(0, count).map((n, i) => ({ id: `${session}-p${i + 1}`, name: n.trim() || `J${i + 1}`, profileId: null, isTemporary: true, isBot: false }));
+    const players = names.slice(0, count).map((n, i) => ({ id: `${session}-p${i + 1}`, name: n.trim() || `J${i + 1}`, profileId: null, isTemporary: true, isBot: false, avatarDataUrl: quickPartyAvatar(i, session), avatarUrl: quickPartyAvatar(i, session) }));
     onStart({ config: { players: count, botsEnabled: false, botLevel: "normal", rounds, objective: 0, quickParty: true, partyMode: "quick", temporaryParticipants: true, profileStatsDeferred: true }, players, quickParty: true, partyMode: "quick", temporaryParticipants: true, profileStatsDeferred: true });
   }
   return <div className="screen x01-config-v3-screen" style={{ minHeight: "100dvh", color: "white", background: "#050710", padding: "0 12px 98px" }}>
