@@ -1,3 +1,4 @@
+import { normalizeTrainingSetSnapshot } from "./trainingExerciseDraft";
 import type { TrainingExerciseFamily } from "../catalog/trainingExerciseCatalog";
 
 const KEY = "dc_training_plan_tracker_v1";
@@ -194,6 +195,7 @@ export type TrainingProgramDraftStep = {
 };
 
 export type TrainingProgramDraft = {
+  dartSet?: import("../ui/TrainingDartSetChoice").TrainingSetSnapshot | null;
   savedAt: number;
   programId: string;
   programTitle: string;
@@ -242,6 +244,7 @@ export function loadTrainingProgramDraft(participantId?: string | null): Trainin
       nextStepIndex,
       completedSteps,
       participantId: raw.participantId ? String(raw.participantId) : null,
+      dartSet: normalizeTrainingSetSnapshot(raw.dartSet),
     };
   } catch {
     return null;

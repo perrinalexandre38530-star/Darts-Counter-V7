@@ -58,9 +58,9 @@ const sectionLabel: React.CSSProperties = {
   letterSpacing: 1,
 };
 
-export default function ChallengesConfig({ profiles, onStart, onExit }: { profiles?: Profile[]; onStart: (cfg: any) => void; onExit: () => void; }) {
+export default function ChallengesConfig({ profiles, onStart, onExit, initialChallengeId }: { profiles?: Profile[]; initialChallengeId?: string; onStart: (cfg: any) => void; onExit: () => void; }) {
   const [participants, setParticipants] = useTrainingParticipantSelection(profiles);
-  const [selected, setSelected] = React.useState<(typeof TRAINING_CHALLENGES)[number]>(TRAINING_CHALLENGES[0]);
+  const [selected, setSelected] = React.useState<(typeof TRAINING_CHALLENGES)[number]>(() => TRAINING_CHALLENGES.find(item => item.id === initialChallengeId) ?? TRAINING_CHALLENGES[0]);
   const [doublesTargetMode, setDoublesTargetMode] = React.useState<'official' | 'custom'>('official');
   const [doublesTargets, setDoublesTargets] = React.useState<number[]>([20, 18, 16, 12, 10, 8, 4, 2]);
   const resolved = resolveTrainingParticipants(participants, profiles);
@@ -85,7 +85,7 @@ export default function ChallengesConfig({ profiles, onStart, onExit }: { profil
           <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
 
           <div style={sectionLabel}>DÉFI</div>
-          {TRAINING_CHALLENGES.map((challenge) => (
+          {TRAINING_CHALLENGES.filter(item => !initialChallengeId || item.id === initialChallengeId).map((challenge) => (
             <TrainingOptionCard key={challenge.id} title={challenge.title} subtitle={challenge.subtitle} active={selected.id === challenge.id} onClick={() => setSelected(challenge)} />
           ))}
 

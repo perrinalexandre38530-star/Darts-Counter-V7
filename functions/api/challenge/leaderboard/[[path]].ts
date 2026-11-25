@@ -573,6 +573,8 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
         authReady: Boolean(clean(env.SUPABASE_URL) && clean(env.SUPABASE_ANON_KEY)),
         d1Binding: 'CHALLENGE_DB',
         r2Binding: 'USER_DATA_BUCKET',
+        chainSubmitReady: Boolean(env.CHALLENGE_DB && env.USER_DATA_BUCKET && clean(env.SUPABASE_URL) && clean(env.SUPABASE_ANON_KEY)),
+        chainDetailJournalVersion: 1,
       }, env.CHALLENGE_DB ? 200 : 503);
     }
 
@@ -612,6 +614,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       const body = await request.json().catch(() => ({}));
       const matchId = safe(body?.matchId).slice(0,160);
       if (!matchId) return json({ok:false,code:'match_id_required'},400);
+      if (body?.expectedUserId && clean(body.expectedUserId) !== identity.userId) return json({ok:false,code:'chain_account_changed',error:'Le compte connecté a changé.'},403);
       const batch = chainSubmissionBatch(body);
       const results = [];
       for (const performance of batch) {

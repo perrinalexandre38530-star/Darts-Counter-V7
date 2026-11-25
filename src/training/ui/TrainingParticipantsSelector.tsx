@@ -1,3 +1,4 @@
+import TrainingDartSetChoice, { trainingSetSnapshot } from "./TrainingDartSetChoice";
 import React from "react";
 import type { Profile } from "../../lib/types";
 import PlayerPagedSelector from "../../components/PlayerPagedSelector";
@@ -16,6 +17,7 @@ export type TrainingParticipantSelection = {
   selectedTeamIds: string[];
   selectedTeamPlayerIds: Record<string, string[]>;
   teamSize: number;
+  dartSetIds?: Record<string,string>; 
 };
 
 export type TrainingResolvedParticipant = {
@@ -132,6 +134,7 @@ export function buildTrainingParticipantConfig(
     selectedTeamIds: cleanIds(selection.selectedTeamIds),
     selectedTeamPlayerIds: selection.selectedTeamPlayerIds || {},
     teamSize: Math.max(1, Number(selection.teamSize || 2)),
+    dartSetsByParticipant: Object.fromEntries(participants.map(p => [p.id, trainingSetSnapshot(p.id, selection.dartSetIds?.[p.id] || "")])),
     trainingParticipants: participants.map((participant) => ({
       id: participant.id,
       name: participant.name,
@@ -395,6 +398,7 @@ export default function TrainingParticipantsSelector({
         </>
       )}
 
+      {resolvedParticipants.map(p => <TrainingDartSetChoice key={p.id} profileId={p.id} name={p.name} value={value.dartSetIds?.[p.id] || ""} onChange={id=>onChange({...value,dartSetIds:{...value.dartSetIds,[p.id]:id}})} />)}
       <div
         style={{
           marginTop: 10,

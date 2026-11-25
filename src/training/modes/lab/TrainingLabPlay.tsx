@@ -79,13 +79,14 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
       exerciseId: exercise.id,
       participantId: accountParticipantId,
       engine: "standard",
+      dartSet: config?.dartSetsByParticipant?.[accountParticipantId || ""] ?? null,
       savedAt: Date.now(),
       startedAt: startedAtRef.current,
       state: { ...stateRef.current },
       visitHistory: [...visitHistoryRef.current],
       secondsLeft: null,
     });
-  }, [accountParticipantId, exercise.id, individualExercise]);
+  }, [accountParticipantId, exercise.id, individualExercise, config?.dartSetsByParticipant]);
 
   React.useEffect(() => {
     if (!individualExercise) return;
@@ -203,6 +204,7 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
           nextStepIndex: Math.min(totalSteps - 1, stepIndex + 1),
           completedSteps: next.filter(Boolean) as any,
           participantId: accountParticipantId,
+          dartSet: config?.dartSetsByParticipant?.[accountParticipantId || ""] ?? null,
         });
         return next;
       });
@@ -292,6 +294,7 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
         nextStepIndex: result ? Math.min(totalSteps - 1, stepIndex + 1) : stepIndex,
         completedSteps: programResults.filter(Boolean) as any,
         participantId: accountParticipantId,
+        dartSet: config?.dartSetsByParticipant?.[accountParticipantId || ""] ?? null,
       });
     }
     if (individualExercise && !result) persistIndividualDraft();
@@ -421,9 +424,9 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
         { label: isProgram ? "ÉTAPE" : "RESTE", value: isProgram ? `${stepIndex + 1}/${totalSteps}` : Math.max(0, exercise.maxDarts - s.darts) },
       ]}
     >
-      {isProgram && <div className="mssTrainingProgramCue" style={{ marginBottom: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.075),rgba(140,90,255,.05))" }}>
+      {isProgram && <div className="mssTrainingProgramCue" style={{ marginBottom: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(255,142,112,.18)", background: "linear-gradient(135deg,rgba(255,142,112,.075),rgba(140,90,255,.05))" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>AWENA • {liveStepCoach.phaseLabel}</div>
+          <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>AWENA • {liveStepCoach.phaseLabel}</div>
           <div style={{ fontSize: 8, fontWeight: 900, opacity: .55 }}>CIBLE PERF. {liveStepCoach.targetScore}/100</div>
         </div>
         <div style={{ marginTop: 5, fontSize: 10.5, fontWeight: 900 }}>{liveStepCoach.objective}</div>
@@ -454,14 +457,14 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
         { label: "PERFORMANCE", value: `${result.metrics.performanceScore}/100` },
         ...(isProgram && liveAdaptation ? [{ label: "AWENA", value: liveAdaptation.headline }] : []),
       ] : []}
-      note={isProgram && liveAdaptation ? <div style={{ padding: 10, borderRadius: 12, background: liveAdaptation.tone === "positive" ? "rgba(80,255,174,.07)" : liveAdaptation.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: liveAdaptation.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : liveAdaptation.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>FEEDBACK AWENA</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{liveAdaptation.headline}</div><div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .7 }}>{liveAdaptation.body}</div><div style={{ marginTop: 6, fontSize: 8, fontWeight: 900, color: "#27dcff" }}>{liveAdaptation.nextLabel}</div></div> : exerciseFeedback ? <div style={{ padding: 10, borderRadius: 12, background: exerciseFeedback.levelUp ? "rgba(80,255,174,.07)" : "rgba(39,220,255,.06)", border: exerciseFeedback.levelUp ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>PROGRESSION PERSONNELLE</div><div style={{ marginTop: 4, fontSize: 12, fontWeight: 1000 }}>{exerciseFeedback.masteredNow ? "MAÎTRISE DÉBLOQUÉE" : exerciseFeedback.levelUp ? `NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ` : `NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{ marginTop: 5, fontSize: 9.2, lineHeight: 1.42, opacity: .72 }}>{exerciseFeedback.newRecord ? `Nouveau record • ${exerciseFeedback.currentPerformance}/100. ` : ""}{exerciseFeedback.afterLevel >= 5 ? "Exercice maîtrisé." : `Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div> : null}
+      note={isProgram && liveAdaptation ? <div style={{ padding: 10, borderRadius: 12, background: liveAdaptation.tone === "positive" ? "rgba(80,255,174,.07)" : liveAdaptation.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(255,142,112,.06)", border: liveAdaptation.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : liveAdaptation.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(255,142,112,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>FEEDBACK AWENA</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{liveAdaptation.headline}</div><div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .7 }}>{liveAdaptation.body}</div><div style={{ marginTop: 6, fontSize: 8, fontWeight: 900, color: "#ff9f8b" }}>{liveAdaptation.nextLabel}</div></div> : exerciseFeedback ? <div style={{ padding: 10, borderRadius: 12, background: exerciseFeedback.levelUp ? "rgba(80,255,174,.07)" : "rgba(255,142,112,.06)", border: exerciseFeedback.levelUp ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,142,112,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>PROGRESSION PERSONNELLE</div><div style={{ marginTop: 4, fontSize: 12, fontWeight: 1000 }}>{exerciseFeedback.masteredNow ? "MAÎTRISE DÉBLOQUÉE" : exerciseFeedback.levelUp ? `NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ` : `NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{ marginTop: 5, fontSize: 9.2, lineHeight: 1.42, opacity: .72 }}>{exerciseFeedback.newRecord ? `Nouveau record • ${exerciseFeedback.currentPerformance}/100. ` : ""}{exerciseFeedback.afterLevel >= 5 ? "Exercice maîtrisé." : `Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div> : null}
       actionLabel={isProgram ? (stepIndex + 1 < totalSteps ? "ÉTAPE SUIVANTE" : "VOIR LE BILAN") : "TERMINER"}
       onClose={closeResult}
     />
 
     {programSummaryOpen && <div style={{ position: "fixed", inset: 0, zIndex: 120, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.82)", backdropFilter: "blur(8px)" }}>
-      <div style={{ width: "min(680px,100%)", maxHeight: "90vh", overflowY: "auto", borderRadius: 20, border: "1px solid rgba(39,220,255,.34)", background: "linear-gradient(155deg,rgba(15,22,34,.98),rgba(8,10,18,.98))", boxShadow: "0 24px 80px rgba(0,0,0,.55)", padding: 16 }}>
-        <div style={{ fontSize: 9.5, color: "#27dcff", fontWeight: 950, letterSpacing: 1.2 }}>BILAN DE SÉANCE</div>
+      <div style={{ width: "min(680px,100%)", maxHeight: "90vh", overflowY: "auto", borderRadius: 20, border: "1px solid rgba(255,142,112,.34)", background: "linear-gradient(155deg,rgba(15,22,34,.98),rgba(8,10,18,.98))", boxShadow: "0 24px 80px rgba(0,0,0,.55)", padding: 16 }}>
+        <div style={{ fontSize: 9.5, color: "#ff9f8b", fontWeight: 950, letterSpacing: 1.2 }}>BILAN DE SÉANCE</div>
         <div style={{ marginTop: 5, fontSize: 18, fontWeight: 950 }}>{config?.programTitle || "Programme Training"}</div>
         <div style={{ marginTop: 5, fontSize: 10.5, opacity: .62 }}>Toutes les étapes ont été enregistrées séparément dans ta progression.</div>
 
@@ -474,11 +477,11 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
           ].map(([label, value]) => <div key={String(label)} style={{ padding: "10px 5px", borderRadius: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.07)", textAlign: "center" }}><b style={{ fontSize: 13 }}>{value}</b><div style={{ marginTop: 3, fontSize: 7.5, opacity: .45 }}>{label}</div></div>)}
         </div>
 
-        {programSummary.best && <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(39,220,255,.07)", border: "1px solid rgba(39,220,255,.16)", fontSize: 10 }}>
+        {programSummary.best && <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,142,112,.07)", border: "1px solid rgba(255,142,112,.16)", fontSize: 10 }}>
           <b>Meilleure étape :</b> {programSummary.best.exerciseTitle} • {programSummary.best.performanceScore}/100
         </div>}
 
-        <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(140,90,255,.045))", border: "1px solid rgba(39,220,255,.17)" }}>
+        <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: "linear-gradient(135deg,rgba(255,142,112,.055),rgba(140,90,255,.045))", border: "1px solid rgba(255,142,112,.17)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
             <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .55 }}>PLAN PRÉVU → RÉALISÉ</div><div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{sessionReview.headline}</div></div>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -498,7 +501,7 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
           {sessionReview.adaptations.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
             {sessionReview.adaptations.map((adaptation) => { const planned = getTrainingExercise(adaptation.plannedExerciseId); const actual = getTrainingExercise(adaptation.actualExerciseId); return <div key={`${adaptation.stepIndex}-${adaptation.actualExerciseId}`} style={{ fontSize: 8.3, opacity: .62 }}>Étape {adaptation.stepIndex + 1} • <span style={{ textDecoration: "line-through", opacity: .62 }}>{planned?.title || adaptation.plannedExerciseId}</span> → <b style={{ color: "#ffd86b" }}>{actual?.title || adaptation.actualExerciseId}</b></div>; })}
           </div>}
-          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 8.7, lineHeight: 1.4, opacity: .65 }}><b style={{ color: "#27dcff" }}>SUITE AWENA :</b> {sessionReview.nextReason}</div>
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 8.7, lineHeight: 1.4, opacity: .65 }}><b style={{ color: "#ff9f8b" }}>SUITE AWENA :</b> {sessionReview.nextReason}</div>
         </div>
 
         {programRecordMessage && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "rgba(255,216,107,.08)", border: "1px solid rgba(255,216,107,.24)", color: "#ffd86b", fontSize: 9.5, fontWeight: 950, textAlign: "center", letterSpacing: .5 }}>{programRecordMessage}</div>}
@@ -507,7 +510,7 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
           <b style={{ fontSize: 11, color: "#ffd86b" }}>+{careerMessage.xp} XP</b><div style={{ marginTop: 3, fontSize: 8.5, fontWeight: 900, opacity: .7 }}>{careerMessage.text}</div>
         </div>}
 
-        {postSessionCoach && <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: postSessionCoach.tone === "positive" ? "rgba(80,255,174,.07)" : postSessionCoach.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: postSessionCoach.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : postSessionCoach.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}>
+        {postSessionCoach && <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: postSessionCoach.tone === "positive" ? "rgba(80,255,174,.07)" : postSessionCoach.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(255,142,112,.06)", border: postSessionCoach.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : postSessionCoach.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(255,142,112,.18)" }}>
           <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>BILAN COACH AWENA</div>
           <div style={{ marginTop: 4, fontSize: 11.5, fontWeight: 950 }}>{postSessionCoach.headline}</div>
           <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.42, opacity: .68 }}>{postSessionCoach.body}</div>
@@ -527,7 +530,7 @@ function TrainingLabStandardPlay({ config, onExit, onStartCorrection }: { config
           </div>)}
         </div>
 
-        <button type="button" onClick={() => { clearTrainingProgramDraft(accountParticipantId); onExit(); }} style={{ width: "100%", marginTop: 14, padding: 12, borderRadius: 12, border: "1px solid rgba(39,220,255,.45)", background: "linear-gradient(135deg,rgba(39,220,255,.20),rgba(140,90,255,.18))", color: "inherit", fontWeight: 950, cursor: "pointer" }}>TERMINER LA SÉANCE</button>
+        <button type="button" onClick={() => { clearTrainingProgramDraft(accountParticipantId); onExit(); }} style={{ width: "100%", marginTop: 14, padding: 12, borderRadius: 12, border: "1px solid rgba(255,142,112,.45)", background: "linear-gradient(135deg,rgba(255,142,112,.20),rgba(140,90,255,.18))", color: "inherit", fontWeight: 950, cursor: "pointer" }}>TERMINER LA SÉANCE</button>
       </div>
     </div>}
   </>;

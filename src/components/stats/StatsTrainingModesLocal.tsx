@@ -14,6 +14,10 @@ import { trainingConfigSummary } from "../../training/lib/trainingConfigSummary"
 type ModeDef = { id: string; label: string; short: string };
 
 const MODES: ModeDef[] = [
+  {id:"training_lab",label:"Centre d’entraînement",short:"Centre"},
+  {id:"training_finish_do",label:"Finish DO",short:"DO"},
+  {id:"training_finish_challenge",label:"Challenge Finish DO",short:"Défi DO"},
+  {id:"training_clock",label:"Tour de l’horloge",short:"Horloge"},
   { id: "training_x01", label: "Training X01", short: "X01" },
   { id: "training_doubleio", label: "Double In / Double Out", short: "DI / DO" },
   { id: "training_challenges", label: "Challenges", short: "Défis" },

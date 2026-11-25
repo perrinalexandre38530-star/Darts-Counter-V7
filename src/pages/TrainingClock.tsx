@@ -734,7 +734,16 @@ const TrainingClock: React.FC<Props> = (props) => {
     playSound("start");
   }
 
+  const clockSetSnapshots = React.useRef<Record<string, {id:string;name:string;weightGrams?:number} | null>>({});
+  function snapshotClockSets() {
+    clockSetSnapshots.current = Object.fromEntries(players.map(p => {
+      const id = playerDartSets[String(p.id)];
+      const set = id ? getDartSetById(id) : null;
+      return [String(p.id), set ? {id:set.id,name:set.name,weightGrams:set.weightGrams} : null];
+    }));
+  }
   function handleStart() {
+    snapshotClockSets();
     groupSessionIdRef.current = `training-group-training_clock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     groupStartedAtRef.current = Date.now();
     setComparisonGroup(null);
@@ -783,8 +792,8 @@ const TrainingClock: React.FC<Props> = (props) => {
     const accuracyPct = finalDarts > 0 ? Math.round((finalHits / finalDarts) * 1000) / 10 : 0;
     const breakdown = breakdownFromLabels(finalThrowLabels);
 
-    const sessionDartSetId = player?.id ? (playerDartSets[String(player.id)] ?? null) : null;
-    const sessionDartSet = sessionDartSetId ? getDartSetById(sessionDartSetId) : null;
+    const sessionDartSet = player?.id ? clockSetSnapshots.current[String(player.id)] ?? null : null;
+    const sessionDartSetId = sessionDartSet?.id ?? null;
     const sessionConfig: ClockConfig = {
       ...config,
       participantMode,
@@ -833,6 +842,7 @@ const TrainingClock: React.FC<Props> = (props) => {
         historyId: `clock-${session.id}`,
         config: {
           ...session.config,
+          dartSetsByParticipant: clockSetSnapshots.current,
           groupSessionId: groupSessionIdRef.current,
           participantMode,
           activeParticipant: {
@@ -1045,6 +1055,7 @@ const TrainingClock: React.FC<Props> = (props) => {
   }
 
   function replayClockGroup() {
+    snapshotClockSets();
     groupSessionIdRef.current = `training-group-training_clock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     groupStartedAtRef.current = Date.now();
     setComparisonGroup(null);

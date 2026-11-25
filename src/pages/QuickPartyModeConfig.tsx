@@ -5,6 +5,7 @@ import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import teamGoldLogo from "../ui_assets/teams/team_gold.png";
 import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 import MssParticipantModeIcon from "../components/config/MssParticipantModeIcon";
+import { MssQuickPanel, MssQuickChoices, MssQuickRecap, MssQuickStart } from "../components/config/MssQuickClassicControls";
 import { useTheme } from "../contexts/ThemeContext";
 import MssKillerQuickSettings, { DEFAULT_KILLER_QUICK_RULES } from "../components/config/MssKillerQuickSettings";
 
@@ -44,8 +45,7 @@ const SPECS: Record<ModeId, ModeSpec> = {
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, Math.round(n))); }
 function shuffle<T>(rows: T[]) { const out = [...rows]; for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; } return out; }
 
-function buildTempPlayers(names: string[], count: number) {
-  const sessionId = `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+function buildTempPlayers(names: string[], count: number, sessionId: string) {
   return Array.from({ length: count }, (_, index) => {
     const id = `${sessionId}-p${index + 1}`;
     return {
@@ -83,6 +83,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
   const [layout, setLayout] = React.useState<LayoutMode>(spec.minPlayers > 2 ? "multi" : "duel");
   const [multiCount, setMultiCount] = React.useState(spec.defaultPlayers || 2);
   const [names, setNames] = React.useState<string[]>(() => Array.from({ length: 20 }, (_, i) => `J${i + 1}`));
+  const [quickSessionId] = React.useState(() => `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
   const [killerRules, setKillerRules] = React.useState(DEFAULT_KILLER_QUICK_RULES);
   const [fiveLives, setFiveLives] = React.useState(5);
   const [shanghaiRounds, setShanghaiRounds] = React.useState(20);
@@ -109,8 +110,6 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     if (layout === "solo" && !spec.allowSolo) setLayout("duel");
   }, [layout, spec]);
 
-  const block: React.CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 18, background: "rgba(10,12,24,.94)", padding: 12, display: "grid", gap: 9 };
-  const label: React.CSSProperties = { fontSize: 10, opacity: .55, fontWeight: 950, letterSpacing: .7 };
   const chip = (active: boolean, color = accent): React.CSSProperties => ({ borderRadius: 12, border: `1px solid ${active ? color : "rgba(255,255,255,.13)"}`, background: active ? `${color}22` : "rgba(255,255,255,.035)", color: active ? color : "rgba(255,255,255,.78)", fontWeight: 950, minHeight: 40, padding: "8px 12px", cursor: "pointer" });
 
   function updateName(index: number, value: string) { setNames((prev) => { const next = [...prev]; next[index] = value; return next; }); }
@@ -131,7 +130,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
   }
 
   function start() {
-    const players = buildTempPlayers(names, playerCount);
+    const players = buildTempPlayers(names, playerCount, quickSessionId);
     const meta = quickMeta();
     const teamConfigs = layout === "teams" ? [
       { id: `${players[0].id}-team1`, name: "ÉQUIPE 1", playerIds: [players[0].id, players[1].id], players: [players[0].id, players[1].id], color: "#f7c85c" },
@@ -247,77 +246,134 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     }
   }
 
+  const progressive = String(params?.variantId || params?.gameId || "").toLowerCase().includes("progressive");
   const modeOptions = modeId === "killer" ? (
-    <MssKillerQuickSettings rules={killerRules} setRules={setKillerRules} accent={accent} progressive={String(params?.variantId || params?.gameId || "").toLowerCase().includes("progressive")} />
+    <MssKillerQuickSettings rules={killerRules} setRules={setKillerRules} accent={accent} progressive={progressive} />
   ) : modeId === "five_lives" ? (
-    <div style={block}><div style={label}>VIES DE DÉPART</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>{[3,5,7,10].map(v=><button key={v} style={chip(fiveLives===v,"#ffc857")} onClick={()=>setFiveLives(v)}>{v}</button>)}</div></div>
+    <MssQuickPanel title="Règles · Les 5 vies">
+      <MssQuickChoices label="Vies de départ" options={[3,5,7,10].map(value => ({ value, label: String(value) }))} value={fiveLives} onChange={setFiveLives} compact />
+    </MssQuickPanel>
   ) : modeId === "shanghai" ? (
-    <div style={block}><div style={label}>NOMBRE DE TOURS</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>{[7,10,15,20].map(v=><button key={v} style={chip(shanghaiRounds===v,"#ffc857")} onClick={()=>setShanghaiRounds(v)}>{v}</button>)}</div></div>
+    <MssQuickPanel title="Règles · Shanghai">
+      <MssQuickChoices label="Nombre de manches" options={[7,10,15,20].map(value => ({ value, label: String(value) }))} value={shanghaiRounds} onChange={setShanghaiRounds} compact />
+    </MssQuickPanel>
   ) : modeId === "cricket" ? (
-    <><div style={block}><div style={label}>SCORING</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><button style={chip(cricketPoints)} onClick={()=>setCricketPoints(true)}>AVEC POINTS</button><button style={chip(!cricketPoints)} onClick={()=>setCricketPoints(false)}>SANS POINTS</button></div></div><div style={block}><div style={label}>LIMITE</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>{[10,20].map(v=><button key={v} style={chip(cricketRounds===v,"#ffc857")} onClick={()=>setCricketRounds(v)}>{v} TOURS</button>)}</div></div></>
+    <MssQuickPanel title="Règles · Cricket">
+      <MssQuickChoices label="Score" options={[{value:true,label:"AVEC POINTS"},{value:false,label:"SANS POINTS"}]} value={cricketPoints} onChange={setCricketPoints} />
+      <MssQuickChoices label="Limite de manches" options={[10,20].map(value => ({value,label:String(value)}))} value={cricketRounds} onChange={setCricketRounds} compact />
+    </MssQuickPanel>
   ) : modeId === "shooter" ? (
-    <div style={block}><div style={label}>MARQUES POUR VALIDER</div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}>{[1,3,5].map(v=><button key={v} style={chip(shooterMarks===v,"#ffc857")} onClick={()=>setShooterMarks(v)}>{v}</button>)}</div></div>
+    <MssQuickPanel title="Règles · Shooter">
+      <MssQuickChoices label="Marques pour valider" options={[1,3,5].map(value => ({value,label:String(value)}))} value={shooterMarks} onChange={setShooterMarks} compact />
+    </MssQuickPanel>
   ) : modeId === "bowling" ? (
-    <div style={block}><div style={label}>FORMAT</div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}>{[[1,"BO1"],[2,"BO3"],[3,"BO5"]].map(([v,t])=><button key={v} style={chip(bowlingSets===v,"#ffc857")} onClick={()=>setBowlingSets(Number(v))}>{t}</button>)}</div></div>
+    <MssQuickPanel title="Règles · Bowling">
+      <MssQuickChoices label="Format du match" options={[{value:1,label:"BO1"},{value:2,label:"BO3"},{value:3,label:"BO5"}]} value={bowlingSets} onChange={setBowlingSets} />
+    </MssQuickPanel>
   ) : modeId === "baseball" ? (
-    <div style={block}><div style={label}>MANCHE(S)</div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}>{[5,7,9].map(v=><button key={v} style={chip(baseballInnings===v,"#ffc857")} onClick={()=>setBaseballInnings(v)}>{v}</button>)}</div></div>
+    <MssQuickPanel title="Règles · Baseball">
+      <MssQuickChoices label="Nombre de manches" options={[5,7,9].map(value => ({value,label:String(value)}))} value={baseballInnings} onChange={setBaseballInnings} compact />
+    </MssQuickPanel>
   ) : modeId === "president" ? (
-    <div style={block}><div style={label}>NOMBRE DE MANCHES</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>{[1,3,5,7].map(v=><button key={v} style={chip(presidentRounds===v,"#ffc857")} onClick={()=>setPresidentRounds(v)}>{v}</button>)}</div></div>
+    <MssQuickPanel title="Règles · Président">
+      <MssQuickChoices label="Nombre de manches" options={[1,3,5,7].map(value => ({value,label:String(value)}))} value={presidentRounds} onChange={setPresidentRounds} compact />
+    </MssQuickPanel>
   ) : (
-    <div style={block}><div style={label}>PARCOURS</div><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7}}>{[["classic7","CLASSIQUE 7"],["numbers7","DÉBUTANT"],["extended9","ÉTENDU 9"],["expert12","EXPERT 12"]].map(([v,t])=><button key={v} style={chip(halvePreset===v,"#ffc857")} onClick={()=>setHalvePreset(v as any)}>{t}</button>)}</div></div>
+    <MssQuickPanel title="Règles · Halve-It">
+      <MssQuickChoices label="Parcours" options={[
+        {value:"classic7" as const,label:"CLASSIQUE 7"},
+        {value:"numbers7" as const,label:"DÉBUTANT"},
+        {value:"extended9" as const,label:"ÉTENDU 9"},
+        {value:"expert12" as const,label:"EXPERT 12"},
+      ]} value={halvePreset} onChange={setHalvePreset} />
+    </MssQuickPanel>
   );
 
+  const choices = availableLayouts.filter(([kind]) => kind !== "solo" || spec.allowSolo);
+  const ruleOverview: [string, string | number][] = modeId === "killer" ? [
+    ["Vies", progressive ? 5 : killerRules.lives],
+    ["Devenir KILLER", progressive ? "SIMPLE" : killerRules.becomeRule === "double" ? "DOUBLE" : "SIMPLE"],
+    ["Dégâts", progressive || killerRules.damageRule === "multiplier" ? "S / D / T" : "−1 par impact"],
+    ["Numéros", progressive || killerRules.numberAssignMode === "throw" ? "Au lancer" : "Aléatoires"],
+    ["Saisie", killerRules.inputMode.toUpperCase()],
+  ] : modeId === "five_lives" ? [["Vies", fiveLives]]
+    : modeId === "shanghai" ? [["Manches", shanghaiRounds]]
+    : modeId === "cricket" ? [["Score", cricketPoints ? "Avec points" : "Sans points"], ["Manches", cricketRounds]]
+    : modeId === "shooter" ? [["Marques", shooterMarks]]
+    : modeId === "bowling" ? [["Format", `BO${bowlingSets * 2 - 1}`]]
+    : modeId === "baseball" ? [["Manches", baseballInnings]]
+    : modeId === "president" ? [["Manches", presidentRounds]]
+    : [["Parcours", {classic7:"Classique 7",numbers7:"Débutant",extended9:"Étendu 9",expert12:"Expert 12"}[halvePreset]]];
+
   return (
-    <div style={{ color: "#fff", minHeight: "100%", padding: "10px 12px 28px", display: "grid", gap: 12, alignContent: "start" }}>
+    <div style={{ color: "#fff", minHeight: "100%", padding: "10px 12px 100px", display: "grid", gap: 12, alignContent: "start" }}>
       <DartsQuickHeader modeId={modeId} title={title || spec.title} onBack={onBack} />
       <div style={{ maxWidth: 760, width: "100%", margin: "0 auto", display: "grid", gap: 12 }}>
         <DartsQuickIntro title={title || spec.title} />
-        <div style={block}>
-          <div style={label}>{modeId === "killer" ? "PARTICIPANTS" : "FORMAT JOUEURS"}</div>
-          {modeId === "killer" ? (
-            <div role="group" aria-label="Format des participants KILLER" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
-              {([ ["duel", "DUEL"], ["teams", "ÉQUIPES"], ["multi", "MULTI"] ] as const).map(([key, text]) => (
-                <button key={key} type="button" aria-pressed={layout === key} onClick={() => setLayout(key)}
-                  style={{ minWidth: 0, minHeight: 88, borderRadius: 15, cursor: "pointer", display: "grid", placeContent: "center", justifyItems: "center", gap: 8,
-                    background: layout === key ? `${accent}20` : "rgba(255,255,255,.025)", border: `1px solid ${layout === key ? accent : `${accent}60`}`,
-                    color: accent, boxShadow: layout === key ? `0 0 15px ${accent}2c` : "none" }}>
-                  <MssParticipantModeIcon kind={key} size={36} />
-                  <span style={{ fontSize: 11.5, fontWeight: 950, letterSpacing: .4 }}>{text}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(4, availableLayouts.length)},1fr)`, gap: 7 }}>{availableLayouts.map(([key,text])=><button key={key} type="button" onClick={()=>setLayout(key)} style={chip(layout===key,"#52f5b2")}>{text}</button>)}</div>
-          )}
-          {modeId === "killer" && layout === "teams" && <div style={{ textAlign: "center", fontSize: 11, color: "#aeb6cb" }}>2 équipes de 2 tireurs · vies et numéro communs à chaque équipe</div>}
-          {layout === "multi" ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12}}><button style={chip(false)} onClick={()=>setMultiCount(n=>clamp(n-1,Math.max(3,spec.minPlayers),spec.maxQuickPlayers||spec.maxPlayers))}>−</button><strong>{playerCount} JOUEURS</strong><button style={chip(false)} onClick={()=>setMultiCount(n=>clamp(n+1,Math.max(3,spec.minPlayers),spec.maxQuickPlayers||spec.maxPlayers))}>+</button></div> : null}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 7 }}>{Array.from({length:playerCount},(_,i)=><label key={i} style={{display:"grid",gap:4}}><span style={{fontSize:9,opacity:.48,fontWeight:900}}>{layout==="teams"?`ÉQUIPE ${i<2?1:2} · J${i+1}`:`J${i+1}`}</span><input value={names[i]} onFocus={e=>e.currentTarget.select()} onChange={e=>updateName(i,e.target.value)} placeholder={`J${i+1}`} maxLength={22} style={{borderRadius:11,border:"1px solid rgba(255,255,255,.12)",background:"rgba(0,0,0,.24)",color:"#fff",padding:"10px 11px",fontWeight:850,outline:"none"}} /></label>)}</div>
-          {modeId === "killer" && (killerRules.startOrderMode === "manual" || killerRules.startOrderMode === "bull") && <div style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 9, display: "grid", gap: 6 }}>
-            <strong style={{ color: accent, fontSize: 11 }}>ORDRE DES PASSAGES</strong>
-            <div style={{ fontSize: 10.5, color: "#aeb6cb" }}>{killerRules.startOrderMode === "bull" ? "Après le lancer à la BULL, classe les équipes ou joueurs selon les résultats." : "Déplace les joueurs ou équipes pour fixer l’ordre de départ."}</div>
-            {Array.from({ length: layout === "teams" ? 2 : playerCount }, (_, pos) => {
-              const isTeams = layout === "teams"; const index = isTeams ? pos * 2 : pos;
-              const display = isTeams ? `Équipe ${pos + 1} : ${names[index] || `J${index + 1}`} / ${names[index + 1] || `J${index + 2}`}` : `${names[index] || `J${index + 1}`}`;
-              return <div key={pos} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) 34px 34px", gap: 5, alignItems: "center", fontSize: 12, minHeight: 32 }}>
-                <span style={{ color: accent, fontWeight: 950 }}>{pos + 1}</span><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{display}</span>
-                <button type="button" aria-label={`Monter ${display}`} disabled={pos === 0} onClick={() => moveQuickParticipant(index, -1)} style={{ border: `1px solid ${accent}55`, borderRadius: 8, background: "transparent", color: accent, opacity: pos === 0 ? .3 : 1, height: 30 }}>↑</button>
-                <button type="button" aria-label={`Descendre ${display}`} disabled={pos === (isTeams ? 1 : playerCount - 1)} onClick={() => moveQuickParticipant(index, 1)} style={{ border: `1px solid ${accent}55`, borderRadius: 8, background: "transparent", color: accent, opacity: pos === (isTeams ? 1 : playerCount - 1) ? .3 : 1, height: 30 }}>↓</button>
-              </div>;
+        <MssQuickPanel title="Participants">
+          <div role="group" aria-label="Format des participants" style={{ display: "grid", gridTemplateColumns: `repeat(${choices.length === 4 ? 2 : Math.min(3, choices.length)},minmax(0,1fr))`, gap: 8 }}>
+            {choices.map(([key, text]) => {
+              const active = key === layout;
+              return <button key={key} type="button" aria-pressed={active} onClick={() => setLayout(key)}
+                style={{ minWidth: 0, minHeight: 85, borderRadius: 16, display: "grid", placeContent: "center", justifyItems: "center", gap: 8,
+                  border: `1px solid ${active ? accent : `${accent}60`}`, background: active ? `${accent}24` : "rgba(255,255,255,.025)",
+                  color: accent, cursor: "pointer", fontWeight: 950, fontSize: 12 }}>
+                {key === "solo" ? <svg width="35" height="35" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" fill="none" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M5.5 21v-2a6.5 6.5 0 0 1 13 0v2"/></svg>
+                  : <MssParticipantModeIcon kind={key === "teams" ? "teams" : key === "multi" ? "multi" : "duel"} size={35} />}
+                <span>{key === "duel" ? "DUEL" : text}</span>
+              </button>;
             })}
-          </div>}
-        </div>
-        {modeOptions}
-        {modeId === "killer" ? <section aria-label="Récapitulatif partie rapide" style={{ border: `1px solid ${accent}65`, borderRadius: 17, background: "rgba(8,10,20,.92)", padding: 13, display: "grid", gap: 7 }}>
-          <strong style={{ color: accent, letterSpacing: .7, fontSize: 13 }}>RÉCAPITULATIF · KILLER</strong>
-          <div style={{ color: "#e4e8f4", fontSize: 12 }}>{layout === "teams" ? "2 ÉQUIPES · 2 JOUEURS CHACUNE" : `${playerCount} JOUEURS · ${layout === "duel" ? "DUEL" : "MULTI"}`}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-            {[["VIES", `${String(params?.variantId || params?.gameId || "").toLowerCase().includes("progressive") ? 5 : killerRules.lives} ${layout === "teams" ? "par équipe" : "par joueur"}`], ["DEVENIR KILLER", String(params?.variantId || params?.gameId || "").toLowerCase().includes("progressive") ? "SIMPLE" : killerRules.becomeRule === "double" ? "DOUBLE" : "SIMPLE"], ["DÉGÂTS", String(params?.variantId || params?.gameId || "").toLowerCase().includes("progressive") || killerRules.damageRule === "multiplier" ? "S / D / T" : "−1 PAR IMPACT"], ["NUMÉROS", String(params?.variantId || params?.gameId || "").toLowerCase().includes("progressive") || killerRules.numberAssignMode === "throw" ? "AU LANCER" : "ALÉATOIRES"]].map(([k, v]) => <div key={k} style={{ background: "rgba(255,255,255,.035)", borderRadius: 9, padding: 8, minWidth: 0 }}><div style={{ color: "#aeb6cb", fontSize: 10, fontWeight: 850 }}>{k}</div><strong style={{ fontSize: 11.5 }}>{v}</strong></div>)}
           </div>
-          <div style={{ color: "#aeb6cb", fontSize: 11 }}>Saisie : {killerRules.inputMode.toUpperCase()} · Variantes : { [killerRules.selfHitWhileKiller && "auto-pénalité", killerRules.lifeSteal && "vol de vies", killerRules.bullSplash && "dégâts BULL", killerRules.bullHeal && "soins", killerRules.bullHealFull && "soins max", killerRules.shieldOnDBull && "bouclier", killerRules.disarmOnDBull && "désarmement", killerRules.resurrectionMode !== "off" && "résurrection"].filter(Boolean).join(" · ") || "aucune"}</div>
-          <div style={{ color: "#92d9b7", fontSize: 10.5 }}>Participants temporaires · profils enregistrés inchangés</div>
-        </section> : <div style={{borderRadius:16,border:"1px solid #52f5b244",background:"#52f5b20d",padding:10,textAlign:"center",fontSize:12,fontWeight:900}}>⚡ {playerCount} joueur{playerCount>1?"s":""} · participants temporaires · aucune modification des profils</div>}
-        
-        <button type="button" onClick={start} style={{minHeight:56,border: modeId === "killer" ? `1px solid ${accent}` : "1px solid #52f5b2aa",borderRadius:17,background: modeId === "killer" ? `linear-gradient(90deg, ${accent}, #ffe9a6)` : "linear-gradient(180deg,#52f5b23a,#52f5b214)",color:modeId === "killer" ? "#1a1409" : "#baffdf",fontWeight:1000,fontSize:18,letterSpacing:.6,cursor:"pointer"}}>{modeId === "killer" ? "LANCER LA PARTIE" : "JOUER"}</button>
+          {layout === "teams" && <div style={{ color: "#b2bed5", fontSize: 12, textAlign: "center" }}>2 équipes · 2 joueurs chacune · noms et avatars provisoires</div>}
+          {layout === "multi" && <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14 }}>
+            <button type="button" aria-label="Retirer un joueur" disabled={playerCount <= Math.max(3, spec.minPlayers)}
+              onClick={() => setMultiCount(n => clamp(n - 1, Math.max(3, spec.minPlayers), spec.maxQuickPlayers || spec.maxPlayers))}
+              style={{ ...chip(false), borderRadius: "50%", width: 42, height: 42, padding: 0, opacity: playerCount <= Math.max(3, spec.minPlayers) ? .45 : 1 }}>−</button>
+            <strong style={{ fontSize: 13, color: accent }}>{playerCount} JOUEURS</strong>
+            <button type="button" aria-label="Ajouter un joueur" disabled={playerCount >= (spec.maxQuickPlayers || spec.maxPlayers)}
+              onClick={() => setMultiCount(n => clamp(n + 1, Math.max(3, spec.minPlayers), spec.maxQuickPlayers || spec.maxPlayers))}
+              style={{ ...chip(false), borderRadius: "50%", width: 42, height: 42, padding: 0, opacity: playerCount >= (spec.maxQuickPlayers || spec.maxPlayers) ? .45 : 1 }}>+</button>
+          </div>}
+          {layout === "teams" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+            {[[teamGoldLogo,"TEAM GOLD"],[teamPinkLogo,"TEAM PINK"]].map(([src, label]) => <div key={label} style={{ display: "flex", justifyContent: "center", gap: 7, alignItems: "center", border: `1px solid ${accent}42`, borderRadius: 12, padding: 6 }}>
+              <img src={src} alt="" width={33} height={33} style={{ objectFit: "contain" }} /><strong style={{ fontSize: 10, color: accent }}>{label}</strong>
+            </div>)}
+          </div>}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+            {Array.from({ length: playerCount }, (_, i) => <label key={i} style={{ display: "flex", gap: 7, alignItems: "center", minWidth: 0,
+              border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, background: "rgba(255,255,255,.04)", padding: "6px 8px" }}>
+              <img src={quickPartyAvatar(i, quickSessionId)} draggable={false} alt="" width={38} height={38}
+                style={{ width: 38, height: 38, objectFit: "cover", borderRadius: "50%", border: `1px solid ${accent}77`, flexShrink: 0 }} />
+              <span style={{ display: "grid", gap: 1, flex: 1, minWidth: 0 }}>
+                <span style={{ color: accent, fontSize: 10, fontWeight: 950 }}>{layout === "teams" ? `ÉQ.${i < 2 ? 1 : 2} · J${i + 1}` : `J${i + 1}`}</span>
+                <input type="text" value={names[i] || ""} maxLength={22} aria-label={`Nom du participant ${i + 1}`}
+                  onFocus={e => e.currentTarget.select()} onChange={e => updateName(i, e.target.value)}
+                  style={{ width: "100%", minWidth: 0, background: "transparent", border: 0, outline: 0, color: "#fff", fontSize: 12, fontWeight: 900 }} />
+              </span>
+            </label>)}
+          </div>
+        </MssQuickPanel>
+        {modeId === "killer" && (killerRules.startOrderMode === "manual" || killerRules.startOrderMode === "bull") && <MssQuickPanel title="Ordre des passages">
+          <p style={{ margin: 0, fontSize: 11, color: "#aeb6cb" }}>{killerRules.startOrderMode === "bull" ? "Classe les participants après le lancer à la BULL." : "Déplace les joueurs ou équipes avant le départ."}</p>
+          {Array.from({ length: layout === "teams" ? 2 : playerCount }, (_, pos) => {
+            const isTeams = layout === "teams";
+            const index = isTeams ? pos * 2 : pos;
+            const display = isTeams ? `Équipe ${pos + 1} · ${names[index] || `J${index + 1}`} / ${names[index + 1] || `J${index + 2}`}` : names[index] || `J${index + 1}`;
+            return <div key={pos} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) 36px 36px", gap: 7, alignItems: "center" }}>
+              <span style={{ color: accent, fontWeight: 950 }}>{pos + 1}</span><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{display}</span>
+              <button type="button" aria-label={`Monter ${display}`} disabled={pos === 0} onClick={() => moveQuickParticipant(index, -1)} style={{ ...chip(false), padding: 0, minWidth: 0, opacity: pos === 0 ? .3 : 1 }}>↑</button>
+              <button type="button" aria-label={`Descendre ${display}`} disabled={pos === (isTeams ? 1 : playerCount - 1)} onClick={() => moveQuickParticipant(index, 1)} style={{ ...chip(false), padding: 0, minWidth: 0, opacity: pos === (isTeams ? 1 : playerCount - 1) ? .3 : 1 }}>↓</button>
+            </div>;
+          })}
+        </MssQuickPanel>}
+        {modeOptions}
+        <MssQuickRecap entries={[
+          ["Mode", title || spec.title],
+          ["Participants", layout === "teams" ? "2 équipes · 2 joueurs" : `${playerCount} joueur${playerCount > 1 ? "s" : ""} · ${layout.toUpperCase()}`],
+          ...ruleOverview,
+          ...(modeId === "killer" ? [["Variantes", [killerRules.selfHitWhileKiller && "auto-pénalité", killerRules.lifeSteal && "vol de vies", killerRules.bullSplash && "dégâts BULL", killerRules.bullHeal && "soins", killerRules.bullHealFull && "soins max", killerRules.shieldOnDBull && "bouclier", killerRules.disarmOnDBull && "désarmement", killerRules.resurrectionMode !== "off" && "résurrection"].filter(Boolean).join(" · ") || "Aucune"] as [string,string]] : []),
+        ]} />
+        <MssQuickStart onClick={start} />
       </div>
     </div>
   );

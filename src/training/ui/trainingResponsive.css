@@ -329,3 +329,132 @@
 .mssTrainingCorrectiveAction button { min-height:40px; width:100%; border:1px solid rgba(80,255,174,.45); border-radius:10px; background:rgba(80,255,174,.14); color:#b5ffdf; font-size:10px; font-weight:950; cursor:pointer; }
 .mssTrainingCorrectiveAction button:focus-visible { outline:2px solid #8bffcd; outline-offset:2px; }
 @media (max-height:600px) { .mssTrainingCorrectiveAction { padding:7px; gap:5px; } }
+
+/* Catalogue Challenge (V66) : styles locaux, thème MSS et largeur du conteneur. */
+.mssChallengeCatalog,.mssChallengeCatalogOverlay {
+  --cc-accent:var(--dc-accent,#27dcff); --cc-text:var(--dc-text,#f5f7fb);
+  --cc-muted:var(--muted,#a1afbe); --cc-card:var(--dc-card,#141923);
+  --cc-bg:var(--dc-bg,#080b13); --cc-border:var(--stroke,rgba(255,255,255,.14));
+  --cc-active:color-mix(in srgb,var(--cc-accent) 11%,var(--cc-card));
+  --cc-line:color-mix(in srgb,var(--cc-accent) 46%,var(--cc-card));
+  color:var(--cc-text); font-size:12px; line-height:1.35; text-align:left;
+}
+.mssChallengeCatalog,.mssChallengeCatalog *, .mssChallengeCatalogOverlay,.mssChallengeCatalogOverlay * { box-sizing:border-box; }
+.mssChallengeCatalog { display:grid; gap:8px; min-width:0; width:100%; padding:4px 0 12px; }
+.mssChallengeCatalog h3,.mssChallengeCatalog h4,.mssChallengeCatalog p,.mssChallengeCatalogOverlay h3,.mssChallengeCatalogOverlay p { margin:0; }
+.mssChallengeCatalogHero { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; flex-wrap:wrap; }
+.mssChallengeCatalogHero h3 { font-size:13px; font-weight:900; letter-spacing:.45px; color:var(--cc-accent); }
+.mssChallengeCatalogMetrics { display:flex; gap:5px; align-items:center; }
+.mssChallengeCatalogMetrics > div { display:flex; align-items:baseline; gap:4px; padding:4px 7px; border:1px solid var(--cc-border); border-radius:8px; background:var(--cc-card); }
+.mssChallengeCatalogMetrics b { color:var(--cc-accent); font-size:13px; font-variant-numeric:tabular-nums; }
+.mssChallengeCatalogMetrics small { font-size:9px; font-weight:750; color:var(--cc-muted); }
+.mssChallengeCatalogNotice { padding:7px 10px; border:1px solid var(--cc-border); border-radius:9px; color:var(--cc-muted); background:var(--cc-card); font-size:11px; }
+.mssChallengeCatalogControls { display:grid; gap:6px; min-width:0; }
+.mssChallengeCatalogSearchRow { display:grid; grid-template-columns:minmax(0,1fr) 42px; gap:6px; }
+.mssChallengeCatalogSearch { display:flex; align-items:center; gap:7px; padding:0 9px; min-width:0; height:42px; border:1px solid var(--cc-border); border-radius:11px; background:var(--cc-card); color:var(--cc-muted); }
+.mssChallengeCatalogSearch input { width:100%; min-width:0; flex:1; font:inherit; font-size:13px; border:0; outline:0; background:transparent; color:var(--cc-text); padding:0; }
+.mssChallengeCatalogSearch:focus-within { border-color:var(--cc-accent); }
+.mssChallengeCatalogSearch input::placeholder { color:var(--cc-muted); opacity:.85; }
+.mssChallengeCatalogSearch svg { flex:none; }
+.mssChallengeCatalogSearch button { flex:none; border:0; background:none; color:var(--cc-muted); padding:0 2px; font-size:20px; cursor:pointer; }
+.mssChallengeCatalogFilterRow,.mssChallengeCatalogExtraFilters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; align-items:center; min-width:0; }
+.mssChallengeCatalogFilterRow > div { min-width:0; }
+.mssChallengeCatalog select,.mssChallengeCatalogFilterToggle,.mssChallengeCatalogExtraFilters button,.mssChallengeCoachTile button,.mssChallengeCatalogResume button,.mssChallengeCatalogEmpty button,.mssChallengeCatalogDialog footer button,.mssChallengeCatalogDialog header button { appearance:none; font:inherit; font-size:11px; font-weight:850; min-height:36px; border:1px solid var(--cc-border); border-radius:10px; background:var(--cc-card); color:var(--cc-text); cursor:pointer; padding:6px 9px; min-width:0; }
+.mssChallengeCatalog select { appearance:auto; width:100%; color-scheme:dark; overflow:hidden; text-overflow:ellipsis; }
+.mssChallengeCatalogFilterToggle { height:42px; display:grid; place-items:center; padding:0; color:var(--cc-muted); }
+.mssChallengeCatalog .is-active,.mssChallengeCatalogDialog footer button:last-child:not(:disabled),.mssChallengeCoachTile button:not(:disabled),.mssChallengeCatalogResume button:not(:disabled) { color:var(--cc-accent); background:var(--cc-active); border-color:var(--cc-line); }
+.mssChallengeCatalogExtraFilters .mssChallengeAvailability { grid-column:1/-1; }
+.mssChallengeCatalog button:disabled,.mssChallengeCatalogOverlay button:disabled { opacity:.42; cursor:not-allowed; }
+.mssChallengeCatalog button:focus-visible,.mssChallengeCatalog select:focus-visible,.mssChallengeCatalog summary:focus-visible,.mssChallengeCatalogOverlay button:focus-visible { outline:2px solid var(--cc-accent); outline-offset:2px; }
+.mssChallengeCatalogCount { display:flex; align-items:center; justify-content:space-between; gap:6px; color:var(--cc-muted); font-size:10px; min-height:19px; }
+.mssChallengeCatalogCount button { font:inherit; font-weight:850; border:0; background:none; color:var(--cc-accent); cursor:pointer; padding:3px 0; }
+.mssChallengeCatalogGrid,.mssChallengeCoachGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:8px; min-width:0; }
+.mssChallengeCoachTile { display:flex; flex-direction:column; gap:5px; min-width:0; border:1px solid var(--cc-border); background:var(--cc-card); border-radius:13px; padding:10px; overflow-wrap:anywhere; }
+.mssChallengeCoachTag { color:var(--cc-accent); font-size:9px; font-weight:850; letter-spacing:.2px; }
+.mssChallengeCoachTile strong { font-size:14px; font-weight:850; line-height:1.2; }
+.mssChallengeCoachTile p { font-size:11px; color:var(--cc-muted); line-height:1.4; }
+.mssChallengeCatalogTrend,.mssChallengeCatalogCompareHint,.mssChallengeCatalogNotReady { font-size:10px; color:var(--cc-muted); }
+.mssChallengeCatalogResume { display:grid; gap:4px; padding:7px; border:1px solid var(--cc-line); background:var(--cc-active); border-radius:9px; font-size:10px; }
+.mssChallengeCoach { min-width:0; border:1px solid var(--cc-border); border-radius:11px; padding:8px 10px; background:var(--cc-card); }
+.mssChallengeCoach summary { cursor:pointer; font-size:11px; font-weight:800; color:var(--cc-accent); }
+.mssChallengeCoach summary span { float:right; color:var(--cc-muted); font-size:9px; }
+.mssChallengeCoachGrid { margin-top:8px; }
+.mssChallengeCoachTile button { margin-top:auto; }
+.mssChallengeCatalogEmpty { padding:16px 10px; text-align:center; color:var(--cc-muted); border:1px dashed var(--cc-border); border-radius:12px; }
+.mssChallengeCatalogEmpty button { display:block; margin:8px auto 0; }
+.mssChallengeCatalogOverlay { position:fixed; inset:0; z-index:100000; display:grid; place-items:center; padding:11px; background:rgba(0,0,0,.80); overscroll-behavior:contain; }
+.mssChallengeCatalogDialog { width:min(100%,560px); max-height:calc(100dvh - 22px); overflow:auto; overscroll-behavior:contain; display:grid; gap:12px; background:var(--cc-card); border:1px solid var(--cc-line); border-radius:16px; padding:14px; box-shadow:0 16px 50px rgba(0,0,0,.5); overflow-wrap:anywhere; }
+.mssChallengeCatalogDialog header { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.mssChallengeCatalogDialog header > div { flex:1; min-width:0; display:grid; gap:5px; }
+.mssChallengeCatalogDialog header small { font-size:10px; color:var(--cc-accent); font-weight:800; }
+.mssChallengeCatalogDialog header h3 { font-size:18px; line-height:1.15; }
+.mssChallengeCatalogDialog header button { flex:0 0 36px; height:36px; padding:0; font-size:24px; line-height:1; }
+.mssChallengeCatalogDialog p { font-size:13px; color:var(--cc-muted); line-height:1.5; }
+.mssChallengeCatalogDialogMetrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.mssChallengeCatalogDialogMetrics > div { display:grid; align-content:center; gap:3px; text-align:center; padding:8px 3px; border:1px solid var(--cc-border); border-radius:10px; background:var(--cc-bg); }
+.mssChallengeCatalogDialogMetrics small { font-size:9px; color:var(--cc-muted); }
+.mssChallengeCatalogDialogMetrics b { font-size:18px; color:var(--cc-accent); font-variant-numeric:tabular-nums; }
+.mssChallengeCatalogComparison { display:grid; gap:5px; padding:10px; border:1px solid var(--cc-border); border-radius:10px; color:var(--cc-muted); font-size:11px; }
+.mssChallengeCatalogComparison b { color:var(--cc-accent); }
+.mssChallengeCatalogDialog footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.mssChallengeCatalogDialog footer button:last-child { grid-column:1/-1; min-height:42px; }
+@media (min-width:800px) { .mssChallengeCatalogDialog footer { grid-template-columns:repeat(3,minmax(0,1fr)); } .mssChallengeCatalogDialog footer button:last-child { grid-column:auto; } }
+
+/* V68 — common compact exercise row. One click opens the detail, never starts play. */
+.mssTrainingExerciseListRow {
+  box-sizing:border-box; width:100%; min-width:0; display:grid;
+  grid-template-columns:34px minmax(0,1fr) minmax(0,76px); align-items:center; gap:9px;
+  padding:10px 9px; min-height:68px; border-radius:12px; text-align:left; font:inherit;
+  border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.025); color:inherit; cursor:pointer;
+}
+.mssTrainingExerciseListRow[data-active="true"] { border-color:rgba(39,220,255,.45); background:rgba(39,220,255,.065); }
+.mssTrainingExerciseListRow[data-mastered="true"] { border-color:rgba(80,255,174,.18); background:rgba(80,255,174,.026); }
+.mssTrainingExerciseListRow:focus-visible { outline:2px solid #27dcff; outline-offset:2px; }
+.mssTrainingExerciseListIcon { display:grid; place-items:center; width:34px; height:34px; border-radius:11px; color:#27dcff; background:rgba(39,220,255,.08); }
+.mssTrainingExerciseListRow[data-mastered="true"] .mssTrainingExerciseListIcon { color:#8cffcb; background:rgba(80,255,174,.07); }
+.mssTrainingExerciseListCopy { min-width:0; display:grid; gap:3px; }
+.mssTrainingExerciseListCopy > strong { font-size:12px; line-height:1.2; font-weight:900; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+.mssTrainingExerciseListCopy > span,.mssTrainingExerciseListCopy > small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; line-height:1.3; color:inherit; opacity:.65; }
+.mssTrainingExerciseListCopy > small { font-size:9px; opacity:.55; }
+.mssTrainingExerciseListMeta { display:grid; min-width:0; gap:5px; justify-items:end; align-content:center; }
+.mssTrainingExerciseListBadge { max-width:100%; padding:3px 4px; border-radius:6px; border:1px solid rgba(140,90,255,.14); background:rgba(140,90,255,.07); color:#b99cff; font-size:7px; font-weight:900; line-height:1.2; overflow-wrap:anywhere; text-align:right; }
+.mssTrainingExerciseListRow[data-mastered="true"] .mssTrainingExerciseListBadge { color:#8cffcb; }
+/* On narrow screens use the same one-column list as ordinary exercises. */
+.mssTrainingHubCompactNav { min-width:0; }
+.mssTrainingHubCompactNav > button { min-width:0; }
+/* Ticker and primary nav are the only sticky levels. The primary nav starts below the ticker. */
+.mssTrainingShell:has(.mssTrainingHub) { --mss-training-header-height:92px; }
+.mssTrainingHubPrimaryNav { scroll-margin-top:var(--mss-training-header-height,92px); }
+@media (max-width:600px) and (orientation:portrait) {
+  .mssTrainingShell:has(.mssTrainingHub) { --mss-training-header-height:clamp(60px,9.5dvh,76px); }
+  .mssTrainingHubPrimaryNav button { min-height:42px!important; }
+  .mssTrainingHubCompactNav > button { height:40px!important; gap:3px!important; }
+  .mssChallengeCatalog { gap:6px; }
+  .mssChallengeCatalogSearchRow { grid-template-columns:minmax(0,1fr) 36px; }
+  .mssChallengeCatalogSearch,.mssChallengeCatalogFilterToggle { height:36px; }
+  .mssChallengeCatalogGrid { grid-template-columns:minmax(0,1fr); gap:7px; }
+}
+@media (max-height:510px) and (orientation:landscape) {
+  .mssTrainingShell:has(.mssTrainingHub) { --mss-training-header-height:54px; }
+  .mssTrainingHubPrimaryNav button { min-height:38px!important; padding:3px!important; }
+}
+
+.mssTrainingExerciseFilters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; align-items:center; min-width:0; }
+.mssTrainingExerciseFilters select { min-width:0; width:100%; min-height:36px; padding:6px 8px; border-radius:10px; color:inherit; font-size:10px; font-weight:850; border:1px solid rgba(255,255,255,.10); background:#121723; color-scheme:dark; }
+.mssTrainingHubPrimaryNav button { scroll-margin-top:var(--mss-training-header-height,92px); }
+
+/* Official Centre d’entraînement palette — scoped, never applied to hit keys. */
+.mssTrainingCenterPlay .mssTrainingPlayer { border-color:rgba(255,142,112,.38); background:linear-gradient(125deg,rgba(25,20,27,.97),rgba(12,14,23,.97)); }
+.mssTrainingCenterPlay .mssTrainingTargetPanel { border-color:rgba(255,142,112,.22); }
+.mssTrainingCenterPlay :is(.mssTrainingEyebrow,.mssTrainingLiveInfo span,.mssTrainingKpi strong,.mssTrainingStatsTop small) { color:#ff9f8b; }
+.mssTrainingCenterPlay .mssTrainingProgressTrack > div { background:linear-gradient(90deg,#d86e60,#ffb39c); }
+.mssTrainingCenterPlay .mssTrainingStatsButton { border-color:rgba(255,142,112,.28); background:rgba(255,142,112,.06); color:#ffd1c4; }
+.mssTrainingCenterPlay .mssTrainingStatsSheet { border-color:rgba(255,142,112,.36); background:linear-gradient(150deg,#241b23,#070c18); }
+.mssTrainingHub .mssTrainingExerciseListRow[data-active="true"] { border-color:rgba(255,142,112,.45); background:rgba(255,142,112,.065); }
+.mssTrainingHub .mssTrainingExerciseListRow:focus-visible { outline-color:#ff9f8b; }
+.mssTrainingHub .mssTrainingExerciseListRow:not([data-mastered="true"]) .mssTrainingExerciseListIcon { color:#ff9f8b; background:rgba(255,142,112,.08); }
+
+/* Centre only: neutral surfaces and coral navigation. */
+.mssTrainingHub .mssTrainingHubMobileNext { background:rgba(255,159,139,.035);border-color:rgba(255,159,139,.22); }
+.mssTrainingHub .mssTrainingHubNextHead,.mssTrainingHub .mssTrainingHubReveal {color:#ffb3a1;}
+.mssTrainingHub .mssTrainingHubNextBody button {color:#ffd1c4;background:rgba(255,159,139,.10);border-color:rgba(255,159,139,.30);}

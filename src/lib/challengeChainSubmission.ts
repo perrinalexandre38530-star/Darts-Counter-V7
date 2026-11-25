@@ -24,6 +24,8 @@ export function chainSubmissionBatch(input: any) {
   if (!['BULL','DBULL','MISS'].includes(hit.zone)||hit.segment!=null) return invalid('Zone invalide.');
   return {zone:hit.zone,segment:null};
  });
+ // Preserve the validated, ordered evidence for the public detail screen.
+ const journal=entries.map(({zone,segment})=>({zone,segment,hit:zone==='G'||zone==='P'||zone==='S'?'S':zone==='BULL'?'25':zone==='DBULL'?'50':zone}));
  const keys = input.keys;
  if (!Array.isArray(keys)||!keys.length||keys.length>CHAIN_ONLINE_BATCH_SIZE||new Set(keys).size!==keys.length||keys.some(k=>typeof k!=='string')) return invalid('Lot de chaînes invalide.');
  const performances = chainOnlinePerformances(entries, config);
@@ -33,6 +35,6 @@ export function chainSubmissionBatch(input: any) {
  return keys.map((key:string)=>{
   const p=byKey.get(key)!;
   return {target:p.target,rule:p.rule,visits:p.visits,score:p.score,darts:p.darts,bestStreak:p.bestStreak,accuracy:p.accuracy,
-   stats:{exerciseConfig:{...config,catalogChallengeId:CHAIN_ID,exerciseType:'arcade',rule:'arcade',visits:p.visits},chainCategory:p.key,chainStats:{[p.key]:p.stat},chainEvidenceVersion:1,score:p.score,darts:p.darts,bestStreak:p.bestStreak,accuracy:p.accuracy}};
+   stats:{exerciseConfig:{...config,catalogChallengeId:CHAIN_ID,exerciseType:'arcade',rule:'arcade',visits:p.visits},chainCategory:p.key,chainStats:{[p.key]:p.stat},chainEvidenceVersion:1,entries:journal,score:p.score,darts:p.darts,bestStreak:p.bestStreak,accuracy:p.accuracy}};
  });
 }

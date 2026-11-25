@@ -1,4 +1,12 @@
+import type { TrainingSetSnapshot } from "../ui/TrainingDartSetChoice";
+
+export function normalizeTrainingSetSnapshot(value: any): TrainingSetSnapshot | null {
+  if (!value || typeof value.id !== "string" || !value.id.trim()) return null;
+  return { id: value.id, name: String(value.name || value.id), ...(typeof value.weightGrams === "number" && Number.isFinite(value.weightGrams) ? {weightGrams: value.weightGrams} : {}) };
+}
+
 export type TrainingExerciseDraft = {
+  dartSet?: TrainingSetSnapshot | null;
   exerciseId: string;
   participantId: string | null;
   engine: "standard" | "custom";
@@ -36,6 +44,7 @@ function normalizeDraft(value: any): TrainingExerciseDraft | null {
     exerciseId,
     participantId: value.participantId == null || value.participantId === "" ? null : String(value.participantId),
     engine,
+    dartSet: normalizeTrainingSetSnapshot(value.dartSet),
     savedAt,
     startedAt,
     state: value.state && typeof value.state === "object" ? value.state : {},

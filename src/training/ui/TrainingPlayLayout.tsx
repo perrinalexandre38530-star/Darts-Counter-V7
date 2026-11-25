@@ -87,7 +87,7 @@ export default function TrainingPlayLayout({
   const avatar = participant?.avatarDataUrl || participant?.avatarUrl || undefined;
   const detailStats = stats?.length ? stats : shownKpis;
 
-  return <div className="mssTrainingPlay" style={{ background: theme.bg, color: theme.text }}>
+  return <div className={`mssTrainingPlay${tickerId === "training_center" ? " mssTrainingCenterPlay" : ""}`} style={{ background: theme.bg, color: theme.text }}>
     <TrainingHeader title={title} tickerId={tickerId} onBack={onExit} rules={rules || <p>Suivez votre objectif et validez chaque volée.</p>} />
     <main className="mssTrainingPlayMain">
       <div className="mssTrainingPlayOverview">

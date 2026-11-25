@@ -1,3 +1,7 @@
+import TrainingTeamRankings from "../components/stats/TrainingTeamRankings";
+import TrainingEquipmentReports from "../components/stats/TrainingEquipmentReports";
+import tickerTrainingStatsFr from "../assets/tickers/ticker_menu_training_fr.png";
+import { MssSectionTabs } from "../components/mss/MssSectionTabs";
 // ============================================
 // src/pages/StatsHub.tsx — Stats + Historique + Training (v2 complet)
 // ============================================
@@ -2523,6 +2527,7 @@ const LazyFallback = ({ label = "Chargement…" }: { label?: string }) => (
    ============================================================ */
    function TrainingX01StatsTab() {
     const [sessions, setSessions] = React.useState<TrainingX01Session[]>([]);
+    const [detailView, setDetailView] = React.useState<"overview" | "details" | "progress" | "hits" | "sessions">("overview");
     const [range, setRange] = React.useState<TimeRange>("all");
     const [selected, setSelected] = React.useState<TrainingX01Session | null>(null);
   
@@ -3483,6 +3488,8 @@ const maxStackHits = HITS_SEGMENTS.reduce(
 
 </div>
 
+<MssSectionTabs tabs={[{id:"overview",label:"Synthèse",icon:"stats"},{id:"details",label:"Détails",icon:"profiles"},{id:"progress",label:"Progrès",icon:"live"},{id:"hits",label:"Impacts",icon:"games"},{id:"sessions",label:"Séances",icon:"agenda"}]} active={detailView} onChange={setDetailView} ariaLabel="Statistiques X01" />
+{detailView === "overview" && <>
 {/* ZONE KPI — 5 BLOCS AVEC DÉFILEMENT AUTO (2 LIGNES) */}
 {totalSessions > 0 && hasAnyKpi && (
   <div
@@ -3657,6 +3664,8 @@ const maxStackHits = HITS_SEGMENTS.reduce(
   </div>
 </div>
 
+</>}
+{detailView === "details" && <>
       {/* ============================================================
           STATS DÉTAILLÉES — style bronze/doré (NOUVELLE VERSION)
           ============================================================ */}
@@ -4144,7 +4153,9 @@ const maxStackHits = HITS_SEGMENTS.reduce(
           )}
         </div>
 
-      {/* ============================================================
+      </>}
+{detailView === "progress" && <>
+{/* ============================================================
     SPARKLINE + PANNEAU DÉROULANT
     ============================================================ */}
 <div style={card}>
@@ -4269,7 +4280,9 @@ const maxStackHits = HITS_SEGMENTS.reduce(
   </div>
 </div>
 
-     {/* ============================================================
+     </>}
+{detailView === "hits" && <>
+{/* ============================================================
     RADAR HITS
     ============================================================ */}
 <div style={card}>
@@ -4490,7 +4503,9 @@ const maxStackHits = HITS_SEGMENTS.reduce(
   )}
 </div>
 
-              {/* ============================================================
+              </>}
+{detailView === "sessions" && <>
+{/* ============================================================
           LISTE DES DERNIÈRES SESSIONS + PAGINATION
           ============================================================ */}
       <div style={card}>
@@ -4659,7 +4674,8 @@ const maxStackHits = HITS_SEGMENTS.reduce(
         )}
       </div>
 
-      {/* ============================================================
+      </>}
+{/* ============================================================
           MODAL DÉTAIL SESSION — avec radar + hits par segment
           ============================================================ */}
       {selected && (
@@ -6835,7 +6851,7 @@ const filteredPlayers = React.useMemo(() => {
 const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | null>(
   activePlayerId ? String(activePlayerId) : null
 );
-const [trainingSubView, setTrainingSubView] = React.useState<"stats" | "leaderboards">("stats");
+const [trainingSubView, setTrainingSubView] = React.useState<"stats" | "challenge" | "modes" | "leaderboards" | "equipment">("stats");
 
 // Si le parent change initialPlayerId / playerId → on suit
   React.useEffect(() => {
@@ -9650,58 +9666,25 @@ const trainingModeOptions = [
 //  ROUTAGE PRINCIPAL PAR "tab" (StatsShell)
 // ============================================================
 if (tab === "training") {
-  const pill = (active: boolean): React.CSSProperties => ({
-    borderRadius: 999,
-    padding: "8px 10px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: active ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.22)",
-    fontWeight: 900,
-    letterSpacing: 0.4,
-  });
-
   return (
-    <div className="msc-landscape-page-shell msc-statshub-training-layout" style={{ padding: 16, paddingBottom: 80, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div className="msc-landscape-header msc-statshub-simple-header">
-        <BackDot onClick={() => go("stats" as any)} />
-        <div className="msc-statshub-simple-title">TRAINING</div>
-        <div aria-hidden style={{ width: 42, height: 42 }} />
-      </div>
-
+    <div className="msc-landscape-page-shell msc-statshub-training-layout" style={{ padding: 12, paddingBottom: 80, display: "flex", flexDirection: "column", gap: 8, ["--mss-ui-accent" as any]: "#8cffcb" }}>
+      <PageHeader tickerSrc={tickerTrainingStatsFr} tickerAlt="TRAINING" tickerHeight={92} tickerFit="contain" tickerBottomGap={6} left={<BackDot onClick={() => go("training" as any)} color="#8cffcb" glow="rgba(140,255,203,.5)" />} />
       <section className="msc-landscape-primary msc-statshub-training-primary">
-      <TrainingProfileCard />
-
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 18,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(0,0,0,0.18)",
-          padding: 10,
-        }}
-      >
-        <button style={pill(trainingSubView === "stats")} onClick={() => setTrainingSubView("stats")}>
-          Stats
-        </button>
-        <button style={pill(trainingSubView === "leaderboards")} onClick={() => setTrainingSubView("leaderboards")}>
-          Classements
-        </button>
-      </div>
+        <TrainingProfileCard />
+        <MssSectionTabs tabs={[
+          {id:"stats",label:"X01",icon:"stats"},
+          {id:"challenge",label:"Challenge",icon:"tournaments"},
+          {id:"modes",label:lang === "fr" ? "Exercices" : "Drills",icon:"games"},
+          {id:"equipment",label:"Dartsets",icon:"profiles"},
+          {id:"leaderboards",label:lang === "fr" ? "Classements" : "Rankings",icon:"online"}
+        ]} active={trainingSubView} onChange={setTrainingSubView} ariaLabel="Training statistics" />
       </section>
-
-      <aside className="msc-landscape-secondary msc-statshub-training-secondary">
-      {trainingSubView === "leaderboards" ? (
-        <StatsTrainingLeaderboards modeOptions={trainingModeOptions} defaultModeId={"training_time_attack"} />
-      ) : (
-        <>
-          <ChallengeTrainingCard playerId={effectiveProfileId || null} playerName={selectedPlayerVisual?.name || selectedPlayer?.name || null} go={go} renderDetailedStats={()=> <ChallengeStatsPanel records={detailRecords as any[]} playerId={effectiveProfileId || null} playerName={selectedPlayer?.name || null}/>} />
-          <TrainingX01StatsTab />
-          <StatsTrainingModesLocal />
-        </>
-      )}
+      <aside className="msc-landscape-secondary msc-statshub-training-secondary" style={{minWidth:0}}>
+        {trainingSubView === "leaderboards" && <><TrainingTeamRankings /><StatsTrainingLeaderboards modeOptions={trainingModeOptions} defaultModeId="training_time_attack" /></>}
+        {trainingSubView === "challenge" && <ChallengeTrainingCard playerId={effectiveProfileId || null} playerName={selectedPlayerVisual?.name || selectedPlayer?.name || null} go={go} renderDetailedStats={()=> <ChallengeStatsPanel records={detailRecords as any[]} playerId={effectiveProfileId || null} playerName={selectedPlayer?.name || null}/>} />}
+        {trainingSubView === "stats" && <TrainingX01StatsTab />}
+        {trainingSubView === "modes" && <StatsTrainingModesLocal />}
+        {trainingSubView === "equipment" && <TrainingEquipmentReports profileId={effectiveProfileId} playerName={selectedPlayerVisual?.name || selectedPlayer?.name || null} avatarUrl={pickPlayerAvatar(selectedPlayerVisual || selectedPlayer)} />}
       </aside>
     </div>
   );

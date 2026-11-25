@@ -36,6 +36,7 @@ import { getTrainingExercise } from "../training/catalog/trainingExerciseCatalog
 
 type Props = {
   modeId: string;
+  initialChallengeId?: string;
   onExit: () => void;
   profiles?: Profile[];
 };
@@ -101,7 +102,7 @@ function normalizeQueue(config: any, profiles?: Profile[]): TrainingQueuedPartic
   return out;
 }
 
-export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
+export default function TrainingModePage({ modeId, onExit, profiles, initialChallengeId }: Props) {
   const { user, online } = useAuthOnline();
   const currentProfile = useCurrentProfile();
   const id = canonicalTrainingId(modeId);
@@ -178,8 +179,9 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
       sessionKind: "exercise",
       returnExerciseDetailId: selected.id,
       correctionFromExerciseId: String(config?.exerciseId || ""),
+      dartSetsByParticipant: config?.dartSetsByParticipant,
     });
-  }, [beginRun, config?.exerciseId, currentProfile?.id, id, phase]);
+  }, [beginRun, config?.exerciseId, config?.dartSetsByParticipant, currentProfile?.id, id, phase]);
 
   const queue = React.useMemo(() => normalizeQueue(config, profiles), [config, profiles]);
   const activeParticipant = queue[participantIndex] || null;
@@ -299,7 +301,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
       case "training_repeat_master": return <RepeatMasterConfig {...configProps} />;
       case "training_ghost": return <GhostConfig {...configProps} />;
       case "training_doubleio": return <DoubleIOConfig {...configProps} />;
-      case "training_challenges": return <ChallengesConfig {...configProps} />;
+      case "training_challenges": return <ChallengesConfig {...configProps} initialChallengeId={initialChallengeId} />;
       case "training_super_bull": return <SuperBullConfig {...configProps} />;
       case "training_evolution": return <EvolutionConfig {...configProps} />;
       case "training_lab": return <TrainingLabConfig {...labConfigProps} />;

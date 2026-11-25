@@ -35,7 +35,7 @@ const TICKERS: Record<string, string> = import.meta.glob(
   "ptit_hun": "ptit_1",
   "training_super_bull": "super_bull",
   "top_10_training": "top_10",
-  "training_x01": "x01",
+  "training_finish_do": "finish_do",
   
     // FOOT section aliases
   

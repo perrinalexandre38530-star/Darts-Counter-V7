@@ -1,19 +1,16 @@
-import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
-import React, { useMemo, useState } from "react";
+import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 import tickerKnockout from "../assets/tickers/ticker_knockout.png";
-import Section from "../components/Section";
-import OptionRow from "../components/OptionRow";
-import OptionToggle from "../components/OptionToggle";
-import OptionSelect from "../components/OptionSelect";
-import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
+import { MssQuickPanel, MssQuickChoices, MssQuickStart } from "../components/config/MssQuickClassicControls";
 
-
+/** KNOCKOUT · même architecture de configuration que KILLER/X01.
+ * Les cinq valeurs du payload et la route de lancement restent inchangées. */
 type BotLevel = "easy" | "normal" | "hard";
-
 export type KnockoutConfigPayload = {
   players: number;
   botsEnabled: boolean;
@@ -22,81 +19,60 @@ export type KnockoutConfigPayload = {
   objective: number;
 };
 
-const INFO_TEXT = `MVP : version jouable. Éliminations à implémenter ensuite.`;
+const STEPS = ["Awena", "Participants", "Bots IA", "Règles", "Récapitulatif"];
+const INFO_TEXT = "MVP : version jouable. Éliminations à implémenter ensuite.";
 
 export default function KnockoutConfig(props: any) {
-  const { t } = useLang();
-  useTheme();
-
-  const [players, setPlayers] = useState(2);
-  const [botsEnabled, setBotsEnabled] = useState(false);
-  const [botLevel, setBotLevel] = useState<BotLevel>("normal");
-  const [rounds, setRounds] = useState(10);
-  const [objective, setObjective] = useState(0);
-
-  const payload: KnockoutConfigPayload = { players, botsEnabled, botLevel, rounds, objective };
+  const { theme } = useTheme();
+  const accent = theme?.primary || "#f6c256";
+  const [view, setView] = React.useState<ClassicConfigView>("guided");
+  const [step, setStep] = React.useState(0);
+  const [showHelp, setShowHelp] = React.useState(false);
+  const [players, setPlayers] = React.useState(2);
+  const [botsEnabled, setBotsEnabled] = React.useState(false);
+  const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
+  const [rounds, setRounds] = React.useState(10);
+  const [objective, setObjective] = React.useState(0);
+  const guided = view === "guided";
+  const visible = (n: number) => !guided || step === n;
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
     window.history.back();
   }
-
   function start() {
-    // App.tsx wiring: tab "knockout_play"
-    if (props?.setTab) return props.setTab("knockout_play", { config: payload });
-    // Router alternative: à adapter au câblage final si besoin
+    const payload: KnockoutConfigPayload = { players, botsEnabled, botLevel, rounds, objective };
+    if (props?.setTab) props.setTab("knockout_play", { config: payload });
   }
 
-  return (
-    <div className="page">
-      <PageHeader difficultyGameId="knockout"
-        title="KNOCKOUT"
-        tickerSrc={tickerKnockout}
-        left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles KNOCKOUT" content={INFO_TEXT} />}
-      />
-
-      <Section title={t("config.players", "Joueurs")}>
-        <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
-          <OptionSelect value={players} options={[2, 3, 4]} onChange={setPlayers} />
-        </OptionRow>
-
-        <OptionRow label={t("config.bots", "Bots IA")}>
-          <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
-        </OptionRow>
-
-        {botsEnabled && (
-          <OptionRow label={t("config.botLevel", "Difficulté IA")}>
-            <OptionSelect
-              value={botLevel}
-              options={[
-                { value: "easy", label: "Facile" },
-                { value: "normal", label: "Normal" },
-                { value: "hard", label: "Difficile" },
-              ]}
-              onChange={setBotLevel}
-            />
-          </OptionRow>
-        )}
-      </Section>
-
-      <Section title={t("config.rules", "Règles")}>
-        <OptionRow label={t("config.rounds", "Rounds")}>
-          <OptionSelect value={rounds} options={[5, 8, 10, 12, 15]} onChange={setRounds} />
-        </OptionRow>
-
-        <OptionRow label={t("config.objective", "Objectif")}>
-          <OptionSelect value={objective} options={[0, 100, 170, 300, 500, 1000]} onChange={setObjective} />
-        </OptionRow>
-      </Section>
-
-      <Section>
-        <button className="btn-primary w-full" onClick={start}>
-          {t("config.startGame", "Démarrer la partie")}
-        </button>
-      </Section>
-    
-      <NativeStartOrderConfig />
-      </div>
-  );
+  return <div className="page" style={{ paddingBottom: 110, color: "#fff" }}>
+    <PageHeader difficultyGameId="knockout" title="KNOCKOUT" tickerSrc={tickerKnockout}
+      left={<BackDot onClick={goBack} />} right={<InfoDot title="Règles KNOCKOUT" content={INFO_TEXT} />} />
+    <div style={{ maxWidth: 730, margin: "0 auto", padding: "12px 12px 20px", display: "grid", gap: 13 }}>
+      <MssClassicConfigFlow title="KNOCKOUT" steps={STEPS} step={step} view={view} accent={accent}
+        summary={`${players} joueurs`} onStep={setStep} onView={setView} onHelp={() => setShowHelp(v => !v)} />
+      {visible(0) && <MssClassicOverview title="KNOCKOUT · AWENA VOUS EXPLIQUE"
+        description="Choisis les participants, le nombre de manches et l'objectif. Le jeu conserve ses règles actuelles." accent={accent}
+        onHelp={() => setShowHelp(v => !v)} />}
+      {showHelp && <div role="note" style={{ fontSize: 12, color: "#d4ddef", border: `1px solid ${accent}55`, padding: 12, borderRadius: 14 }}>{INFO_TEXT}</div>}
+      {visible(1) && <MssQuickPanel title="Participants">
+        <MssQuickChoices label="Nombre de joueurs" compact options={[2,3,4].map(value => ({ value, label: String(value) }))} value={players} onChange={setPlayers} />
+        <small style={{ color: "#aeb9ce" }}>De 2 à 4 joueurs, selon les limites actuelles de KNOCKOUT.</small>
+      </MssQuickPanel>}
+      {visible(2) && <MssQuickPanel title="Bots IA">
+        <MssQuickChoices label="Adversaires automatiques" options={[{ value: false, label: "OFF" }, { value: true, label: "ON" }]} value={botsEnabled} onChange={setBotsEnabled} />
+        {botsEnabled && <MssQuickChoices label="Niveau" options={[{ value: "easy" as const, label: "Facile" }, { value: "normal" as const, label: "Normal" }, { value: "hard" as const, label: "Difficile" }]} value={botLevel} onChange={setBotLevel} />}
+      </MssQuickPanel>}
+      {visible(3) && <MssQuickPanel title="Règles de la partie">
+        <MssQuickChoices label="Manches" options={[5,8,10,12,15].map(value => ({ value, label: String(value) }))} value={rounds} onChange={setRounds} compact />
+        <MssQuickChoices label="Objectif" options={[0,100,170,300,500,1000].map(value => ({ value, label: value === 0 ? "Libre" : String(value) }))} value={objective} onChange={setObjective} />
+        <NativeStartOrderConfig />
+      </MssQuickPanel>}
+      {visible(4) && <MssClassicRecap accent={accent} ready entries={[
+        ["Participants", `${players} joueurs`], ["Bots IA", botsEnabled ? `ON · ${botLevel}` : "OFF"],
+        ["Manches", rounds], ["Objectif", objective || "Libre"],
+      ]} />}
+      {(!guided || step === STEPS.length - 1) && <MssQuickStart onClick={start} />}
+    </div>
+  </div>;
 }

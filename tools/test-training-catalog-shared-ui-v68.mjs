@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url), ts=require('typescript');
+const read=p=>fs.readFileSync(p,'utf8');
+const paths=['src/training/ui/TrainingChallengeCatalog.tsx','src/training/modes/lab/TrainingLabConfig.tsx','src/training/ui/TrainingExerciseListRow.tsx','src/training/ui/TrainingHubGlyph.tsx','src/components/GameDifficultyFilter.tsx'];
+const [challenge,lab,row,glyph,filter]=paths.map(read);
+const css=read('src/training/ui/trainingResponsive.css');
+for(const path of paths){const out=ts.transpileModule(read(path),{fileName:path,reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}});assert.equal(out.diagnostics?.length||0,0,path);}
+assert.match(challenge,/<TrainingExerciseListRow/);assert.match(lab,/<TrainingExerciseListRow/);
+assert.match(challenge,/onClick=\{\(\) => setSelectedId\(preset.id\)\}/);
+assert.match(challenge,/onStart\(selected\)/);assert.match(challenge,/onCustomize\(selected\)/);assert.match(challenge,/onResume\(selected\)/);
+assert.match(row,/showValue=\{false\}/);assert.match(row,/onClick=\{onClick\}/);assert.match(row,/HubGlyph/);assert.match(glyph,/function HubGlyph/);
+assert.doesNotMatch(challenge,/mssChallengeCatalogActions/);
+assert.match(lab,/top: "var\(--mss-training-header-height, 92px\)"/);assert.doesNotMatch(lab,/stickyTop/);
+assert.match(lab,/\{active && <span/);assert.match(lab,/aria-pressed=\{active\}/);
+assert.match(lab,/GameDifficultyFilter compact levels=\{\[1,2,3,4,5\]\}/);assert.match(filter,/levels = MSS_DIFFICULTY_LEVELS/);
+for(const name of new Set(row.match(/mssTrainingExerciseList\w+/g)))assert.ok(css.includes('.'+name),name);
+assert.match(css,/\.mssChallengeCatalogGrid \{ grid-template-columns:minmax\(0,1fr\)/);
+console.log('✅ V68 : cartes partagées, étoiles sans chiffres, filtres, actions et navigation sans sticky concurrent, syntaxe TSX.');

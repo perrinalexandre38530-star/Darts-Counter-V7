@@ -1,3 +1,4 @@
+import TrainingDartSetChoice, { trainingSetSnapshot, type TrainingSetSnapshot } from "../../ui/TrainingDartSetChoice";
 import React from "react";
 import "./finishDoTraining.css";
 import { useLang } from "../../../contexts/LangContext";
@@ -6,7 +7,7 @@ import { MssSectionTabs, type MssSectionTab } from "../../../components/mss/MssS
 import TrainingHeader from "../../ui/TrainingHeader";
 import cricketDartSvg from "../../../ui_assets/cricket-dart.svg";
 import { MSS_HIT } from "../../../lib/mssVisualCharter";
-import { recordTrainingSession } from "../../stats/trainingStatsHub";
+import { recordTrainingDetailedSession } from "../../stats/trainingStatsHub";
 import { loadFinishDoProgress, saveFinishDoAttempt, getFinishDoPriority } from "./finishDoProgress";
 
 /** A deterministic DO checkout tutor. All scores are derived from actual darts, never intended targets. */
@@ -230,6 +231,9 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
   const [activeTab, setActiveTab] = React.useState<FinishViewTab>(initialTarget ? "input" : "exercise");
   React.useEffect(() => { setCareer(loadFinishDoProgress(participantId)); }, [participantId]);
 
+  const [dartSetId,setDartSetId] = React.useState("");
+  const attemptSet = React.useRef<TrainingSetSnapshot|null>(null);
+  const attemptStart = React.useRef(Date.now());
   const pendingResult = React.useRef<{ score: number; won: boolean; darts: number; shots: Shot[] } | null>(null);
   const savePending = () => {
     const result = pendingResult.current;
@@ -238,21 +242,19 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
     const hits = result.shots.filter((s) => s.dart.kind !== "MISS").length;
     setCompletedShots((prev) => [...prev, ...result.shots]);
     setCareer(saveFinishDoAttempt(participantId, result.shots.map(s => ({ aimedDouble: s.aimedDouble, actual: s.dart.label })), result.won ? result.shots.at(-1)?.dart.label : undefined));
-    recordTrainingSession(
-      challenge ? "training_finish_challenge" : "training_finish_do",
-      result.darts,
-      result.shots.reduce((sum, s) => sum + s.dart.value, 0),
-      {
-        participantId: participantId || "guest",
-        checkoutScore: result.score,
-        success: result.won,
-        checkoutSuccess: result.won,
-        hits,
-        finishDoubleOut: true,
-        busts: result.shots.filter((s) => s.bust).length,
-        dartsLog: result.shots.map((s) => ({ label: s.dart.label, score: s.dart.value, bust: s.bust, finish: s.finish, ...(s.aimedDouble ? { aimedDouble: s.aimedDouble, targetHit: s.dart.label === s.aimedDouble } : {}) })),
-      },
-    );
+    const endedAt = Date.now();
+    recordTrainingDetailedSession({
+      id: `finish-${attemptStart.current}-${endedAt}-${Math.random().toString(36).slice(2,8)}`,
+      modeId: challenge ? "training_finish_challenge" : "training_finish_do",
+      participantId: participantId || null, participantType: "player", dartSet: attemptSet.current,
+      startedAt: attemptStart.current, endedAt, durationMs: Math.max(0,endedAt-attemptStart.current),
+      darts: result.darts, hits, misses: Math.max(0,result.darts-hits),
+      points: result.shots.reduce((sum,s)=>sum+s.dart.value,0),
+      accuracyPct: result.darts ? hits/result.darts*100 : 0, success: result.won,
+      config: {checkoutScore:result.score,finishDoubleOut:true},
+      metrics: {checkoutScore:result.score, checkoutSuccess:result.won, busts:result.shots.filter(s=>s.bust).length},
+      telemetryCoverage:"missing",
+    });
   };
 
   const drill = RECOVERY_DRILLS.find((d) => d.id === activeDrill);
@@ -306,6 +308,8 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
 
   const reset = (value: number) => {
     savePending();
+    attemptStart.current=Date.now();
+    attemptSet.current=participantId ? trainingSetSnapshot(participantId,dartSetId) : null;
     const v = Math.max(2, Math.min(170, Math.round(value) || 40));
     setScore(v);
     setVisitStart(v);
@@ -419,7 +423,7 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
     <div className={`mss-finish-do mss-ui-screen ${started && !showConfig ? "is-playing" : "is-configuring"} ${showCoachDetails ? "is-coach-open" : ""}`}>
       <TrainingHeader
         title={challenge ? "CHALLENGE FINISH DO" : "FINISHS DOUBLE OUT"}
-        tickerId="training_center"
+        tickerId="finish_do"
         onBack={() => { savePending(); onExit(); }}
         rules={<div><p>{en ? "Finish with a double or Bull50. Bust restores the visit start score." : "Termine sur un double ou BULL50. Un BUST restaure le score de début de volée."}</p><p>{en ? "Enter the actual hits, and follow the recalculated finish route." : "Saisis les touches réelles et suis la route recalculée après chaque fléchette."}</p></div>}
       />
@@ -438,7 +442,7 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
         <div className="mss-finish-hero-grid">
           <div className="mss-finish-scoreboard" aria-live="polite">
             <div className="mss-finish-score-label">{en ? "REMAINING" : "RESTE"}</div>
-            <strong className="mss-finish-score-number" style={{ color: won ? "#74f0ad" : "#35d9fb" }}>{score}</strong>
+            <strong className="mss-finish-score-number" style={{ color: won ? "#74f0ad" : "#ff9f8b" }}>{score}</strong>
             <div className="mss-finish-darts" aria-label={`${remainingDarts} ${en ? "darts available" : "fléchettes disponibles"}`}>
               {Array.from({ length: 3 }, (_, i) => (
                 <img key={i} src={cricketDartSvg} alt="" className={i < remainingDarts && !finished ? "available" : "spent"}/>
@@ -483,6 +487,7 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
         {activeTab === "exercise" && (
           <section className="mss-finish-panel mss-finish-panel--workspace" style={card}>
             <div className="mss-finish-config-simple">
+              {participantId && <TrainingDartSetChoice profileId={participantId} value={dartSetId} onChange={setDartSetId} />}
               <div className="mss-finish-config-title">
                 <span className="mss-finish-section-icon" aria-hidden="true"><BottomNavIcon name="settings" size={20} /></span>
                 <strong>{en ? "Prepare your checkout" : "Préparer le finish"}</strong>

@@ -42,7 +42,7 @@ import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain
 import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
 import trainingTickerFr from "../assets/tickers/ticker_training_center_fr.webp";
 import trainingTickerEn from "../assets/tickers/ticker_training_center_en.webp";
-import { DARTS_GAMES, type DartsGameDef } from "../games/dartsGameRegistry";
+import { DARTS_GAMES as BASE_DARTS_GAMES, type DartsGameDef } from "../games/dartsGameRegistry";
 import { DARTS_PUBLIC_RULE_AUDIT } from "../games/dartsPublicRulesAudit";
 import { useLang, type Lang } from "../contexts/LangContext";
 import ptit1ExampleVisual from "../assets/ptit1/ptit1_config_classique.webp";
@@ -200,6 +200,7 @@ const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
   bss_king: "Choisissez les participants, puis le quota de 3, 5 ou 7 écussons avant le Trône. À chaque tournée, tous les joueurs tentent le même objectif avec jusqu’à 3 fléchettes et le meilleur score gagne 1 écusson ; une égalité en tête ne donne rien. Activez ou non les défis BSS Chaos, puis choisissez le couronnement : Bull ou DBull, ou DBull uniquement. Dès que le quota d’écussons est atteint, toucher le Bull final demandé donne immédiatement la victoire et le titre de BSS KING.",
   castle: "Choisissez les participants et l’objectif de construction. Chaque joueur possède son propre numéro : un Simple ajoute 1 brique, un Double 2 et un Triple 3. Toucher le numéro d’un adversaire détruit le même nombre de briques dans son château. Dans la règle classique, le premier à construire 15 briques gagne.",
   gotcha: "Choisissez les participants, le total cible et le mode de sortie Straight, Double ou Master lorsqu’il est proposé, ainsi que la règle de bust. Tous commencent à zéro et progressent vers le total exact. Si votre score cumulé devient exactement égal à celui d’un adversaire, GOTCHA : son score est remis à zéro.",
+  training_finish_do: "Choisissez un score de départ et saisissez les impacts réels. Terminez sur un double ou BULL50 ; les routes de sortie sont recalculées après chaque fléchette.",
   training_x01: "Choisissez le score de départ et les paramètres d’entraînement X01. La session travaille la construction de score, les fins de manche et la régularité ; les statistiques enregistrent vos performances pour suivre votre progression au fil des séances.",
   tour_horloge: "Choisissez le parcours d’entraînement et les paramètres disponibles. Le principe consiste à toucher successivement les nombres demandés autour de la cible ; la session mesure votre précision et votre progression sur l’ensemble du tour.",
   training_doubleio: "Choisissez le type d’exercice Double In ou Double Out et les paramètres de session. L’entraînement se concentre sur les doubles nécessaires pour entrer ou terminer un X01 et conserve les résultats utiles à votre suivi de précision.",
@@ -255,12 +256,19 @@ const PUBLIC_LANGUAGES: ReadonlyArray<{ code: Lang; label: string; flag: string 
 ];
 
 
+// Public catalogue only: FINISH DO is already routed via the Training hub.
+const DARTS_GAMES: DartsGameDef[] = BASE_DARTS_GAMES.some(g => g.id === "training_finish_do") ? BASE_DARTS_GAMES : [...BASE_DARTS_GAMES, {
+  id: "training_finish_do", label: "FINISH DO", category: "training", entry: "training", tab: "training", ready: true,
+  maxPlayers: 1, supportsTeams: false, supportsBots: false, statsKey: "training:finish_do", infoTitle: "FINISH DO",
+  infoBody: "Entraînement aux sorties Double Out : termine sur un double ou BULL50. En cas de BUST, le score revient à sa valeur de début de volée. Awena propose des combinaisons et des plans B.",
+}];
+
 function landingTickerFor(gameId: string, lang: Lang): string | null {
   const alias: Record<string,string> = {
     fifty_one_by_five: "51_by_5",
     mario_kart: "darts_racer",
     departements: "territories_fr",
-    training_x01: "x01",
+    training_finish_do: "finish_do",
     training_super_bull: "super_bull",
     ptit_hun: "ptit_1",
   };

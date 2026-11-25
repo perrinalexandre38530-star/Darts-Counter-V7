@@ -1,3 +1,4 @@
+import { TRAINING_CHALLENGES } from "../training/modes/challenges/ChallengesConfig";
 import {useLangOptional} from '../contexts/LangContext';
 import {chainUi,localizedChainTitle,localizedChainRule} from '../i18n/challengeChainTranslations';
 import {CHAIN_ID,CHAIN_VARIANTS,chainVariant as resolveChainVariant,chainFormat as resolveChainFormat,chainTitle,type ChainVariant,type ChainFormat} from '../lib/challengeChains';
@@ -129,6 +130,7 @@ function TeamLogoView({team,className='',alt=''}:{team:any;className?:string;alt
 }
 
 export default function ChallengeConfig({go,params,profiles=[],activeProfileId=null}:{go:(tab:any,params?:any)=>void;params?:any;profiles?:Profile[];activeProfileId?:string|null}){
+ const challengeReturn = params?.challengeReturn === 'training' ? 'training' : 'games';
  const fromTrainingLab = params?.fromTrainingLab === true;
  const trainingPresetId = fromTrainingLab ? String(params?.trainingChallengePresetId || '') : '';
  const trainingOwnerId = fromTrainingLab ? String(params?.trainingParticipantId || activeProfileId || '') : '';
@@ -410,7 +412,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
     setLastPlayedPreset(currentPreset);
     try{recordProfileUsageForMode('challenge',playerIds)}catch{}
   }
-  go('challenge_play',{config:{
+  go('challenge_play',{challengeReturn,config:{
    target:resolvedTarget,visits:resolvedVisits,rule:resolvedRule,
    exerciseType,
    catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,chainVariant,chainFormat,chainDarts,chainGoal,
@@ -474,7 +476,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
     <button type="button" className="challenge-focused-records" onClick={()=>setPreviewChoiceId(focusedChoice.id)}>🏆 DERNIERS SCORES · RECORDS · PARTIES JOUÉES</button>
     <p className="challenge-focused-hint">Les autres cartes sont masquées. Poursuis avec les réglages de ce défi ou reviens à la liste.</p>
    </div> : <>
-  <button type="button" className="mss-finish-challenge-shortcut" onClick={()=>go('training_mode',{modeId:'training_finish_challenge'})}>
+  <button type="button" className="mss-finish-challenge-shortcut" onClick={()=>go('training_mode',{modeId:'training_finish_challenge', returnToChallenge:true, challengeReturn})}>
     <span className="mss-finish-challenge-shortcut-icon" aria-hidden="true">◎</span>
     <span><small>PRÉCISION · DOUBLE OUT</small><strong>CHALLENGE FINISH DO</strong><em>Un checkout, trois fléchettes. Combinaisons et plans B d’Awena.</em></span>
     <b>JOUER ›</b>
@@ -484,9 +486,13 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
    <div className="challenge-unified-filters" role="group" aria-label="Filtrer par catégorie">
     {(['TOUS',...CHALLENGE_MODE_FAMILIES] as string[]).map(family=><button type="button" key={family} className={catalogFamily===family?'on':''} aria-pressed={catalogFamily===family} onClick={()=>setCatalogFamily(family)}>{family==='TOUS'?'TOUS LES DÉFIS':family}</button>)}
    </div>
-   <div className="challenge-unified-count"><b>{filteredChoices.length}</b> CHALLENGE{filteredChoices.length>1?'S':''} AFFICHÉ{filteredChoices.length>1?'S':''}<span>DISPONIBLE · APERÇU · À VENIR</span></div>
+   <div className="challenge-unified-count"><b>{filteredChoices.length}</b> CHALLENGE{filteredChoices.length>1?'S':''} DU CATALOGUE AFFICHÉ{filteredChoices.length>1?'S':''}<span>DISPONIBLE · APERÇU · À VENIR</span></div>
   </div>
   <div className="challenge-unified-families">
+   {(catalogFamily==='TOUS'||catalogFamily==='PRÉCISION') && challengeDifficultyFilter===0 && <section className="challenge-unified-family"><div className="challenge-family-heading"><h3>MINI-DÉFIS</h3></div><div className="challenge-unified-grid">
+    {TRAINING_CHALLENGES.filter(item=>item.id!=='DOUBLES_8_BONUS'&&item.id!=='JDC_CHALLENGE'&&(!searchTerm||`${item.title} ${item.subtitle}`.toLocaleLowerCase().includes(searchTerm))).map(item=><button type="button" key={item.id} className="challenge-unified-tile available" onClick={()=>go('training_mode',{modeId:'training_challenges',initialChallengeId:item.id,returnToChallenge:true,challengeReturn})}><i aria-hidden="true">◎</i><span className="challenge-unified-tile-text"><b>{item.title}</b><small>{item.subtitle}</small><em>DISPONIBLE</em></span></button>)}
+   </div></section>}
+   
    {CHALLENGE_MODE_FAMILIES.map(family=>{
     const choices=filteredChoices.filter(item=>item.family===family);
     if(!choices.length)return null;
@@ -497,7 +503,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
        const selected=exerciseType===choice.exerciseType&&(choice.exerciseType!=='arcade'||catalogChallengeId===choice.arcadeId);
        const stateLabel=choice.state==='available'?'DISPONIBLE':choice.state==='preview'?'APERÇU JOUABLE':'À VENIR';
        return <button type="button" key={choice.id} className={'challenge-unified-tile '+(selected?'on ':'')+choice.state} aria-pressed={selected} onClick={()=>setPreviewChoiceId(choice.id)} title={'Voir la fiche et les records de '+choice.title}>
-        <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{ct(choice.title)}</b><span style={{alignSelf:'flex-start'}}><GameDifficultyStars level={mssChallengeDifficulty(choice)} compact /></span><small>{choice.description}</small><em>{stateLabel}</em></span>
+        <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{ct(choice.title)}</b><span style={{alignSelf:'flex-start'}}><GameDifficultyStars level={mssChallengeDifficulty(choice)} compact showValue={false} /></span><small>{choice.description}</small><em>{stateLabel}</em></span>
        </button>;
       })}
      </div>
@@ -617,7 +623,7 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  return <div className={previewChoice?"challenge-config challenge-preview-screen":"challenge-config"} style={{background:theme.bg,color:theme.text}}>
   <header className="challenge-head">
    <img src="/challenge/ticker_challenge.png" alt="Challenge"/>
-   <div className="challenge-back"><BackDot onClick={()=>previewChoice?closeChallengePreview():fromTrainingLab?go('training_mode',{modeId:'training_lab',challengeCatalog:true}):go('games')} size={44} color="#36e9ff" glow="#36e9ff77"/></div>
+   <div className="challenge-back"><BackDot onClick={()=>previewChoice?closeChallengePreview():fromTrainingLab?go('training_mode',{modeId:'training_lab',challengeCatalog:true}):go(challengeReturn)} size={44} color="#36e9ff" glow="#36e9ff77"/></div>
    <button className="challenge-awena" type="button" aria-label="Ouvrir Awena" title="Awena" onClick={()=>awena?.openPanel?.()}><span><img src="/awena/awena-avatar.webp" alt="Awena"/></span><i aria-hidden>🎙</i></button>
   </header>
   {previewChoice ? <main className="challenge-preview-main" key={previewChoice.id}>

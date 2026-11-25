@@ -103,6 +103,8 @@ function playerLite(input: any, participantId: string | null) {
     avatarDataUrl: activeParticipant?.avatarDataUrl || activeParticipant?.avatarUrl || null,
     teamId: activeParticipant?.teamId ? String(activeParticipant.teamId) : null,
     teamName: activeParticipant?.teamName ? String(activeParticipant.teamName) : null,
+    dartSetId: participantId ? input.config?.dartSetsByParticipant?.[participantId]?.id ?? null : null,
+    dartSetName: participantId ? input.config?.dartSetsByParticipant?.[participantId]?.name ?? null : null,
   };
 }
 
@@ -229,6 +231,8 @@ export function recordSoloTrainingResult(input: {
         profileId: player.id,
         id: player.id,
         name: player.name,
+        dartSetId: player.dartSetId,
+        dartSetName: player.dartSetName,
         darts,
         hits,
         misses: Math.max(0, darts - hits),

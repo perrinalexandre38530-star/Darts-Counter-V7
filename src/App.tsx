@@ -3509,6 +3509,14 @@ useEffect(() => {
   function go(next: Tab, params?: any) {
     const nextName = String(next || '');
     const fromName = String(tab || '');
+    if (routeParams?.trainingSection === 'free' && /^(training_x01|training_clock|training_mode|top_10)/.test(fromName)) {
+      if (nextName === 'training' && !params) params = { section: 'free' };
+      else if (/^(training_x01|training_clock|training_mode|top_10)/.test(nextName)) params = { ...params, trainingSection: 'free' };
+    }
+    if (routeParams?.challengeReturn === 'training' && /^challenge_/.test(fromName)) {
+      if (/^challenge_/.test(nextName)) params = { ...params, challengeReturn: 'training' };
+      else if (nextName === 'games') next = 'training';
+    }
     const launchingPlay = nextName === 'x01' || nextName === 'x01_play_v3' || nextName.endsWith('_play') || nextName.endsWith('_game') || nextName === 'darts_mode_play';
     const fromConfig = fromName.endsWith('_config') || fromName === 'x01setup' || fromName === 'x01_config_v3' || fromName === 'x01_online_setup' || fromName === 'shanghai' || fromName === 'battle_royale' || fromName === 'killer' || fromName === 'cricket' || fromName === 'training_x01';
     // The universal configuration selector is authoritative only when actually used.
@@ -7013,7 +7021,7 @@ case "babyfoot_team_edit":
       }
 
       case "training":
-        page = <TrainingMenu go={go} />;
+        page = <TrainingMenu go={go} section={routeParams?.section === "free" ? "free" : undefined} />;
         break;
 
       case "training_x01":
@@ -7048,7 +7056,7 @@ case "babyfoot_team_edit":
           page = <div style={{ padding: 16 }}>Mode Training manquant</div>;
           break;
         }
-        page = <TrainingModePage modeId={modeId} profiles={store.profiles ?? []} initialChallengeCatalog={Boolean(routeParams?.challengeCatalog)} onOpenChallenge={(config, presetId, snapshot) => go("challenge_play", { config, snapshot, fromTrainingLab: true, trainingChallengePresetId: presetId })} onCustomizeChallenge={(presetId, participantId) => go("challenge_config", { fromTrainingLab: true, trainingChallengePresetId: presetId, trainingParticipantId: participantId })} onExit={() => go("training")} />;
+        page = <TrainingModePage key={`${modeId}-${routeParams?.initialChallengeId || ""}`} modeId={modeId} initialChallengeId={routeParams?.initialChallengeId} profiles={store.profiles ?? []} initialChallengeCatalog={Boolean(routeParams?.challengeCatalog)} onOpenChallenge={(config, presetId, snapshot) => go("challenge_play", { config, snapshot, fromTrainingLab: true, trainingChallengePresetId: presetId })} onCustomizeChallenge={(presetId, participantId) => go("challenge_config", { fromTrainingLab: true, trainingChallengePresetId: presetId, trainingParticipantId: participantId })} onExit={() => routeParams?.returnToChallenge ? go("challenge_config", { challengeReturn: routeParams.challengeReturn }) : go("training", routeParams?.trainingSection === "free" ? { section: "free" } : undefined)} />;
         break;
       }
 

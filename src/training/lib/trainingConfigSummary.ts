@@ -1,6 +1,9 @@
 export function trainingModeLabel(rawModeId: string): string {
   const modeId = String(rawModeId || "").toLowerCase();
   const labels: Record<string, string> = {
+    training_lab: "Centre d’entraînement",
+    training_finish_do: "Finish DO",
+    training_finish_challenge: "Challenge Finish DO",
     training_x01: "Training X01",
     training_doubleio: "Double In / Double Out",
     training_challenges: "Challenges",
@@ -19,6 +22,8 @@ export function trainingConfigSummary(rawModeId: string, cfg: any): string {
   const modeId = String(rawModeId || "").toLowerCase();
   const config = cfg && typeof cfg === "object" ? cfg : {};
 
+  if (modeId === "training_lab") return String(config.exerciseId || "Exercice non renseigné");
+  if (modeId === "training_finish_do" || modeId === "training_finish_challenge") return config.checkoutScore ? `Checkout ${config.checkoutScore} • DO` : "Checkout non renseigné";
   if (modeId === "training_x01") {
     const start = Number(config.startScore || config.start || 501) || 501;
     const out = String(config.outMode || "double").toUpperCase();
@@ -49,7 +54,7 @@ export function trainingConfigSummary(rawModeId: string, cfg: any): string {
   if (modeId === "training_precision_gauntlet") {
     const preset = String(config.preset || "custom").toUpperCase();
     const tolerance = Number(config.mistakesAllowed || 0);
-    return `${preset} • ${tolerance === 0 ? "Hardcore" : `${tolerance} erreurs tolérées`}`;
+    return `${preset} • ${tolerance === 0 ? "Hardcore" : `${tolerance} erreurs tolérées`}${Array.isArray(config.targets) ? ` • ${config.targets.join(" → ")}` : ""}`;
   }
   if (modeId === "training_repeat_master") {
     return `${String(config.target || "T20")} • série ${Number(config.goal || 10)} • ${config.hardcore ? "Hardcore" : "Soft"}`;

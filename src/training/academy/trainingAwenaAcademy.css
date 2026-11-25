@@ -7,15 +7,15 @@
   font-family: inherit;
 }
 .mssAwenaAcademy button { font-family: inherit; cursor: pointer; }
-.mssAwenaAcademy button:focus-visible { outline: 2px solid #38e1ff; outline-offset: 2px; }
+.mssAwenaAcademy button:focus-visible { outline: 2px solid #ff9f8b; outline-offset: 2px; }
 .mssAwenaAcademy button:disabled { opacity: .46; cursor: not-allowed; }
 
 .mssAcademyHero,
 .mssAcademyPlayer,
 .mssAcademyQuizPanel,
 .mssAcademyReviewDashboard {
-  background: linear-gradient(180deg, rgba(11, 21, 33, .96), rgba(10, 18, 29, .96));
-  border: 1px solid rgba(95, 221, 255, .16);
+  background: linear-gradient(180deg, rgba(23, 21, 29, .96), rgba(13, 16, 25, .96));
+  border: 1px solid rgba(255,142,112, .16);
   border-radius: 18px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, .18);
 }
@@ -32,7 +32,7 @@
   height: 64px;
   object-fit: contain;
   border-radius: 50%;
-  filter: drop-shadow(0 1px 8px rgba(57, 207, 255, .18));
+  filter: drop-shadow(0 1px 8px rgba(255,142,112, .18));
 }
 .mssAcademyHeroText { min-width: 0; }
 .mssAcademyHeroText small,
@@ -46,7 +46,7 @@
   font-size: 10px;
   font-weight: 900;
   letter-spacing: .85px;
-  color: #76e8ff;
+  color: #ec9e89;
 }
 .mssAcademyHeroText h2 {
   margin: 3px 0 5px;
@@ -70,7 +70,7 @@
   min-height: 42px;
   padding: 10px 13px;
   border-radius: 12px;
-  border: 1px solid rgba(95, 221, 255, .18);
+  border: 1px solid rgba(255,142,112, .18);
   background: rgba(255, 255, 255, .04);
   color: #ebfaff;
   font-size: 11px;
@@ -79,14 +79,14 @@
 .mssAcademyBanner button,
 .mssAcademyActions button.primary,
 .mssAcademyQuizHeader button {
-  background: linear-gradient(180deg, #36def5, #16a9d5);
+  background: linear-gradient(180deg, #e1694a, #ca4421);
   color: #031620;
   border: 0;
 }
 .mssAcademyVoice {
   white-space: nowrap;
-  background: rgba(39, 220, 255, .08);
-  color: #bcf6ff;
+  background: rgba(255,142,112, .08);
+  color: #f6d0c5;
 }
 .mssAcademyHeroStats {
   display: grid;
@@ -104,7 +104,7 @@
   padding: 12px;
   border-radius: 14px;
   background: rgba(255, 255, 255, .035);
-  border: 1px solid rgba(95, 221, 255, .12);
+  border: 1px solid rgba(255,142,112, .12);
 }
 .mssAcademyHeroStat > span,
 .mssAcademyBannerIcon,
@@ -117,9 +117,9 @@
   width: 34px;
   height: 34px;
   border-radius: 12px;
-  color: #7ae7ff;
-  background: rgba(39, 220, 255, .09);
-  border: 1px solid rgba(39, 220, 255, .18);
+  color: #eca18d;
+  background: rgba(255,142,112, .09);
+  border: 1px solid rgba(255,142,112, .18);
 }
 .mssAcademyHeroStat div,
 .mssAcademyBanner > div,
@@ -162,8 +162,8 @@
   color: #a8c6d6;
 }
 .mssAcademyTabs button.active {
-  background: rgba(39, 220, 255, .11);
-  border-color: rgba(39, 220, 255, .34);
+  background: rgba(255,142,112, .11);
+  border-color: rgba(255,142,112, .34);
   color: #f1fdff;
 }
 .mssAcademyTabIcon {
@@ -203,7 +203,7 @@
   margin: 11px 0 14px;
 }
 .mssAcademyFilters label {
-  color: #87def1;
+  color: #eca08c;
   font-size: 9px;
   letter-spacing: .6px;
   font-weight: 900;
@@ -219,8 +219,8 @@
   min-height: 40px;
   padding: 8px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(70, 209, 238, .19);
-  background: rgba(14, 26, 40, .96);
+  border: 1px solid rgba(255,142,112, .19);
+  background: rgba(20, 22, 31, .96);
   color: #f0faff;
   font-size: 12px;
   font-family: inherit;
@@ -259,8 +259,8 @@
 .mssAcademyLessonTile:hover,
 .mssAcademyProgressRow:hover,
 .mssAcademyReviewFocus:hover {
-  border-color: rgba(39, 220, 255, .28);
-  background: rgba(39, 220, 255, .05);
+  border-color: rgba(255,142,112, .28);
+  background: rgba(255,142,112, .05);
 }
 .mssAcademyLessonRail {
   display: flex;
@@ -275,9 +275,9 @@
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  color: #67e4ff;
-  background: rgba(39, 220, 255, .09);
-  border: 1px solid rgba(39, 220, 255, .16);
+  color: #ea937c;
+  background: rgba(255,142,112, .09);
+  border: 1px solid rgba(255,142,112, .16);
   font-weight: 900;
 }
 .mssAcademyLessonInfo {
@@ -288,7 +288,7 @@
 }
 .mssAcademyLessonInfo small {
   font-size: 9px;
-  color: #6ce6ff;
+  color: #ea9781;
   letter-spacing: .4px;
   font-weight: 900;
 }
@@ -332,7 +332,7 @@
   background: rgba(255, 255, 255, .06);
 }
 .mssAcademyLessonArrow {
-  color: #63e7ff;
+  color: #e99079;
   font-size: 24px;
   line-height: 1;
 }
@@ -375,8 +375,8 @@
   line-height: 1.5;
 }
 .mssAcademyInsight {
-  background: rgba(39, 220, 255, .08);
-  border: 1px solid rgba(39, 220, 255, .18);
+  background: rgba(255,142,112, .08);
+  border: 1px solid rgba(255,142,112, .18);
   font-size: 14px;
 }
 .mssAcademyFeedback {
@@ -388,8 +388,8 @@
 .mssAcademyReviewAdvice {
   color: #b9d2db;
   font-size: 12px;
-  background: rgba(39, 220, 255, .05);
-  border: 1px solid rgba(39, 220, 255, .12);
+  background: rgba(255,142,112, .05);
+  border: 1px solid rgba(255,142,112, .12);
 }
 .mssAcademyActions {
   display: flex;
@@ -419,10 +419,10 @@
   width: 28px;
   height: 28px;
   background: rgba(255, 255, 255, .08);
-  color: #75e6fc;
+  color: #eb9b86;
   font-weight: 900;
 }
-.mssAcademyAnswers button.chosen { border-color: #47d9f0; background: rgba(39, 220, 255, .12); }
+.mssAcademyAnswers button.chosen { border-color: #e37254; background: rgba(255,142,112, .12); }
 .mssAcademyAnswers button.correct { border-color: #70e4a9; }
 .mssAcademyAnswers button.incorrect { border-color: #ff9a88; background: rgba(246, 103, 87, .10); }
 .mssAcademyAnswers button:disabled { opacity: 1; }
@@ -450,7 +450,7 @@
 .mssAcademyScoreboard small,
 .mssAcademyStats small {
   text-align: center;
-  color: #8ad7e7;
+  color: #e79e8a;
   font-size: 9px;
   font-weight: 900;
   letter-spacing: .3px;
@@ -480,7 +480,7 @@
 .mssAcademyResult {
   border-radius: 16px;
   background: rgba(255, 255, 255, .03);
-  border: 1px solid rgba(95, 221, 255, .12);
+  border: 1px solid rgba(255,142,112, .12);
   padding: 20px;
   text-align: center;
   margin-top: 15px;
@@ -517,7 +517,7 @@
 .mssAcademyProgressTrack span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #26c9e9, #7cffc1);
+  background: linear-gradient(90deg, #de5631, #7cffc1);
 }
 
 .mssAcademyQuizHeader {
@@ -528,7 +528,7 @@
   flex-wrap: wrap;
 }
 .mssAcademyQuizHeader small {
-  color: #71e1fb;
+  color: #eb9881;
   font-weight: 900;
   font-size: 10px;
   letter-spacing: .7px;
@@ -547,7 +547,7 @@
 .mssAcademyQuizTrack span {
   height: 100%;
   display: block;
-  background: linear-gradient(90deg, #23c7ed, #85eec2);
+  background: linear-gradient(90deg, #de5632, #85eec2);
   transition: width .18s ease;
 }
 .mssAcademyMiniScore { text-align: right; padding: 10px 2px; }
@@ -635,7 +635,7 @@
 .mssAcademyHero,
 .mssAcademyPlayer,
 .mssAcademyQuizPanel,
-.mssAcademyReviewDashboard { box-shadow: none; border-color: rgba(117,217,245,.16); }
+.mssAcademyReviewDashboard { box-shadow: none; border-color: rgba(255,142,112,.16); }
 .mssAcademyHero { padding: 10px 14px; gap: 11px; border-radius: 15px; }
 .mssAcademyHero img { width: 50px; height: 50px; }
 .mssAcademyHeroText h2 { margin: 1px 0; font-size: clamp(18px,2.6vw,23px); }
@@ -660,7 +660,7 @@
   justify-content: center; gap: 7px; border-radius: 11px;
   transition: flex-grow .18s ease,background .18s ease,border-color .18s ease;
 }
-.mssAcademyTabs button.active { flex: 2.3 1 0; border-color: rgba(54,222,245,.55); box-shadow: inset 0 -2px #2ad9f2; }
+.mssAcademyTabs button.active { flex: 2.3 1 0; border-color: rgba(255,142,112,.55); box-shadow: inset 0 -2px #df5f3d; }
 .mssAcademyTabs .mssAcademyTabIcon { width: 25px; height: 25px; flex: 0 0 auto; }
 .mssAcademyTabs .mssAcademyTabLabel { display: none; }
 .mssAcademyTabs .active .mssAcademyTabLabel { display: block; max-width: 105px; font-size: 10px; text-align: left; line-height: 1.14; letter-spacing: .15px; }
@@ -689,7 +689,7 @@
 
 .mssAcademyPager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0 2px; }
 .mssAcademyPager span { color: #b8d5e0; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 96px; text-align: center; }
-.mssAcademyPager button { display: grid; place-items: center; min-height: 38px; min-width: 43px; border-radius: 11px; border: 1px solid rgba(95,221,255,.23); background: rgba(255,255,255,.035); color: #80e8f9; font-size: 25px; line-height: 1; }
+.mssAcademyPager button { display: grid; place-items: center; min-height: 38px; min-width: 43px; border-radius: 11px; border: 1px solid rgba(255,142,112,.23); background: rgba(255,255,255,.035); color: #eca18d; font-size: 25px; line-height: 1; }
 .mssAcademyPager button:disabled { opacity: .25; }
 .mssAcademyProgressTitle { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin: 15px 0 7px; }
 .mssAcademyProgressTitle strong { color: #edfaff; font-size: 13px; }
@@ -763,17 +763,17 @@
 }
 
 /* V199 rebase: scoped FINISH DO course entry; preserves V199 pagination and compact Academy UI. */
-.mssAcademyFinishSpotlight{display:flex;align-items:center;gap:12px;margin:8px 0;padding:12px 14px;border:1px solid rgba(53,217,251,.3);border-radius:15px;background:linear-gradient(105deg,rgba(15,85,108,.3),rgba(12,22,35,.96))}
-.mssAcademyFinishIcon{display:grid;place-items:center;width:40px;height:40px;flex:0 0 auto;border-radius:12px;background:rgba(53,217,251,.12);color:#7ae7ff}
+.mssAcademyFinishSpotlight{display:flex;align-items:center;gap:12px;margin:8px 0;padding:12px 14px;border:1px solid rgba(255,142,112,.3);border-radius:15px;background:linear-gradient(105deg,rgba(255,142,112,.3),rgba(15,18,27,.96))}
+.mssAcademyFinishIcon{display:grid;place-items:center;width:40px;height:40px;flex:0 0 auto;border-radius:12px;background:rgba(255,142,112,.12);color:#eca18d}
 .mssAcademyFinishSpotlight>div:nth-child(2){flex:1;min-width:0}
-.mssAcademyFinishSpotlight small{display:block;color:#86dbe9;letter-spacing:.08em;font-size:10px;font-weight:800}
+.mssAcademyFinishSpotlight small{display:block;color:#e99b86;letter-spacing:.08em;font-size:10px;font-weight:800}
 .mssAcademyFinishSpotlight strong{display:block;font-size:14px;line-height:1.3;margin:2px 0}
 .mssAcademyFinishSpotlight span{display:block;font-size:11px;line-height:1.35;color:#c1d3de}
-.mssAcademyFinishSpotlight button{border:1px solid #4dcadf;border-radius:11px;background:rgba(34,180,206,.15);color:#e7fbff;font-size:12px;font-weight:800;padding:10px 13px;white-space:nowrap}
+.mssAcademyFinishSpotlight button{border:1px solid #df6c4d;border-radius:11px;background:rgba(255,142,112,.15);color:#e7fbff;font-size:12px;font-weight:800;padding:10px 13px;white-space:nowrap}
 .mssAcademyCourseSwitch{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}
 .mssAcademyCourseSwitch button{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.035);color:#c5dbe6;font-size:11px;font-weight:800;padding:9px 12px}
-.mssAcademyCourseSwitch button.active{background:rgba(39,220,255,.16);border-color:rgba(39,220,255,.56);color:#f4fdff}
-.mssAcademyCourseSwitch span{background:#17637b;border-radius:9px;padding:2px 6px}
+.mssAcademyCourseSwitch button.active{background:rgba(255,142,112,.16);border-color:rgba(255,142,112,.56);color:#f4fdff}
+.mssAcademyCourseSwitch span{background:#7b2c17;border-radius:9px;padding:2px 6px}
 @media(max-width:700px){
   .mssAcademyFinishSpotlight{padding:9px;gap:8px}
   .mssAcademyFinishIcon{display:none}
@@ -785,42 +785,42 @@
 .mssAcademyCoach{
   margin:10px 0 12px;
   padding:clamp(11px,1.5vw,16px);
-  border:1px solid rgba(79,215,238,.3);
+  border:1px solid rgba(255,142,112,.3);
   border-radius:16px;
-  background:linear-gradient(135deg,rgba(11,37,52,.94),rgba(15,20,36,.97));
+  background:linear-gradient(135deg,rgba(24,21,29,.94),rgba(15,18,27,.97));
   color:#effaff;
 }
 .mssAcademyCoachHeading{display:flex;align-items:center;gap:11px;min-width:0}
-.mssAcademyCoachLogo{display:grid;place-items:center;flex:0 0 37px;width:37px;height:37px;border-radius:11px;color:#78e8fc;background:rgba(39,220,255,.1);border:1px solid rgba(39,220,255,.18)}
+.mssAcademyCoachLogo{display:grid;place-items:center;flex:0 0 37px;width:37px;height:37px;border-radius:11px;color:#ec9d88;background:rgba(255,142,112,.1);border:1px solid rgba(255,142,112,.18)}
 .mssAcademyCoachHeading>div:nth-child(2){flex:1;min-width:0}
-.mssAcademyCoachHeading small,.mssAcademyCoachDetail small,.mssAcademyCoachProgress small{display:block;color:#80e1f6;font-size:9px;letter-spacing:.5px;font-weight:850}
+.mssAcademyCoachHeading small,.mssAcademyCoachDetail small,.mssAcademyCoachProgress small{display:block;color:#ec9f8a;font-size:9px;letter-spacing:.5px;font-weight:850}
 .mssAcademyCoachHeading strong{display:block;font-size:clamp(12px,1.5vw,15px);font-weight:950;line-height:1.3;margin:2px 0}
 .mssAcademyCoachHeading>div:nth-child(2)>span{display:block;font-size:10px;color:#a9c4d2}
 .mssAcademyCoachCount{text-align:right;white-space:nowrap}
 .mssAcademyCoachCount strong{display:block;font-size:20px;line-height:1;font-weight:950;color:#8af2c9}
 .mssAcademyCoachCount small{font-size:8px;margin-top:4px}
 .mssAcademyCoachTrack{height:4px;background:rgba(255,255,255,.1);border-radius:99px;margin:11px 0;overflow:hidden}
-.mssAcademyCoachTrack>span{height:100%;display:block;background:linear-gradient(90deg,#24c8e9,#83f2c5);transition:width .2s ease}
+.mssAcademyCoachTrack>span{height:100%;display:block;background:linear-gradient(90deg,#dd5430,#83f2c5);transition:width .2s ease}
 .mssAcademyCoachSteps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .mssAcademyCoachSteps button{display:flex;justify-content:center;align-items:center;gap:5px;min-width:0;min-height:35px;padding:6px 7px;color:#b5cfdd;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.09);border-radius:10px;font-size:10px;font-weight:850}
-.mssAcademyCoachSteps button.active{color:#eafdff;background:rgba(39,220,255,.12);border-color:rgba(39,220,255,.45)}
+.mssAcademyCoachSteps button.active{color:#eafdff;background:rgba(255,142,112,.12);border-color:rgba(255,142,112,.45)}
 .mssAcademyCoachSteps button.done{border-color:rgba(111,239,178,.32)}
 .mssAcademyCoachSteps button.done b{color:#83f2c5}
 .mssAcademyCoachSteps button>span:first-child{display:grid;place-items:center;flex:0 0 auto}
-.mssAcademyCoachSteps b{display:inline-block;min-width:9px;color:#67e7fb;font-size:12px}
+.mssAcademyCoachSteps b{display:inline-block;min-width:9px;color:#e99079;font-size:12px}
 .mssAcademyCoachDetail{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 1px 0;min-width:0}
 .mssAcademyCoachDetail>div:first-child{flex:1;min-width:0}
 .mssAcademyCoachDetail strong{display:block;margin:3px 0;font-size:13px;line-height:1.3}
 .mssAcademyCoachDetail p{margin:0;color:#a9c4d2;font-size:11px;line-height:1.4}
 .mssAcademyCoachActions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-.mssAcademyCoachActions button{min-height:36px;padding:8px 10px;border-radius:10px;font-size:10px;font-weight:900;border:1px solid rgba(95,221,255,.24);color:#daedfa;background:rgba(255,255,255,.04)}
-.mssAcademyCoachActions button.primary{border:0;color:#041924;background:linear-gradient(180deg,#36def5,#16a9d5)}
+.mssAcademyCoachActions button{min-height:36px;padding:8px 10px;border-radius:10px;font-size:10px;font-weight:900;border:1px solid rgba(255,142,112,.24);color:#daedfa;background:rgba(255,255,255,.04)}
+.mssAcademyCoachActions button.primary{border:0;color:#041924;background:linear-gradient(180deg,#e1694a,#ca4421)}
 .mssAcademyCoachActions button.voice{width:36px;display:grid;place-items:center;padding:7px}
 .mssAcademyCoachComplete{margin:11px 0 0;color:#8df4c4;font-size:11px;line-height:1.4}
-.mssAcademyCoachProgress{display:flex;align-items:center;width:100%;gap:11px;text-align:left;margin:0 0 11px;padding:11px;border:1px solid rgba(39,220,255,.22);border-radius:13px;background:rgba(39,220,255,.05);color:#f0fcff}
+.mssAcademyCoachProgress{display:flex;align-items:center;width:100%;gap:11px;text-align:left;margin:0 0 11px;padding:11px;border:1px solid rgba(255,142,112,.22);border-radius:13px;background:rgba(255,142,112,.05);color:#f0fcff}
 .mssAcademyCoachProgress>span:nth-child(2){flex:1;min-width:0}
 .mssAcademyCoachProgress strong{display:block;font-size:12px;margin-top:4px}
-.mssAcademyCoachProgress>span:last-child{font-size:23px;color:#66e3f7}
+.mssAcademyCoachProgress>span:last-child{font-size:23px;color:#e88d75}
 @media(max-width:540px){
   .mssAcademyCoachHeading{gap:8px}
   .mssAcademyCoachLogo{width:31px;height:31px;flex-basis:31px}
@@ -843,16 +843,16 @@
 .mssAcademyCoachReport{
   margin:0 0 12px;
   padding:clamp(11px,1.5vw,16px);
-  border:1px solid rgba(79,215,238,.22);
+  border:1px solid rgba(255,142,112,.22);
   border-radius:16px;
-  background:rgba(11,27,40,.82);
+  background:rgba(22,20,29,.92);
   color:#effaff;
 }
 .mssAcademyCoachReportHead{display:flex;align-items:center;gap:10px;min-width:0}
 .mssAcademyCoachReportHead>div{flex:1;min-width:0}
 .mssAcademyCoachReportHead small,.mssAcademyCoachReportNumbers small{display:block;color:#92c9d6;font-size:9px;font-weight:850;letter-spacing:.35px}
 .mssAcademyCoachReportHead strong{display:block;margin-top:3px;font-size:14px}
-.mssAcademyCoachReportHead button{display:flex;align-items:center;gap:6px;min-height:34px;padding:7px 9px;border-radius:10px;border:1px solid rgba(79,215,238,.23);background:rgba(39,220,255,.05);color:#b5f5ff;font-size:10px;font-weight:900}
+.mssAcademyCoachReportHead button{display:flex;align-items:center;gap:6px;min-height:34px;padding:7px 9px;border-radius:10px;border:1px solid rgba(255,142,112,.23);background:rgba(255,142,112,.05);color:#f5cbbf;font-size:10px;font-weight:900}
 .mssAcademyCoachReportNumbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:13px 0}
 .mssAcademyCoachReportNumbers>div{display:flex;align-items:center;flex-direction:column;justify-content:center;min-width:0;gap:5px;padding:10px 5px;border-radius:11px;background:rgba(255,255,255,.035)}
 .mssAcademyCoachReportNumbers strong{font-size:22px;line-height:1;color:#9af6d5}
@@ -860,7 +860,7 @@
 .mssAcademyCoachReportWeeks{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;align-items:end}
 .mssAcademyCoachReportWeek{display:flex;align-items:center;flex-direction:column;gap:5px;min-width:0}
 .mssAcademyCoachReportBar{display:flex;align-items:flex-end;justify-content:center;width:100%;max-width:44px;height:43px;overflow:hidden;border-radius:7px;background:rgba(255,255,255,.06)}
-.mssAcademyCoachReportBar>span{display:block;width:100%;min-height:0;border-radius:7px;background:linear-gradient(0deg,#2cc6e4,#7df3c1)}
+.mssAcademyCoachReportBar>span{display:block;width:100%;min-height:0;border-radius:7px;background:linear-gradient(0deg,#de5632,#7df3c1)}
 .mssAcademyCoachReportWeek small{max-width:100%;color:#accad4;text-align:center;white-space:nowrap;font-size:8px}
 .mssAcademyCoachReport>p{margin:12px 0 5px;font-size:11px;line-height:1.45;color:#d1e7ed}
 .mssAcademyCoachReportNote{display:block;font-size:9px;color:#88a7b4;line-height:1.4}

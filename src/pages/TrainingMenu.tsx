@@ -35,6 +35,8 @@ import tickerTrainingFr from "../assets/tickers/ticker_menu_training_fr.png";
 import tickerTrainingEn from "../assets/tickers/ticker_menu_training_en.png";
 import tickerTrainingCenterFr from "../assets/tickers/ticker_training_center_fr.webp";
 import tickerTrainingCenterEn from "../assets/tickers/ticker_training_center_en.webp";
+import tickerFreeTrainingFr from "../assets/tickers/ticker_free_training_fr.png";
+import tickerFreeTrainingEn from "../assets/tickers/ticker_free_training_en.png";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 import { getTrainingDetailedSessions } from "../training/stats/trainingStatsHub";
@@ -42,6 +44,7 @@ import { buildTrainingDiagnosis, chooseRecommendedFamily } from "../training/coa
 import { TRAINING_FAMILY_META } from "../training/catalog/trainingExerciseCatalog";
 
 type Tab =
+  | "challenge_config"
   | "games"
   | "training"
   | "training_x01"
@@ -53,6 +56,7 @@ type Tab =
 
 type Props = {
   go?: (tab: Tab, params?: any) => void;
+  section?: "free";
 };
 
 type ModeDef = {
@@ -72,6 +76,9 @@ type ModeDef = {
   accentHex?: string | null;
   accentBorder?: string | null;
   accentGlow?: string | null;
+  cardBackground?: string | null;
+  cardShadow?: string | null;
+  infoGlow?: string | null;
 
   // ✅ ticker overlay
   tickerSrc?: string | null;
@@ -186,7 +193,7 @@ function TickerOverlay({ src }: { src?: string | null }) {
   );
 }
 
-export default function TrainingMenu({ go }: Props) {
+export default function TrainingMenu({ go, section }: Props) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
   const dev = useDevMode() as any;
@@ -197,7 +204,7 @@ export default function TrainingMenu({ go }: Props) {
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
     } catch {}
-  }, []);
+  }, [section]);
   const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
   const [trainingRevision, setTrainingRevision] = React.useState(0);
 
@@ -232,7 +239,7 @@ export default function TrainingMenu({ go }: Props) {
       console.warn("[TrainingMenu] go() manquant");
       return;
     }
-    go(tab, params);
+    go(tab, section === "free" && tab !== "training" ? { ...params, trainingSection: "free" } : params);
   }
 
   // IDs des trainings déjà affichés en cartes fixes (donc exclus de la liste auto)
@@ -253,7 +260,6 @@ export default function TrainingMenu({ go }: Props) {
     const comingSoon = t("training.menu.comingSoon", "En développement");
 
     const doubleio = regById.get("training_doubleio");
-    const challenges = regById.get("training_challenges");
 
     const isReady = (g: any) => {
       if (!g) return false;
@@ -340,45 +346,39 @@ export default function TrainingMenu({ go }: Props) {
       params: { modeId: "training_lab" },
       enabled: true,
       badge: "NOUVEAU",
-      accentHex: "#27dcff",
-      accentBorder: "rgba(39,220,255,0.42)",
-      accentGlow: "rgba(39,220,255,0.6)",
+      accentHex: "#ff9f8b",
+      accentBorder: "rgba(255,142,112,0.34)",
+      accentGlow: "rgba(255,140,116,0.44)",
       tickerSrc: lang === "fr" ? tickerTrainingCenterFr : tickerTrainingCenterEn,
     };
 
-    const challengesCard: ModeDef = {
-      id: "challenges",
-      titleKey: "training.menu.challenges.title",
-      titleDefault: "Challenges",
-      subtitleKey: "training.menu.challenges.subtitle",
-      subtitleDefault: "Défis courts (doubles, bull, triples…)",
-      infoKey: "training.menu.challenges.info",
-      infoDefault:
-        "Série de défis rapides pour travailler un axe précis : doubles, bull, triples, régularité. Idéal en session courte.",
-      tab: "training_mode",
-      params: { modeId: "training_challenges" },
-      enabled: isReady(challenges),
-      badge: badgeFromRegistry(challenges),
-      tickerSrc: findTickerSmart("training_challenges"),
+    const freeCard: ModeDef = {
+      id: "free_training", titleKey: "training.menu.free.title", titleDefault: "Entraînements libres",
+      subtitleKey: "training.menu.free.subtitle", subtitleDefault: "Pratique à ton rythme",
+      infoKey: "training.menu.free.info", infoDefault: "Retrouve tous les entraînements libres.",
+      tab: "training", params: { section: "free" }, enabled: true,
+      tickerSrc: lang === "fr" ? tickerFreeTrainingFr : tickerFreeTrainingEn,
     };
-
+    const challengesCard: ModeDef = {
+      id: "challenges", titleKey: "training.menu.sharedChallenge.title", titleDefault: "CHALLENGE",
+      subtitleKey: "training.menu.sharedChallenge.subtitle", subtitleDefault: "Défis • Records • Classements",
+      infoKey: "training.menu.sharedChallenge.info", infoDefault: "Le même catalogue de défis que dans Jeux.",
+      tab: "challenge_config", params: { challengeReturn: "training" }, enabled: true,
+      tickerSrc: findTickerSmart("challenge"),
+    };
     const finishDo: ModeDef = {
       id: "finish_do", titleKey: "training.finishdo.title", titleDefault: "FINISHS DO",
       subtitleKey: "training.finishdo.subtitle", subtitleDefault: "Checkouts • Astuces Awena • Plans B",
       infoKey: "training.finishdo.info", infoDefault: "Entraîne exclusivement les sorties Double Out, apprends à recalculer après une erreur et évite les BUST.",
       tab: "training_mode", params: { modeId: "training_finish_do" }, enabled: true,
-      badge: "DO", accentHex: "#35d9fb", accentBorder: "rgba(53,217,251,.45)", accentGlow: "rgba(53,217,251,.5)",
-      tickerSrc: null,
+      badge: "DO",
+      accentHex: "#ff9f8b",
+      accentBorder: "rgba(255,142,112,0.34)",
+      accentGlow: "rgba(255,140,116,0.44)",
+      tickerSrc: findTickerSmart("finish_do"),
     };
-    const finishChallenge: ModeDef = {
-      id: "finish_do_challenge", titleKey: "training.finishchallenge.title", titleDefault: "CHALLENGE FINISH DO",
-      subtitleKey: "training.finishchallenge.subtitle", subtitleDefault: "1 volée pour réussir le checkout",
-      infoKey: "training.finishchallenge.info", infoDefault: "Un défi checkout Double Out : trois fléchettes au maximum pour sortir. Recalcule si tu rates ta cible.",
-      tab: "training_mode", params: { modeId: "training_finish_challenge" }, enabled: true,
-      badge: "DO", accentHex: "#35d9fb", accentBorder: "rgba(53,217,251,.45)", accentGlow: "rgba(53,217,251,.5)", tickerSrc: null,
-    };
-    return [evolution, labCard, finishDo, x01, clock, doubleIOCard, challengesCard, finishChallenge];
-  }, [t, lang, regById]);
+    return section === "free" ? [finishDo, x01, clock, doubleIOCard] : [evolution, labCard, freeCard, challengesCard];
+  }, [t, lang, regById, section]);
 
   const extraModes: ModeDef[] = React.useMemo(() => {
     const comingSoon = t("training.menu.comingSoon", "En développement");
@@ -391,7 +391,7 @@ export default function TrainingMenu({ go }: Props) {
 
     const trainings = (dartsGameRegistry || [])
       .filter((g: any) => g.entry === "training")
-      .filter((g: any) => !pinnedRegistryIds.has(g.id))
+      .filter((g: any) => !pinnedRegistryIds.has(g.id) && !["training_lab", "training_finish_do", "training_finish_challenge"].includes(g.id))
       .filter((g: any) => {
         const id = String(g.id || "").toLowerCase();
         return id !== "evolution" && id !== "training_evolution";
@@ -439,14 +439,14 @@ export default function TrainingMenu({ go }: Props) {
           position: "relative",
           width: "100%",
           padding: 14,
-          paddingRight: 118,
+          paddingRight: section === "free" ? 105 : 50,
           textAlign: "left",
           borderRadius: 16,
           border: `1px solid ${accent.border}`,
-          background: (m.id === "finish_do" || m.id === "finish_do_challenge") ? "linear-gradient(105deg,rgba(9,61,80,.94),rgba(13,23,37,.98))" : CARD_BG,
+          background: m.cardBackground ?? CARD_BG,
           cursor: clickable ? "pointer" : "default",
           opacity: visuallyDisabled ? 0.55 : 1,
-          boxShadow: visuallyDisabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+          boxShadow: visuallyDisabled ? "none" : (m.cardShadow ?? `0 10px 24px rgba(0,0,0,0.55)`),
           overflow: "hidden",
           filter: visuallyDisabled ? "grayscale(0.65)" : "none",
         }}
@@ -493,7 +493,7 @@ export default function TrainingMenu({ go }: Props) {
           </div>
         </div>
 
-        {m.id !== "evolution" ? <div style={{position:'absolute',right:50,top:'50%',transform:'translateY(-50%)',zIndex:2,pointerEvents:'none'}}><GameDifficultyStars game={m.id} compact /></div> : null}
+        {section === "free" ? <div style={{position:'absolute',right:50,top:'50%',transform:'translateY(-50%)',zIndex:2,pointerEvents:'none'}}><GameDifficultyStars game={m.id} compact showValue={false} /></div> : null}
         <div
           style={{
             position: "absolute",
@@ -506,7 +506,7 @@ export default function TrainingMenu({ go }: Props) {
           <InfoDot
             size={30}
             color="#FFFFFF"
-            glow={m.id === "evolution" ? "rgba(120,255,180,0.55)" : `${theme.primary}55`}
+            glow={m.accentGlow ?? m.infoGlow ?? `${theme.primary}55`}
             onClick={(e) => {
               e.stopPropagation();
               setInfoMode(m);
@@ -543,7 +543,7 @@ export default function TrainingMenu({ go }: Props) {
 >
   <div style={{ position: "relative" }}>
     <img
-      src={lang === "fr" ? tickerTrainingFr : tickerTrainingEn}
+      src={section === "free" ? (findTickerSmart(lang === "fr" ? "free_training_fr" : "free_training_en") ?? (lang === "fr" ? tickerTrainingFr : tickerTrainingEn)) : (lang === "fr" ? tickerTrainingFr : tickerTrainingEn)}
       alt="Training"
       draggable={false}
       style={{
@@ -565,43 +565,45 @@ export default function TrainingMenu({ go }: Props) {
       }}
     >
       <div style={{ pointerEvents: "auto" }}>
-        <BackDot onClick={() => navigate("games")} glow={theme.primary + "88"} />
+        <BackDot onClick={() => navigate(section === "free" ? "training" : "games")} glow={theme.primary + "88"} />
       </div>
       <div style={{ width: 42 }} />
     </div>
   </div>
 </div>
 
-      <PageAdBanner placement="games" slotKey="page-games-training-under-header" style={{ marginBottom: 14 }} />
+      {section === "free" && <h2 style={{fontSize:16,textAlign:"center",color:theme.primary}}>{t("training.menu.free.title", "Entraînements libres")}</h2>}
+      {!section && <PageAdBanner placement="games" slotKey="page-games-training-under-header" style={{ marginBottom: 14 }} />}
 
-      <div
+      {!section && <div
         style={{
           marginBottom: 14,
           padding: 14,
           borderRadius: 18,
-          border: "1px solid rgba(39,220,255,.24)",
-          background: "linear-gradient(135deg,rgba(39,220,255,.10),rgba(255,255,255,.025))",
-          boxShadow: "0 12px 30px rgba(0,0,0,.35)",
+          border: "1px solid rgba(255,143,119,.28)",
+          background: "linear-gradient(135deg, rgba(90,20,32,.94) 0%, rgba(132,38,46,.92) 30%, rgba(186,87,57,.34) 72%, rgba(18,24,40,.98) 100%)",
+          boxShadow: "0 14px 30px rgba(96,34,34,.30)",
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: 1.2, color: "#27dcff" }}>COACH TRAINING</div>
-            <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950 }}>Programme recommandé : {TRAINING_FAMILY_META[recommendedFamily].label}</div>
+            <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: 1.2, color: "#ff9f88", textShadow: "0 0 12px rgba(255,145,120,.25)" }}>COACH TRAINING</div>
+            <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950, color: "#fff7f2" }}>Programme recommandé : {TRAINING_FAMILY_META[recommendedFamily].label}</div>
           </div>
-          <button type="button" onClick={() => navigate("training_mode", { modeId: "training_lab" })} style={{ border: "1px solid rgba(39,220,255,.55)", background: "rgba(39,220,255,.16)", color: theme.text, borderRadius: 999, padding: "8px 12px", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}>OUVRIR LE CENTRE</button>
+          <button type="button" onClick={() => navigate("training_mode", { modeId: "training_lab" })} style={{ border: "1px solid rgba(255,153,126,.48)", background: "linear-gradient(135deg, rgba(255,126,112,.22), rgba(255,171,90,.14))", color: "#fff7f2", borderRadius: 999, padding: "8px 12px", fontSize: 10.5, fontWeight: 900, cursor: "pointer", boxShadow: "0 6px 18px rgba(120,48,35,.22)" }}>OUVRIR LE CENTRE</button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 11 }}>
           {trainingDiagnosis.slice(0, 6).map((row) => (
-            <div key={row.family} style={{ padding: "8px 9px", borderRadius: 12, background: "rgba(0,0,0,.18)", border: row.family === recommendedFamily ? "1px solid rgba(39,220,255,.35)" : "1px solid rgba(255,255,255,.07)" }}>
-              <div style={{ fontSize: 9.5, fontWeight: 900, opacity: .78 }}>{row.label}</div>
-              <div style={{ marginTop: 3, fontSize: 12, fontWeight: 950 }}>{row.sessions ? `${Math.round(row.accuracyPct)}%` : "—"}</div>
-              <div style={{ fontSize: 8.5, opacity: .5 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""}</div>
+            <div key={row.family} style={{ padding: "8px 9px", borderRadius: 12, background: row.family === recommendedFamily ? "linear-gradient(135deg, rgba(255,135,112,.14), rgba(255,195,118,.08))" : "rgba(0,0,0,.16)", border: row.family === recommendedFamily ? "1px solid rgba(255,153,126,.38)" : "1px solid rgba(255,255,255,.07)" }}>
+              <div style={{ fontSize: 9.5, fontWeight: 900, opacity: .82, color: row.family === recommendedFamily ? "#ffd7c7" : undefined }}>{row.label}</div>
+              <div style={{ marginTop: 3, fontSize: 12, fontWeight: 950, color: "#fff7f2" }}>{row.sessions ? `${Math.round(row.accuracyPct)}%` : "—"}</div>
+              <div style={{ fontSize: 8.5, opacity: .6 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""}</div>
             </div>
           ))}
         </div>
       </div>
 
+      }
       {/* Pinned modes */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
@@ -613,7 +615,7 @@ export default function TrainingMenu({ go }: Props) {
       </div>
 
       {/* Extra registry modes (sans label "Autres...") */}
-      {extraModes.length > 0 && (
+      {section === "free" && extraModes.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {extraModes.map((m) => renderCard(m, { hex: theme.primary, border: theme.borderSoft, glow: `${theme.primary}55` }))}
@@ -644,9 +646,7 @@ export default function TrainingMenu({ go }: Props) {
               borderRadius: 18,
               background: theme.card,
               border:
-                infoMode.id === "evolution"
-                  ? `1px solid rgba(120,255,180,0.55)`
-                  : `1px solid ${theme.primary}55`,
+                `1px solid ${infoMode.accentBorder ?? `${theme.primary}55`}`,
               boxShadow: `0 18px 40px rgba(0,0,0,.7)`,
               color: theme.text,
             }}
@@ -656,12 +656,10 @@ export default function TrainingMenu({ go }: Props) {
                 fontSize: 16,
                 fontWeight: 800,
                 marginBottom: 8,
-                color: infoMode.id === "evolution" ? "#8CFFCB" : theme.primary,
+                color: infoMode.accentHex ?? theme.primary,
                 textTransform: "uppercase",
                 textShadow:
-                  infoMode.id === "evolution"
-                    ? "0 0 10px rgba(120,255,180,0.55)"
-                    : `0 0 10px ${theme.primary}55`,
+                  `0 0 10px ${infoMode.accentGlow ?? `${theme.primary}55`}`,
               }}
             >
               {t(infoMode.titleKey, infoMode.titleDefault)}
@@ -687,7 +685,7 @@ export default function TrainingMenu({ go }: Props) {
                 padding: "6px 14px",
                 borderRadius: 999,
                 border: "none",
-                background: infoMode.id === "evolution" ? "#8CFFCB" : theme.primary,
+                background: infoMode.accentHex ?? theme.primary,
                 color: "#000",
                 fontWeight: 700,
                 fontSize: 13,

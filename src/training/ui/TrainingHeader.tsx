@@ -34,12 +34,14 @@ function findModeTicker(id?: string | null): string | null {
     ])
   ).filter(Boolean);
 
+  for (const candidate of candidates) {
   for (const [path, src] of Object.entries(TICKERS)) {
     const filename = String(path.split("/").pop() || "")
       .replace(/\.(png|webp)$/i, "")
       .replace(/^ticker_/, "");
     const fileNorm = norm(filename);
-    if (candidates.includes(fileNorm)) return src;
+    if (candidate === fileNorm) return src;
+  }
   }
 
   return null;
@@ -62,7 +64,9 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
   const trainingCenterTicker = lang === "fr" ? tickerTrainingCenterFr : tickerTrainingCenterEn;
   const fallbackTicker = lang === "fr" ? tickerTrainingFr : tickerTrainingEn;
   const ticker = isTrainingCenter ? trainingCenterTicker : (modeTicker || fallbackTicker);
-  const accent = "#27dcff";
+  const isCenterFamily = isTrainingCenter || tickerId === "finish_do";
+  const accent = isCenterFamily ? "#ff9f8b" : "#27dcff";
+  const accentRgba = (opacity: number) => isCenterFamily ? `rgba(255,142,112,${opacity})` : `rgba(39,220,255,${opacity})`;
 
   return (
     <>
@@ -78,7 +82,7 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
           paddingTop: "env(safe-area-inset-top)",
           overflow: "hidden",
           background: "#020b14",
-          borderBottom: "1px solid rgba(39,220,255,.28)",
+          borderBottom: `1px solid ${accentRgba(.28)}`,
           boxShadow: "0 10px 28px rgba(0,0,0,.28)",
         }}
       >
@@ -127,12 +131,12 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
             padding: "0 10px",
           }}
         >
-          <div>{onBack ? <BackDot onClick={onBack} color={accent} glow="rgba(39,220,255,.55)" /> : null}</div>
+          <div>{onBack ? <BackDot onClick={onBack} color={accent} glow={accentRgba(.55)} /> : null}</div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <InfoDot
               onClick={() => setOpen(true)}
               color={accent}
-              glow="rgba(39,220,255,.55)"
+              glow={accentRgba(.55)}
             />
           </div>
         </div>
@@ -159,7 +163,7 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
               maxHeight: "80vh",
               overflowY: "auto",
               borderRadius: 22,
-              border: "1px solid rgba(39,220,255,.42)",
+              border: `1px solid ${accentRgba(.42)}`,
               background: "linear-gradient(160deg,rgba(6,28,42,.98),rgba(2,10,18,.99))",
               boxShadow: "0 24px 70px rgba(0,0,0,.75)",
               color: theme.text,
@@ -188,8 +192,8 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
                 height: 44,
                 marginTop: 16,
                 borderRadius: 999,
-                border: "1px solid rgba(39,220,255,.42)",
-                background: "linear-gradient(180deg,#36e3ff,#0aafd9)",
+                border: `1px solid ${accentRgba(.42)}`,
+                background: isCenterFamily ? "linear-gradient(180deg,#ffb39c,#e37d6b)" : "linear-gradient(180deg,#36e3ff,#0aafd9)",
                 color: "#001018",
                 fontWeight: 950,
                 cursor: "pointer",

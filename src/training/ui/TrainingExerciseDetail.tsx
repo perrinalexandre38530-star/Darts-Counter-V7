@@ -28,8 +28,8 @@ export default function TrainingExerciseDetail({ exercise, summary, progression,
     </div>
 
     <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>{TRAINING_FAMILY_META[exercise.family].label.toUpperCase()} <GameDifficultyStars level={exercise.difficulty} compact /></div><div style={{ marginTop: 4, fontSize: "clamp(18px,2.5vw,28px)", lineHeight: 1.04, fontWeight: 1000 }}>{exercise.title}</div><div style={{ marginTop: 5, maxWidth: 760, fontSize: 10.5, lineHeight: 1.45, opacity: .58 }}>{exercise.subtitle}</div></div>
-      <div style={{ padding: "7px 10px", borderRadius: 999, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", fontSize: 8.3, fontWeight: 950, whiteSpace: "nowrap" }}>{detail.format.toUpperCase()}</div>
+      <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#ff9f8b" }}>{TRAINING_FAMILY_META[exercise.family].label.toUpperCase()} <GameDifficultyStars level={exercise.difficulty} compact /></div><div style={{ marginTop: 4, fontSize: "clamp(18px,2.5vw,28px)", lineHeight: 1.04, fontWeight: 1000 }}>{exercise.title}</div><div style={{ marginTop: 5, maxWidth: 760, fontSize: 10.5, lineHeight: 1.45, opacity: .58 }}>{exercise.subtitle}</div></div>
+      <div style={{ padding: "7px 10px", borderRadius: 999, border: "1px solid rgba(255,142,112,.18)", background: "rgba(255,142,112,.05)", fontSize: 8.3, fontWeight: 950, whiteSpace: "nowrap" }}>{detail.format.toUpperCase()}</div>
     </div>
 
     <div className="training-exercise-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.02fr) minmax(320px,.98fr)", gap: 12, marginTop: 14, alignItems: "start" }}>
@@ -39,7 +39,7 @@ export default function TrainingExerciseDetail({ exercise, summary, progression,
           <div style={{ marginTop: 10, fontSize: 10.6, lineHeight: 1.55, opacity: .72 }}>{detail.overview}</div>
           <div style={{ marginTop: 14, fontSize: 9, fontWeight: 950, letterSpacing: .8, color: "#8cffcb" }}>RÈGLES</div>
           <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
-            {detail.rules.map((rule, index) => <div key={index} style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr)", gap: 8, alignItems: "start", fontSize: 10.2, lineHeight: 1.48 }}><span style={{ width: 22, height: 22, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(39,220,255,.07)", border: "1px solid rgba(39,220,255,.14)", color: "#27dcff", fontSize: 8, fontWeight: 950 }}>{index + 1}</span><span style={{ opacity: .72 }}>{rule}</span></div>)}
+            {detail.rules.map((rule, index) => <div key={index} style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr)", gap: 8, alignItems: "start", fontSize: 10.2, lineHeight: 1.48 }}><span style={{ width: 22, height: 22, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(255,142,112,.07)", border: "1px solid rgba(255,142,112,.14)", color: "#ff9f8b", fontSize: 8, fontWeight: 950 }}>{index + 1}</span><span style={{ opacity: .72 }}>{rule}</span></div>)}
           </div>
           <div style={{ marginTop: 14, padding: 11, borderRadius: 12, border: "1px solid rgba(80,255,174,.14)", background: "rgba(80,255,174,.035)" }}><div style={{ fontSize: 8, fontWeight: 950, color: "#8cffcb" }}>OBJECTIF</div><div style={{ marginTop: 4, fontSize: 10.4, lineHeight: 1.4, fontWeight: 850 }}>{detail.objective}</div></div>
         </section>
@@ -49,12 +49,12 @@ export default function TrainingExerciseDetail({ exercise, summary, progression,
           <div style={{ marginTop: 6, fontSize: 12, fontWeight: 950 }}>{progression?.nextObjective || detail.nextObjective}</div>
         </section>
 
-        <section style={{ marginTop: 10, padding: 14, borderRadius: 15, border: hasHistory ? "1px solid rgba(39,220,255,.18)" : "1px solid rgba(255,255,255,.075)", background: hasHistory ? "linear-gradient(135deg,rgba(39,220,255,.045),rgba(140,90,255,.025))" : "rgba(255,255,255,.018)" }}>
+        <section style={{ marginTop: 10, padding: 14, borderRadius: 15, border: hasHistory ? "1px solid rgba(255,142,112,.18)" : "1px solid rgba(255,255,255,.075)", background: hasHistory ? "linear-gradient(135deg,rgba(255,142,112,.045),rgba(140,90,255,.025))" : "rgba(255,255,255,.018)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 9, fontWeight: 950, letterSpacing: .8, color: hasHistory ? "#27dcff" : "inherit" }}>TON SUIVI</div>
+            <div style={{ fontSize: 9, fontWeight: 950, letterSpacing: .8, color: hasHistory ? "#ff9f8b" : "inherit" }}>TON SUIVI</div>
             <div style={{ fontSize: 7.5, opacity: .42 }}>{hasHistory ? `DERNIÈRE • ${lastWhen}` : "AUCUNE TENTATIVE"}</div>
           </div>
-          <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px", borderRadius: 10, border: progression?.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(39,220,255,.14)", background: progression?.mastered ? "rgba(80,255,174,.035)" : "rgba(39,220,255,.025)" }}><span style={{ fontSize: 8, fontWeight: 950 }}>{progression?.mastered ? "MAÎTRISE" : `NIVEAU PERSONNEL ${progression?.level ?? 0}/5`}</span><span style={{ fontSize: 7.3, opacity: .55 }}>{progression?.currentObjective || "Premier objectif à valider"}</span></div>
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px", borderRadius: 10, border: progression?.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,142,112,.14)", background: progression?.mastered ? "rgba(80,255,174,.035)" : "rgba(255,142,112,.025)" }}><span style={{ fontSize: 8, fontWeight: 950 }}>{progression?.mastered ? "MAÎTRISE" : `NIVEAU PERSONNEL ${progression?.level ?? 0}/5`}</span><span style={{ fontSize: 7.3, opacity: .55 }}>{progression?.currentObjective || "Premier objectif à valider"}</span></div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
             {[
               ["TENTATIVES", summary?.attempts ?? 0],
@@ -79,7 +79,7 @@ export default function TrainingExerciseDetail({ exercise, summary, progression,
             </div>
           </div>
           {resumeAvailable && <div style={{ marginTop: 12, padding: 10, borderRadius: 12, border: "1px solid rgba(255,216,107,.22)", background: "rgba(255,216,107,.045)" }}><div style={{ fontSize: 8, fontWeight: 950, color: "#ffd86b" }}>SÉANCE INTERROMPUE</div><div style={{ marginTop: 3, fontSize: 8.7, lineHeight: 1.35, opacity: .66 }}>{resumeLabel || "Une progression locale est disponible pour cet exercice."}</div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 8 }}><button type="button" onClick={onResume} style={{ minHeight: 40, borderRadius: 10, border: "1px solid rgba(255,216,107,.32)", background: "rgba(255,216,107,.09)", color: "inherit", fontSize: 8.5, fontWeight: 1000, cursor: "pointer" }}>REPRENDRE</button><button type="button" onClick={onRestart || onStart} style={{ minHeight: 40, borderRadius: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 8.2, fontWeight: 950, cursor: "pointer" }}>RECOMMENCER</button></div></div>}
-          {!resumeAvailable && <button type="button" onClick={onStart} style={{ width: "100%", marginTop: 12, minHeight: 46, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(39,220,255,.36)", background: "linear-gradient(90deg,rgba(39,220,255,.18),rgba(140,90,255,.15))", color: "inherit", fontSize: 9.5, fontWeight: 1000, cursor: "pointer" }}>{hasHistory ? "REJOUER L'EXERCICE" : "LANCER L'EXERCICE"}</button>}
+          {!resumeAvailable && <button type="button" onClick={onStart} style={{ width: "100%", marginTop: 12, minHeight: 46, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,142,112,.36)", background: "linear-gradient(90deg,rgba(255,142,112,.18),rgba(140,90,255,.15))", color: "inherit", fontSize: 9.5, fontWeight: 1000, cursor: "pointer" }}>{hasHistory ? "REJOUER L'EXERCICE" : "LANCER L'EXERCICE"}</button>}
         </section>
       </div>
     </div>

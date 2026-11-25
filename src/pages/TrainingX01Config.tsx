@@ -1,3 +1,4 @@
+import { MssClassicConfigFlow } from "../components/config/MssClassicConfigFlow";
 import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
@@ -5,7 +6,7 @@ import { useLang } from "../contexts/LangContext";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
-import tickerX01 from "../assets/tickers/ticker_x01.png";
+import tickerX01 from "../assets/tickers/ticker_training_x01.webp";
 import TrainingParticipantsSelector, {
   buildTrainingParticipantConfig,
   createDefaultTrainingParticipantSelection,
@@ -53,6 +54,15 @@ export default function TrainingX01Config({ store, go }: Props) {
   const [outMode, setOutMode] = React.useState<(typeof OUT_CHOICES)[number]>("double");
   const [voiceScoreEnabled, setVoiceScoreEnabled] = React.useState(false);
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [configViewMode, setConfigViewMode] = React.useState<"guided" | "complete">(() => {
+    try { return localStorage.getItem("dc_training_x01_config_view") === "complete" ? "complete" : "guided"; } catch { return "guided"; }
+  });
+  const [guidedStep, setGuidedStep] = React.useState(0);
+  const guidedSteps = ["Participants", "Format X01", "Saisie", "Résumé"];
+  const selectConfigViewMode = (next: "guided" | "complete") => {
+    setConfigViewMode(next);
+    try { localStorage.setItem("dc_training_x01_config_view", next); } catch {}
+  };
   const [participants, setParticipants] = React.useState<TrainingParticipantSelection>(() => {
     const base = createDefaultTrainingParticipantSelection(profiles);
     if (activeProfileId) return { ...base, selectedPlayerIds: [activeProfileId] };
@@ -204,6 +214,18 @@ export default function TrainingX01Config({ store, go }: Props) {
         </div>
       ) : null}
 
+      <MssClassicConfigFlow
+        title="Training X01"
+        steps={guidedSteps}
+        step={guidedStep}
+        view={configViewMode}
+        accent={theme.primary}
+        summary={`${resolvedParticipants.length} participant${resolvedParticipants.length > 1 ? "s" : ""} · ${startScore} · ${outMode.toUpperCase()} OUT`}
+        onStep={setGuidedStep}
+        onView={selectConfigViewMode}
+        onHelp={() => setInfoOpen(true)}
+      />
+      {(configViewMode === "complete" || guidedStep === 0) && <>
       <TrainingParticipantsSelector
         profiles={profiles}
         value={participants}
@@ -211,6 +233,8 @@ export default function TrainingX01Config({ store, go }: Props) {
         maxPlayers={12}
       />
 
+      </>}
+      {(configViewMode === "complete" || guidedStep === 1) && <>
       <section
         style={{
           marginTop: 12,
@@ -253,6 +277,8 @@ export default function TrainingX01Config({ store, go }: Props) {
         </div>
       </section>
 
+      </>}
+      {(configViewMode === "complete" || guidedStep === 2) && <>
       <section
         style={{
           marginTop: 12,
@@ -272,6 +298,8 @@ export default function TrainingX01Config({ store, go }: Props) {
         </div>
       </section>
 
+      </>}
+      {(configViewMode === "complete" || guidedStep === 3) && <>
       <section
         style={{
           marginTop: 12,
@@ -289,7 +317,8 @@ export default function TrainingX01Config({ store, go }: Props) {
 
       
       <NativeStartOrderConfig />
-      <button
+      </>}
+      {(configViewMode === "complete" || guidedStep === guidedSteps.length - 1) && <button
         type="button"
         disabled={!canLaunch}
         onClick={launch}
@@ -311,7 +340,7 @@ export default function TrainingX01Config({ store, go }: Props) {
         }}
       >
         Lancer la session Training
-      </button>
+      </button>}
     
       
       </div>

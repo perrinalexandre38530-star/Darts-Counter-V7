@@ -1,6 +1,6 @@
 /* FINISH DO — MSS charter pilot, V7(11).
    Reuses TrainingHeader, MssSectionTabs, MSS_HIT; no independent global theme. */
-.mss-finish-do{--mss-ui-accent:var(--mss-accent,#27dcff);--finish-line:rgba(255,255,255,.1);box-sizing:border-box;width:100%;max-width:none;min-height:100%;margin:0;padding:0 0 14px;color:var(--mss-text,#f2f6ff);background:transparent}
+.mss-finish-do{--mss-ui-accent:#ff9f8b;--finish-line:rgba(255,142,112,.22);box-sizing:border-box;width:100%;max-width:none;min-height:100%;margin:0;padding:0 0 14px;color:var(--mss-text,#f2f6ff);background:transparent}
 .mss-finish-do *, .mss-finish-do *::before,.mss-finish-do *::after{box-sizing:border-box}
 .mss-finish-content{width:min(100%,1120px);margin:0 auto;padding:8px 12px 10px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .mss-finish-do .mss-ui-tabbar{order:0;flex-shrink:0}
@@ -27,14 +27,14 @@
 .mss-finish-live-route{margin:0;display:flex;flex-direction:column;justify-content:center;min-height:85px;padding:10px 12px;border-radius:12px;border:1px solid var(--finish-line);background:rgba(255,255,255,.025)}
 .mss-finish-live-route-hits{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:7px}
 .mss-finish-live-route-hits strong{min-width:42px;display:inline-flex;align-items:center;justify-content:center;padding:8px;border-radius:8px;background:rgba(255,255,255,.09);font-size:15px}
-.mss-finish-live-route-hits strong.finish{background:rgba(39,220,255,.14);border:1px solid rgba(39,220,255,.3);color:#91eeff}
+.mss-finish-live-route-hits strong.finish{background:rgba(255,142,112,.14);border:1px solid rgba(255,142,112,.3);color:#ffd1c4}
 .mss-finish-tactical-feedback{padding:7px 10px;border:1px solid var(--finish-line);border-radius:10px;background:rgba(255,255,255,.025);display:flex;gap:8px;align-items:center}
-.mss-finish-tactical-feedback strong{font-size:10px;color:#9ddce8;white-space:nowrap}
+.mss-finish-tactical-feedback strong{font-size:10px;color:#ffc4b4;white-space:nowrap}
 .mss-finish-tactical-feedback span{font-size:11px;line-height:1.3}
 .mss-finish-section-head{display:flex;align-items:center;gap:10px;min-height:34px}
-.mss-finish-section-icon{width:35px;height:35px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;color:#8addec;background:rgba(39,220,255,.08)}
+.mss-finish-section-icon{width:35px;height:35px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;color:#ffb3a1;background:rgba(255,142,112,.08)}
 .mss-finish-section-head>div{flex:1;min-width:0}
-.mss-finish-section-head small{display:block;font-size:10px;font-weight:800;color:#94c9d6;letter-spacing:.1em}
+.mss-finish-section-head small{display:block;font-size:10px;font-weight:800;color:#dcb1a8;letter-spacing:.1em}
 .mss-finish-section-head strong{font-size:14px;color:#fff;line-height:1.25}
 .mss-finish-section-head button{white-space:nowrap}
 .mss-finish-block{padding:10px;border-radius:12px;border:1px solid var(--finish-line);background:rgba(255,255,255,.025)}
@@ -66,7 +66,7 @@
 .mss-finish-visit-log{display:flex;flex-wrap:wrap;gap:5px;min-height:30px;padding:4px 0;align-items:center}
 .mss-finish-log-pill{padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.065);font-size:11px}
 .mss-finish-placeholder{font-size:11px;color:#9caeba}
-.mss-finish-start-prompt{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border-radius:9px;background:rgba(39,220,255,.08);font-size:12px}
+.mss-finish-start-prompt{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border-radius:9px;background:rgba(255,142,112,.08);font-size:12px}
 .mss-finish-awena-head{display:flex;gap:12px;align-items:center}
 .mss-finish-awena-head img{width:50px;height:50px;object-fit:contain}
 .mss-finish-awena-head h3{font-size:14px;margin:0}
@@ -75,7 +75,7 @@
 .mss-finish-route,.mss-finish-drill-card,.mss-finish-setup{padding:10px;border:1px solid var(--finish-line);border-radius:11px;background:rgba(255,255,255,.025)}
 .mss-finish-route-darts{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px}
 .mss-finish-dart-pill{padding:8px;border-radius:8px;background:rgba(255,255,255,.09);font-size:15px;font-weight:850}
-.mss-finish-dart-pill.final{background:rgba(39,220,255,.14);color:#91eeff}
+.mss-finish-dart-pill.final{background:rgba(255,142,112,.14);color:#ffd1c4}
 .mss-finish-setup small,.mss-finish-drill-card p,.mss-finish-pro-tip,.mss-finish-live-note{font-size:12px;line-height:1.4}
 .mss-finish-session-details--standalone{padding:8px 0;margin:0;background:none;border:0}
 .mss-finish-session-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
@@ -134,7 +134,7 @@
 .mss-finish-config-actions{display:grid;grid-template-columns:minmax(110px,.32fr) minmax(0,1fr);gap:10px}
 .mss-finish-config-actions button{min-height:52px;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.15);font-size:13px;font-weight:900;cursor:pointer}
 .mss-finish-random{background:rgba(255,255,255,.05);color:#f2f8fc}
-.mss-finish-launch{display:flex;align-items:center;justify-content:center;gap:9px;background:var(--mss-ui-accent,#27dcff);border-color:var(--mss-ui-accent,#27dcff)!important;color:#051823}
+.mss-finish-launch{display:flex;align-items:center;justify-content:center;gap:9px;background:var(--mss-ui-accent,#ff9f8b);border-color:var(--mss-ui-accent,#ff9f8b)!important;color:#051823}
 .mss-finish-extras{margin:0;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.025)}
 .mss-finish-extras summary{color:#bfd4e0;font-weight:700}
 .mss-finish-extras .mss-finish-score-preset-grid{padding:9px 10px 0;grid-template-columns:repeat(6,minmax(0,1fr))}
@@ -182,3 +182,7 @@
  .mss-finish-content:has(.mss-finish-config-simple) .mss-finish-stage{width:100%}
  .mss-finish-do .mss-finish-stage{max-height:calc(100dvh - 132px)}
 }
+
+/* Higher specificity than shared mss-ui-screen contract; keep hit keypad intact. */
+.mss-finish-do.mss-ui-screen {--mss-accent:#ff9f8b;--mss-ui-accent:#ff9f8b;}
+.mss-finish-do .mss-finish-launch {background:var(--mss-ui-accent);color:#24130f;}

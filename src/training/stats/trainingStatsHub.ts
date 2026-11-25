@@ -31,6 +31,7 @@ export type TrainingDetailedSession = {
   groupSessionId?: string | null;
   participantId: string | null;
   participantName?: string | null;
+  dartSet?: { id:string; name:string; weightGrams?:number } | null;
   participantType: ParticipantKind;
   teamId?: string | null;
   teamName?: string | null;
@@ -396,10 +397,14 @@ export function recordTrainingDetailedSession(input: TrainingDetailedSession) {
     accuracyPct: Math.max(0, Number(input.accuracyPct) || (darts > 0 ? (hits / darts) * 100 : 0)),
     success: !!input.success,
     config: input.config || {},
+    dartSet: input.dartSet ?? (participantId ? input.config?.dartSetsByParticipant?.[participantId] : null) ?? null,
     metrics: input.metrics || {},
   };
 
-  const rows = loadDetailedSessions().filter((row) => row.id !== record.id);
+  const existing = loadDetailedSessions();
+  const previous = existing.find(row => row.id === record.id);
+  if (previous) return previous; // same session must not increment counters or emit twice
+  const rows = existing;
   rows.unshift(record);
   saveDetailedSessions(rows);
 
@@ -416,6 +421,7 @@ export function recordTrainingDetailedSession(input: TrainingDetailedSession) {
     success: record.success,
     accuracyPercent: record.accuracyPct,
     config: record.config,
+    dartSet: record.dartSet,
   };
 
   if (record.participantId) {

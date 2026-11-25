@@ -469,7 +469,8 @@ export async function submitChainLeaderboardSession(input:{config:ChainConfig;en
   let keys=pending.slice(offset,offset+CHAIN_ONLINE_BATCH_SIZE);
   for(let attempt=0;attempt<2&&keys.length;attempt++){
    try{
-    const result=await submitChallengeChainBatchCloud({...identity,config:input.config,entries:input.entries.map(({zone,segment})=>({zone,segment})),matchId:input.matchId,keys});
+    if(await getChallengeOnlineUserId()!==uid)return {ok:false,submitted:acknowledged.size,total};
+    const result=await submitChallengeChainBatchCloud({...identity,expectedUserId:uid,config:input.config,entries:input.entries.map(({zone,segment})=>({zone,segment})),matchId:input.matchId,keys});
     if(!result.available){if(!acknowledged.size)return {ok:false,submitted:0,total};break;}
     const results=Array.isArray(result.data?.results)?result.data.results:[];
     for(const r of results)if(r.ok===true&&keys.includes(r.key))acknowledged.add(r.key);

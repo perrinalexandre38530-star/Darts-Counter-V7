@@ -1,5 +1,7 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import GameDifficultyStars from '../../components/GameDifficultyStars';
+import TrainingExerciseListRow from './TrainingExerciseListRow';
 import GameDifficultyFilter from '../../components/GameDifficultyFilter';
 import { mssChallengeDifficulty } from '../../lib/mssVisualCharter';
 import {
@@ -27,6 +29,8 @@ function draftDartCount(draft: {hits?: readonly unknown[]; log?: readonly unknow
   return 0;
 }
 
+const familyIcons: Record<ChallengeTrainingFamily, string> = { cible: 'bull', parcours: 'progress', precision: 'precision', doubles: 'doubles', evaluation: 'diagnosis', combinaisons: 'library', scoring: 'scoring', risque: 'live', strategie: 'plans', multijoueurs: 'badges' };
+
 const filters: Array<{ id: ChallengeTrainingFamily | 'all'; label: string }> = [
   { id: 'all', label: 'TOUS' },
   ...Object.entries(CHALLENGE_TRAINING_FAMILIES).map(([id, label]) => ({ id: id as ChallengeTrainingFamily, label })),
@@ -39,10 +43,29 @@ export default function TrainingChallengeCatalog({ sessions, participantId, canS
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [onlyStarted, setOnlyStarted] = React.useState(false);
   const [onlyRecommended, setOnlyRecommended] = React.useState(false);
+  const [showMoreFilters, setShowMoreFilters] = React.useState(false);
+  const dialogRef = React.useRef<HTMLElement>(null);
   const [availability, setAvailability] = React.useState<'all' | 'playable' | 'planned'>('all');
   const comparableById = React.useMemo(() => new Map(CHALLENGE_TRAINING_ALL.map((row) => [row.id, summarizeComparableChallengeSessions(row.id, sessions, participantId)])), [sessions, participantId]);
   const coaching = React.useMemo(() => buildChallengeTrainingRecommendations(CHALLENGE_TRAINING_ALL, sessions, participantId), [sessions, participantId]);
   const selected = CHALLENGE_TRAINING_ALL.find((row) => row.id === selectedId) || null;
+  React.useEffect(() => {
+    if (!selectedId) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    dialog?.querySelector<HTMLElement>('button')?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setSelectedId(null); }
+      if (event.key !== 'Tab' || !dialog) return;
+      const items = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]'));
+      const first = items[0], last = items[items.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => { document.removeEventListener('keydown', onKeyDown); if (previous?.isConnected) previous.focus(); };
+  }, [selectedId]);
   const pendingById = React.useMemo(() => new Map(CHALLENGE_TRAINING_ALL.map((row) => [row.id, row.arcadeId ? loadTrainingArcadeDraft(participantId,row.id) : loadTrainingChallengeDraft(participantId, row.id)])), [participantId]);
   const list = CHALLENGE_TRAINING_ALL.filter((row) => {
     if (family !== 'all' && row.family !== family) return false;
@@ -54,53 +77,60 @@ export default function TrainingChallengeCatalog({ sessions, participantId, canS
     const text = `${row.title} ${row.description} ${row.instructions}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     return text.includes(query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase());
   });
+  const hasFilters = Boolean(query || family !== 'all' || difficultyFilter || onlyStarted || onlyRecommended || availability !== 'all');
   const totalAttempts = [...comparableById.values()].reduce((sum, row) => sum + row.attempts, 0);
   const playableCount = CHALLENGE_TRAINING_ALL.filter(challengeTrainingPlayable).length;
   const plannedCount = CHALLENGE_TRAINING_ALL.length - playableCount;
   return <section className="mssChallengeCatalog" aria-label="Catalogue des exercices Challenge">
     <header className="mssChallengeCatalogHero">
-      <div className="mssChallengeCatalogHeroText"><span className="mssChallengeCatalogEyebrow">CENTRE D’ENTRAÎNEMENT · CHALLENGE</span><h3>Catalogue Challenge complet</h3><p>12 classiques et 44 nouveaux défis. Awena t’aide à retrouver tes exercices à travailler, en comparant uniquement les séances réalisées avec les mêmes règles. Les résultats restent privés au Centre.</p></div>
-      <div className="mssChallengeCatalogMetrics"><div><b>{CHALLENGE_TRAINING_ALL.length}</b><small>FICHES</small></div><div><b>{totalAttempts}</b><small>TENTATIVES</small></div></div>
+      <h3>CHALLENGE</h3>
+      <div className="mssChallengeCatalogMetrics"><div><b>{CHALLENGE_TRAINING_ALL.length}</b><small>FICHES</small></div><div><b>{totalAttempts}</b><small>ESSAIS</small></div></div>
     </header>
-    {canStart && coaching.length > 0 && <section className="mssChallengeCoach" aria-label="Suggestions Awena pour les exercices Challenge">
-      <div className="mssChallengeCoachHead"><span className="mssChallengeCoachIcon" aria-hidden="true">✦</span><div><small>AWENA · ENTRAÎNEMENT PERSONNALISÉ</small><h4>Mes exercices conseillés</h4><p>Conseils calculés sur tes séances privées, sans classement ni comparaison entre joueurs.</p></div></div>
-      <div className="mssChallengeCoachGrid">{coaching.map((item) => <article key={item.preset.id} className="mssChallengeCoachTile"><span className="mssChallengeCoachTag">{item.kind === 'consolider' ? 'À RETRAVAILLER' : item.kind === 'progresser' ? 'À CONFIRMER' : 'À DÉCOUVRIR'}</span><strong>{item.preset.title}</strong><GameDifficultyStars level={mssChallengeDifficulty(item.preset)} compact /><p>{item.reason}</p><button type="button" disabled={!canStart} onClick={() => onStart(item.preset)}>{item.kind === 'decouvrir' ? 'DÉCOUVRIR' : 'S’ENTRAÎNER'}</button></article>)}</div>
-    </section>}
-    {!canStart && <div className="mssChallengeCatalogNotice" role="status">Sélectionne un profil actif pour démarrer et enregistrer tes exercices Challenge.</div>}
+    {!canStart && <div className="mssChallengeCatalogNotice" role="status">Sélectionne un profil actif pour jouer.</div>}
     <div className="mssChallengeCatalogControls">
-      <label className="mssChallengeCatalogSearch"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher un défi, une cible, un objectif…" aria-label="Rechercher dans le catalogue Challenge" /></label>
-      <div style={{minWidth:148,maxWidth:184}}><GameDifficultyFilter compact value={difficultyFilter} onChange={setDifficultyFilter} label="Difficulté des exercices Challenge" /></div>
-      <button type="button" className={onlyStarted ? 'is-active' : ''} onClick={() => setOnlyStarted(!onlyStarted)}>{onlyStarted ? '✓' : '◌'} DÉJÀ JOUÉS</button><button type="button" className={onlyRecommended ? 'is-active' : ''} onClick={() => setOnlyRecommended(!onlyRecommended)}>{onlyRecommended ? '✓' : '✦'} CONSEILLÉS</button><select className="mssChallengeAvailability" aria-label="Disponibilité des défis" value={availability} onChange={(e) => setAvailability(e.target.value as 'all' | 'playable' | 'planned')}><option value="all">TOUTES LES FICHES</option><option value="playable">JOUABLES ({playableCount})</option>{plannedCount > 0 && <option value="planned">À DÉVELOPPER ({plannedCount})</option>}</select>
+      <div className="mssChallengeCatalogSearchRow">
+        <div className="mssChallengeCatalogSearch"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher un défi…" aria-label="Rechercher dans le catalogue Challenge" />{query && <button type="button" aria-label="Effacer la recherche" onClick={() => setQuery('')}>×</button>}</div>
+        <button type="button" className={'mssChallengeCatalogFilterToggle'+(showMoreFilters || onlyStarted || onlyRecommended || availability !== 'all' ? ' is-active' : '')} aria-label="Filtres supplémentaires" title="Filtres supplémentaires" aria-expanded={showMoreFilters} aria-controls={showMoreFilters ? "mss-challenge-extra-filters" : undefined} onClick={() => setShowMoreFilters(value => !value)}><svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="var(--dc-card,#141923)"/><circle cx="16" cy="12" r="2" fill="var(--dc-card,#141923)"/><circle cx="10" cy="18" r="2" fill="var(--dc-card,#141923)"/></svg></button>
+      </div>
+      <div className="mssChallengeCatalogFilterRow">
+        <select aria-label="Famille Challenge" value={family} onChange={event => setFamily(event.target.value as ChallengeTrainingFamily | 'all')}>{filters.map(filter => <option key={filter.id} value={filter.id}>{filter.id === 'all' ? 'TOUTES FAMILLES' : filter.label}</option>)}</select>
+        <GameDifficultyFilter compact value={difficultyFilter} onChange={setDifficultyFilter} label="Difficulté des exercices Challenge" />
+      </div>
+      {showMoreFilters && <div className="mssChallengeCatalogExtraFilters" id="mss-challenge-extra-filters">
+        <button type="button" aria-pressed={onlyStarted} className={onlyStarted ? 'is-active' : ''} onClick={() => setOnlyStarted(!onlyStarted)}>DÉJÀ JOUÉS</button>
+        <button type="button" aria-pressed={onlyRecommended} className={onlyRecommended ? 'is-active' : ''} onClick={() => setOnlyRecommended(!onlyRecommended)}>CONSEILLÉS</button>
+        {plannedCount > 0 && <select className="mssChallengeAvailability" aria-label="Disponibilité des défis" value={availability} onChange={(e) => setAvailability(e.target.value as 'all' | 'playable' | 'planned')}><option value="all">TOUTES LES FICHES</option><option value="playable">JOUABLES ({playableCount})</option><option value="planned">À DÉVELOPPER ({plannedCount})</option></select>}
+      </div>}
     </div>
-    <nav className="mssChallengeCatalogFilters" aria-label="Familles Challenge">
-      {filters.map((filter) => <button type="button" key={filter.id} className={family === filter.id ? 'is-active' : ''} onClick={() => setFamily(filter.id)}>{filter.label}</button>)}
-    </nav>
-    <div className="mssChallengeCatalogCount">{list.length} fiche{list.length !== 1 ? 's' : ''} affiché{list.length !== 1 ? 's' : ''}</div>
+    {canStart && coaching.length > 0 && <details className="mssChallengeCoach" aria-label="Suggestions Awena pour les exercices Challenge">
+      <summary>Mes exercices conseillés <span>AWENA · {coaching.length}</span></summary>
+      <div className="mssChallengeCoachGrid">{coaching.map((item) => <article key={item.preset.id} className="mssChallengeCoachTile"><span className="mssChallengeCoachTag">{item.kind === 'consolider' ? 'À RETRAVAILLER' : item.kind === 'progresser' ? 'À CONFIRMER' : 'À DÉCOUVRIR'}</span><strong>{item.preset.title}</strong><GameDifficultyStars level={mssChallengeDifficulty(item.preset)} compact showValue={false} /><p>{item.reason}</p><button type="button" disabled={!canStart} onClick={() => onStart(item.preset)}>{item.kind === 'decouvrir' ? 'DÉCOUVRIR' : 'S’ENTRAÎNER'}</button></article>)}</div>
+    </details>}
+    {hasFilters && <div className="mssChallengeCatalogCount" aria-live="polite">{list.length} / {CHALLENGE_TRAINING_ALL.length} exercices <button type="button" onClick={() => { setFamily('all'); setQuery(''); setOnlyStarted(false); setOnlyRecommended(false); setAvailability('all'); setDifficultyFilter(0); }}>RÉINITIALISER</button></div>}
     <div className="mssChallengeCatalogGrid">
       {list.map((preset) => {
         const progress = comparableById.get(preset.id)!;
-        return <article key={preset.id} className={'mssChallengeCatalogCard'+(preset.status === 'planned' ? ' is-planned' : '')}>
-          <div className="mssChallengeCatalogCardHead"><span>{CHALLENGE_TRAINING_FAMILIES[preset.family]}</span><small>{preset.status === 'planned' ? 'À DÉVELOPPER' : (preset.minPlayers || 1) > 1 ? 'MULTIJOUEURS' : 'JOUABLE'}</small></div>
-          <div style={{display:'flex',justifyContent:'flex-end',margin:'2px 0 4px'}}><GameDifficultyStars level={mssChallengeDifficulty(preset)} compact /></div>
-          <h4>{preset.title}</h4><p>{preset.description}</p>
-          {challengeTrainingPlayable(preset) ? <div className="mssChallengeCatalogProgress"><div><span>{progress.attempts ? `${progress.attempts} tentative${progress.attempts > 1 ? 's' : ''}` : 'À DÉCOUVRIR'}</span><b>{progress.best == null ? '—' : `${Math.round(progress.best)}%`}</b></div><div className="mssChallengeCatalogProgressTrack"><i style={{ width: `${Math.max(0, Math.min(100, progress.best ?? 0))}%` }} /></div>{progress.comparableAttempts > 1 && <small className="mssChallengeCatalogTrend">{progress.delta! > 0 ? '↗ +' : progress.delta! < 0 ? '↘ ' : '→ '}{Math.round(progress.delta!)} pt vs séance précédente · même configuration</small>}{progress.comparisonExcluded > 0 && <small className="mssChallengeCatalogCompareHint">{progress.comparisonExcluded} séance(s) non comparables à la dernière configuration mesurée</small>}</div> : <div className="mssChallengeCatalogNotReady">Concept visible · moteur de jeu non disponible</div>}
-          {pendingById.get(preset.id) && <div className="mssChallengeCatalogResume"><span>⏸ Séance interrompue · {draftDartCount(pendingById.get(preset.id))} fléchettes</span><button type="button" disabled={!canStart} onClick={() => onResume(preset)}>REPRENDRE</button></div>}
-          <div className="mssChallengeCatalogActions"><button type="button" onClick={() => setSelectedId(preset.id)}>DÉTAILS</button><button type="button" disabled={!canStart || !challengeTrainingPlayable(preset)} onClick={() => onStart(preset)}>{!challengeTrainingPlayable(preset) ? 'À VENIR' : (preset.minPlayers || 1) > 1 ? 'CHOISIR JOUEURS' : '▶ ' + (pendingById.get(preset.id) ? 'NOUVEL ESSAI' : 'JOUER')}</button></div>
-        </article>;
+        const pending = pendingById.get(preset.id);
+        const status = pending ? `En pause · ${draftDartCount(pending)} fléchettes` : !challengeTrainingPlayable(preset) ? 'À développer' : progress.attempts > 0 ? `${progress.attempts} essai${progress.attempts > 1 ? 's' : ''}${progress.best == null ? '' : ` · Record ${Math.round(progress.best)}%`}` : 'Pas encore commencé';
+        return <TrainingExerciseListRow key={preset.id} title={preset.title} description={preset.description} icon={familyIcons[preset.family]}
+          level={mssChallengeDifficulty(preset)} status={status} badge={CHALLENGE_TRAINING_FAMILIES[preset.family]}
+          active={selectedId === preset.id} onClick={() => setSelectedId(preset.id)} />;
       })}
     </div>
     {!list.length && <div className="mssChallengeCatalogEmpty">Aucun exercice avec ces filtres. <button type="button" onClick={() => { setFamily('all'); setQuery(''); setOnlyStarted(false); setOnlyRecommended(false); setAvailability('all'); setDifficultyFilter(0); }}>Tout afficher</button></div>}
-    {selected && <div className="mssChallengeCatalogOverlay" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedId(null); }}>
-      <section className="mssChallengeCatalogDialog" role="dialog" aria-modal="true" aria-labelledby="mss-challenge-dialog-title">
-        <header><div><small>{CHALLENGE_TRAINING_FAMILIES[selected.family]} · {selected.status === 'planned' ? 'À DÉVELOPPER' : (selected.minPlayers || 1) > 1 ? 'MULTIJOUEURS' : selected.arcadeId ? 'JOUABLE' : `NIVEAU ${selected.difficulty}/5`}</small><h3 id="mss-challenge-dialog-title">{selected.title}</h3><GameDifficultyStars level={mssChallengeDifficulty(selected)} /></div><button type="button" aria-label="Fermer les détails" onClick={() => setSelectedId(null)}>×</button></header>
-        <p>{selected.instructions}</p>
+    {selected && typeof document !== 'undefined' && createPortal(<div className="mssChallengeCatalogOverlay" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedId(null); }}>
+      <section ref={dialogRef} className="mssChallengeCatalogDialog" role="dialog" aria-modal="true" aria-labelledby="mss-challenge-dialog-title">
+        <header><div><small>{CHALLENGE_TRAINING_FAMILIES[selected.family]} · {selected.status === 'planned' ? 'À DÉVELOPPER' : (selected.minPlayers || 1) > 1 ? 'MULTIJOUEURS' : 'JOUABLE'}</small><h3 id="mss-challenge-dialog-title">{selected.title}</h3><GameDifficultyStars level={mssChallengeDifficulty(selected)} showValue={false} /></div><button type="button" aria-label="Fermer les détails" onClick={() => setSelectedId(null)}>×</button></header>
+        <p>{selected.description}</p><p>{selected.instructions}</p>
+        {!canStart && <div className="mssChallengeCatalogNotice" role="status">Sélectionne un profil actif pour jouer.</div>}
         {selected.status === 'planned' ? <div className="mssChallengeCatalogNotice">Ce défi figure dans le catalogue officiel Challenge, mais ses règles ne disposent pas encore d’un moteur jouable. Aucun faux score n’est généré.</div> : null}
         {!selected.arcadeId && <div className="mssChallengeCatalogDialogMetrics"><div><small>TOURS</small><b>{selected.config.visits || 10}</b></div><div><small>FLECHETTES MAX</small><b>{(selected.config.visits || 10) * 3}</b></div><div><small>OBJECTIF DE VALIDATION</small><b>{selected.successValidationPct}%</b></div></div>}
         <div className="mssChallengeCatalogDialogMetrics"><div><small>TENTATIVES</small><b>{comparableById.get(selected.id)?.attempts || 0}</b></div><div><small>MEILLEUR INDICE</small><b>{comparableById.get(selected.id)?.best == null ? '—' : `${Math.round(comparableById.get(selected.id)!.best!)}%`}</b></div><div><small>SCORE MESURÉ</small><b>{comparableById.get(selected.id)?.latestPoints ?? '—'}</b></div></div>
         {comparableById.get(selected.id)?.latest != null && <div className="mssChallengeCatalogComparison"><b>PERFORMANCE MESURÉE</b><span>Dernier indice : {Math.round(comparableById.get(selected.id)!.latest!)} % · Meilleur indice : {Math.round(comparableById.get(selected.id)!.best!)} % · {comparableById.get(selected.id)!.comparableAttempts} essai(s) à règles identiques</span>{comparableById.get(selected.id)!.delta !== null && <strong>Évolution : {comparableById.get(selected.id)!.delta! > 0 ? '+' : ''}{Math.round(comparableById.get(selected.id)!.delta!)} point(s) vs séance précédente comparable</strong>}{comparableById.get(selected.id)!.comparisonExcluded > 0 && <small>{comparableById.get(selected.id)!.comparisonExcluded} tentative(s) avec d'autres réglages ou des données incomplètes : exclues du comparatif.</small>}</div>}
+        {Boolean(comparableById.get(selected.id)?.attempts) && comparableById.get(selected.id)?.comparisonExcluded ? <small className="mssChallengeCatalogCompareHint">{comparableById.get(selected.id)!.comparisonExcluded} séance(s) non comparables à la dernière configuration mesurée.</small> : null}
         {pendingById.get(selected.id) && <div className="mssChallengeCatalogResume"><span>Une tentative est en pause avec {draftDartCount(pendingById.get(selected.id))} fléchettes.</span><button type="button" disabled={!canStart} onClick={() => onResume(selected)}>REPRENDRE LA SÉANCE</button></div>}
-        <footer><button type="button" onClick={() => setSelectedId(null)}>RETOUR</button><button type="button" disabled={!canStart || !challengeTrainingPlayable(selected)} onClick={() => onCustomize(selected)}>PERSONNALISER</button><button type="button" disabled={!canStart || !challengeTrainingPlayable(selected)} onClick={() => onStart(selected)}>{challengeTrainingPlayable(selected) ? ((selected.minPlayers || 1) > 1 ? 'CHOISIR LES JOUEURS' : '▶ LANCER LA SÉANCE') : 'À DÉVELOPPER'}</button></footer>
+        <footer><button type="button" onClick={() => setSelectedId(null)}>RETOUR</button><button type="button" disabled={!canStart || !challengeTrainingPlayable(selected)} onClick={() => onCustomize(selected)}>PERSONNALISER</button><button type="button" disabled={!canStart || !challengeTrainingPlayable(selected)} onClick={() => onStart(selected)}>{challengeTrainingPlayable(selected) ? ((selected.minPlayers || 1) > 1 ? 'CHOISIR LES JOUEURS' : (pendingById.get(selected.id) ? 'NOUVEL ESSAI' : 'LANCER LA SÉANCE')) : 'À DÉVELOPPER'}</button></footer>
       </section>
-    </div>}
+    </div>, document.body)}
   </section>;
 }

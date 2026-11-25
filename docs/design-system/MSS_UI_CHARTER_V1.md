@@ -165,3 +165,15 @@ Le présent fichier est la référence écrite **V1** ; `src/styles/mss-ui-contr
 - Inventaire de la V7(64) fournie : seuls `avatar-common-001` à `avatar-common-012.webp` sont présents dans l'archive. Le tirage rapide est donc limité aux **12 images réellement disponibles**, avec non-duplication jusqu'à 12 joueurs ; au-delà de 12, la réutilisation d'une image est inévitable tant que le pack galerie complet n'est pas fourni. **Ne pas masquer ni changer le catalogue des profils Arcade.**
 - Chaque écran affiche ses règles spécifiques, un récapitulatif concis, puis un bouton « LANCER LA PARTIE ». Les paramètres passés au moteur doivent rester identiques à ceux du mode avant migration.
 - Première vague V66 : parties rapides BOB'S 27, KNOCKOUT, SCRAM, BATTLE ROYALE, COUNT UP / HAPPY MILLE / 170 / ENCULETTE, GROS 6 / WARFARE / PRISONER / GOLF. Les autres modes devront migrer par lots vérifiés.
+
+## 2.4. Extension progressive des menus (lot V75, sur base V7(74))
+
+- **Configuration complète / Arcade** : le parcours `MssClassicConfigFlow` et la synthèse `MssClassicRecap` sont désormais utilisés dans `KnockoutConfig` et `SimpleRoundsConfig` (registre COUNT-UP, SUPER BULL, HAPPY MILLE, ENCULETTE, 170). Leurs payloads et contraintes propres ne sont pas remplacés par un modèle générique de jeu.
+- **Partie rapide** : `QuickPartyModeConfig` utilise les panneaux, choix et récapitulatifs de `MssQuickClassicControls` pour CRICKET, KILLER, 5 VIES/CHASE, SHANGHAI, HALVE-IT/SPLIT SCORE, SHOOTER, BOWLING, BASEBALL et PRÉSIDENT. Ses règles spécifiques et les routes d'origine restent pilotées par chaque branche `modeId`.
+- **Avatars partie rapide** : un identifiant de session unique alimente à la fois l'aperçu des portraits du sélecteur existant et les avatars transmis au moteur (`quickPartyAvatar`). Ne pas remplacer par des portraits artificiels ni générer un nouvel identifiant au moment du lancement.
+- **Équipes rapides** : conserver le regroupement 2×2, les logos Team Gold/Team Pink et les membres individuels lorsque le moteur les supporte ; ne pas transformer 2 équipes en 4 adversaires indépendants.
+- **Étapes guidées** : Awena → Participants → Bots IA → Règles → Récapitulatif pour les modes Arcade simples ci-dessus ; vue complète accessible à tout moment ; bouton de lancement seulement au récapitulatif en guidée. Les modes complexes conservent leurs étapes supplémentaires propres.
+- **Couleurs** : tous les nouveaux panneaux et choix reprennent `ThemeContext` ; les couleurs des touches d'impact continuent de dépendre exclusivement de `mssVisualCharter.ts`.
+- **Contrôle local** : `node tools/test-mss-config-wave-v75.mjs` analyse les TSX et vérifie les contrats visibles. Il ne valide ni rendu navigateur ni fonctionnement Android, qui demandent des essais interactifs réels.
+
+**Restant à migrer :** audit mode par mode des autres configurateurs Arcade, de leurs panneaux de sélection humains/bots/équipes, des aides, de la saisie et des récapitulatifs, avec vérification des règles métiers et de toutes les langues. Éviter toute migration globale en une opération non testée.

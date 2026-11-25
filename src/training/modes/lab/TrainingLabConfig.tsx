@@ -1,5 +1,7 @@
+import TrainingDartSetChoice, { trainingSetSnapshot } from "../../ui/TrainingDartSetChoice";
 import React from "react";
 import GameDifficultyStars from "../../../components/GameDifficultyStars";
+import GameDifficultyFilter from "../../../components/GameDifficultyFilter";
 import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
@@ -9,6 +11,8 @@ import TrainingExerciseDetail from "../../ui/TrainingExerciseDetail";
 import TrainingAwenaAcademy from "../../academy/TrainingAwenaAcademy";
 import TrainingSessionResultsCard from "../../ui/TrainingSessionResultsCard";
 import TrainingChallengeCatalog from "../../ui/TrainingChallengeCatalog";
+import HubGlyph from "../../ui/TrainingHubGlyph";
+import TrainingExerciseListRow from "../../ui/TrainingExerciseListRow";
 import { clearTrainingChallengeDraft, loadTrainingChallengeDraft } from "../../profile/trainingChallengeDraft";
 import { clearTrainingArcadeDraft, loadTrainingArcadeDraft } from "../../profile/trainingArcadeDraft";
 import { makeChallengeTrainingConfig, type ChallengeTrainingPreset, CHALLENGE_TRAINING_ALL } from "../../catalog/challengeTrainingCatalog";
@@ -65,47 +69,21 @@ type HistoryPanel = "plans" | "exercises";
 type TrainingViewMode = "essential" | "complete";
 type TodayPanel = "plan" | "challenge" | "assessment";
 
-function HubGlyph({ name, size = 17 }: { name: string; size?: number }) {
-  const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
-  if (name === "today") return <svg {...common}><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>;
-  if (name === "week") return <svg {...common}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M7 14h2M11 14h2M15 14h2M7 18h2M11 18h2"/></svg>;
-  if (name === "cycle") return <svg {...common}><path d="M20 7h-5V2"/><path d="M20 7a8 8 0 1 0 1 7"/><path d="M4 17h5v5"/></svg>;
-  if (name === "library") return <svg {...common}><path d="M4 4h6v16H4zM14 4h6v16h-6z"/><path d="M7 8h0M17 8h0"/></svg>;
-  if (name === "skills") return <svg {...common}><path d="M4 19V9M10 19V5M16 19v-8M22 19V3"/></svg>;
-  if (name === "coach") return <svg {...common}><path d="M12 3a6 6 0 0 0-6 6c0 4 3 5 3 8h6c0-3 3-4 3-8a6 6 0 0 0-6-6Z"/><path d="M9 21h6M9 17h6"/></svg>;
-  if (name === "history") return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 7v5l3 2"/></svg>;
-  if (name === "progress") return <svg {...common}><path d="M4 18l5-5 4 3 7-9"/><path d="M15 7h5v5"/></svg>;
-  if (name === "diagnosis") return <svg {...common}><circle cx="11" cy="11" r="6"/><path d="m16 16 5 5M8 11h6M11 8v6"/></svg>;
-  if (name === "exercises") return <svg {...common}><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>;
-  if (name === "scoring") return <svg {...common}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 4v3M20 12h-3"/></svg>;
-  if (name === "doubles") return <svg {...common}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="5"/><path d="M6.4 6.4l2.1 2.1M17.6 17.6l-2.1-2.1"/></svg>;
-  if (name === "checkout") return <svg {...common}><path d="M5 21V4"/><path d="M5 5h11l-2 4 2 4H5"/></svg>;
-  if (name === "precision") return <svg {...common}><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.5"/></svg>;
-  if (name === "bull") return <svg {...common}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>;
-  if (name === "regularity") return <svg {...common}><path d="M3 12c2.2-5 4.4 5 6.6 0s4.4-5 6.6 0 4.4 5 4.8 0"/></svg>;
-  if (name === "mastery") return <svg {...common}><path d="M12 3 5 6v5c0 4.8 3 8 7 10 4-2 7-5.2 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>;
-  if (name === "badges") return <svg {...common}><circle cx="12" cy="9" r="5"/><path d="m9 14-2 7 5-3 5 3-2-7"/></svg>;
-  if (name === "records") return <svg {...common}><path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M6 6H4v2a4 4 0 0 0 4 4M18 6h2v2a4 4 0 0 1-4 4M12 12v5M8 21h8M9 17h6"/></svg>;
-  if (name === "live") return <svg {...common}><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>;
-  if (name === "effectiveness") return <svg {...common}><path d="m4 17 5-5 4 3 7-8"/><path d="M16 7h4v4"/></svg>;
-  if (name === "plans") return <svg {...common}><rect x="4" y="4" width="12" height="14" rx="2"/><path d="M8 8h5M8 12h5M8 16h3M16 7h4v13H8"/></svg>;
-  return <svg {...common}><path d="M4 12h16M12 4v16"/></svg>;
-}
 
 type CompactNavItem = { id: string; label: string; icon: string; status?: string };
 
-function CompactIconNav({ items, activeId, onChange, tone = "cyan", stickyTop }: { items: CompactNavItem[]; activeId: string; onChange: (id: string) => void; tone?: "cyan" | "green" | "purple" | "gold"; stickyTop?: number }) {
+function CompactIconNav({ items, activeId, onChange, tone = "cyan" }: { items: CompactNavItem[]; activeId: string; onChange: (id: string) => void; tone?: "cyan" | "green" | "purple" | "gold" }) {
   const palette = tone === "green"
     ? { border: "rgba(80,255,174,.42)", bg: "rgba(80,255,174,.085)", glow: "rgba(80,255,174,.12)" }
     : tone === "purple"
       ? { border: "rgba(185,156,255,.42)", bg: "rgba(140,90,255,.085)", glow: "rgba(140,90,255,.12)" }
       : tone === "gold"
-        ? { border: "rgba(255,216,107,.42)", bg: "rgba(255,216,107,.08)", glow: "rgba(255,216,107,.10)" }
-        : { border: "rgba(39,220,255,.50)", bg: "rgba(39,220,255,.10)", glow: "rgba(39,220,255,.12)" };
-  return <div style={{ display: "flex", alignItems: "stretch", gap: 5, marginTop: 8, padding: "5px 0", ...(stickyTop === undefined ? {} : { position: "sticky" as const, top: stickyTop, zIndex: 3, background: "rgba(8,10,16,.80)", backdropFilter: "blur(12px)" }) }}>
+        ? { border: "rgba(255,159,139,.42)", bg: "rgba(255,159,139,.08)", glow: "rgba(255,159,139,.10)" }
+        : { border: "rgba(255,142,112,.50)", bg: "rgba(255,142,112,.10)", glow: "rgba(255,142,112,.12)" };
+  return <div className="mssTrainingHubCompactNav" style={{ display: "flex", alignItems: "stretch", gap: 5, marginTop: 8, padding: "5px 0" }}>
     {items.map((item) => {
       const active = item.id === activeId;
-      return <button key={item.id} type="button" aria-label={item.label} title={item.label} onClick={() => onChange(item.id)} style={{ minWidth: active ? 104 : 46, flex: active ? "1 1 auto" : "0 0 46px", height: 46, padding: active ? "6px 11px" : 0, borderRadius: 12, border: active ? `1px solid ${palette.border}` : "1px solid rgba(255,255,255,.075)", background: active ? palette.bg : "rgba(255,255,255,.022)", boxShadow: "none", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: active ? "flex-start" : "center", gap: 7, overflow: "hidden", transition: "flex .18s ease,min-width .18s ease,background .18s ease" }}>
+      return <button key={item.id} type="button" aria-label={item.label} aria-pressed={active} title={item.label} onClick={() => onChange(item.id)} style={{ minWidth: 0, flex: active ? "2.3 1 0" : "1 1 0", height: 46, padding: active ? "6px 5px" : 0, borderRadius: 12, border: active ? `1px solid ${palette.border}` : "1px solid rgba(255,255,255,.075)", background: active ? palette.bg : "rgba(255,255,255,.022)", boxShadow: "none", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: active ? "flex-start" : "center", gap: 7, overflow: "hidden", transition: "flex .18s ease,min-width .18s ease,background .18s ease" }}>
         <span style={{ display: "grid", placeItems: "center", flex: "0 0 auto" }}><HubGlyph name={item.icon} size={active ? 17 : 16} /></span>
         {active && <span style={{ minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 9.2, lineHeight: 1.05, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>{item.status && <span style={{ display: "block", marginTop: 2, fontSize: 7.6, lineHeight: 1, opacity: .46, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.status}</span>}</span>}
       </button>;
@@ -114,12 +92,12 @@ function CompactIconNav({ items, activeId, onChange, tone = "cyan", stickyTop }:
 }
 
 function PrimaryNav({ items, activeId, onChange }: { items: CompactNavItem[]; activeId: string; onChange: (id: string) => void }) {
-  return <div className="mssTrainingHubPrimaryNav" style={{ display: "grid", gridTemplateColumns: `repeat(${items.length},minmax(0,1fr))`, gap: 6, padding: "8px 0 10px", borderBottom: "1px solid rgba(255,255,255,.08)", position: "sticky", top: 0, zIndex: 4, background: "rgba(8,10,16,.88)", backdropFilter: "blur(14px)" }}>
+  return <div className="mssTrainingHubPrimaryNav" style={{ display: "flex", gap: 6, padding: "8px 0 10px", borderBottom: "1px solid rgba(255,255,255,.08)", position: "sticky", top: "var(--mss-training-header-height, 92px)", zIndex: 4, background: "#080a10" }}>
     {items.map((item) => {
       const active = item.id === activeId;
-      return <button key={item.id} type="button" onClick={() => onChange(item.id)} aria-label={item.label} style={{ minWidth: 0, minHeight: 54, padding: "7px 4px", border: "none", borderRadius: 12, background: active ? "rgba(39,220,255,.09)" : "transparent", color: active ? "#eafcff" : "rgba(234,252,255,.58)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: active ? "inset 0 -2px 0 rgba(39,220,255,.78)" : "none" }}>
+      return <button key={item.id} type="button" onClick={() => onChange(item.id)} aria-label={item.label} aria-pressed={active} title={item.label} style={{ flex: active ? "2.2 1 0" : "1 1 0", minWidth: 0, minHeight: 54, padding: "7px 4px", border: "none", borderRadius: 12, background: active ? "rgba(255,142,112,.09)" : "transparent", color: active ? "#eafcff" : "rgba(234,252,255,.58)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: active ? "inset 0 -2px 0 rgba(255,142,112,.78)" : "none" }}>
         <HubGlyph name={item.icon} size={18} />
-        <span style={{ fontSize: 9.2, lineHeight: 1, fontWeight: active ? 950 : 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{item.label}</span>
+        {active && <span style={{ fontSize: 9.2, lineHeight: 1, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{item.label}</span>}
       </button>;
     })}
   </div>;
@@ -129,10 +107,10 @@ function MetricChip({ icon, label, value, tone = "cyan" }: { icon: string; label
   const palette = tone === "green"
     ? { bg: "rgba(80,255,174,.08)", border: "rgba(80,255,174,.18)", color: "#8cffcb" }
     : tone === "gold"
-      ? { bg: "rgba(255,216,107,.08)", border: "rgba(255,216,107,.18)", color: "#ffd86b" }
+      ? { bg: "rgba(255,159,139,.08)", border: "rgba(255,159,139,.18)", color: "#ff9f8b" }
       : tone === "purple"
         ? { bg: "rgba(185,156,255,.08)", border: "rgba(185,156,255,.18)", color: "#b99cff" }
-        : { bg: "rgba(39,220,255,.08)", border: "rgba(39,220,255,.18)", color: "#27dcff" };
+        : { bg: "rgba(255,142,112,.08)", border: "rgba(255,142,112,.18)", color: "#ff9f8b" };
   return <div style={{ minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", borderRadius: 10, background: "transparent", border: "none" }}>
     <span style={{ display: "grid", placeItems: "center", width: 18, height: 18, borderRadius: 999, background: "rgba(0,0,0,.16)", color: palette.color }}><HubGlyph name={icon} size={11} /></span>
     <span style={{ minWidth: 0 }}>
@@ -144,12 +122,12 @@ function MetricChip({ icon, label, value, tone = "cyan" }: { icon: string; label
 
 function ActionTile({ icon, title, body, tone = "cyan", onClick, disabled = false }: { icon: string; title: string; body: string; tone?: "cyan" | "green" | "gold" | "purple"; onClick: () => void; disabled?: boolean }) {
   const palette = tone === "green"
-    ? { border: "rgba(80,255,174,.24)", bg: "linear-gradient(160deg,rgba(80,255,174,.08),rgba(39,220,255,.03))", iconBg: "rgba(80,255,174,.10)", iconBorder: "rgba(80,255,174,.18)", color: "#8cffcb" }
+    ? { border: "rgba(80,255,174,.24)", bg: "linear-gradient(160deg,rgba(80,255,174,.08),rgba(255,142,112,.03))", iconBg: "rgba(80,255,174,.10)", iconBorder: "rgba(80,255,174,.18)", color: "#8cffcb" }
     : tone === "gold"
-      ? { border: "rgba(255,216,107,.20)", bg: "linear-gradient(160deg,rgba(255,216,107,.07),rgba(255,255,255,.025))", iconBg: "rgba(255,216,107,.10)", iconBorder: "rgba(255,216,107,.18)", color: "#ffd86b" }
+      ? { border: "rgba(255,159,139,.20)", bg: "linear-gradient(160deg,rgba(255,159,139,.07),rgba(255,255,255,.025))", iconBg: "rgba(255,159,139,.10)", iconBorder: "rgba(255,159,139,.18)", color: "#ff9f8b" }
       : tone === "purple"
         ? { border: "rgba(185,156,255,.20)", bg: "linear-gradient(160deg,rgba(140,90,255,.08),rgba(255,255,255,.025))", iconBg: "rgba(185,156,255,.10)", iconBorder: "rgba(185,156,255,.18)", color: "#b99cff" }
-        : { border: "rgba(39,220,255,.22)", bg: "linear-gradient(160deg,rgba(39,220,255,.08),rgba(255,255,255,.025))", iconBg: "rgba(39,220,255,.10)", iconBorder: "rgba(39,220,255,.18)", color: "#27dcff" };
+        : { border: "rgba(255,142,112,.22)", bg: "linear-gradient(160deg,rgba(255,142,112,.08),rgba(255,255,255,.025))", iconBg: "rgba(255,142,112,.10)", iconBorder: "rgba(255,142,112,.18)", color: "#ff9f8b" };
   return <button type="button" disabled={disabled} onClick={onClick} style={{ minWidth: 0, padding: "12px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", color: "inherit", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .45 : 1, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
     <span style={{ width: 28, height: 28, borderRadius: 10, display: "grid", placeItems: "center", background: palette.iconBg, border: `1px solid ${palette.iconBorder}`, color: palette.color }}><HubGlyph name={icon} size={15} /></span>
     <span style={{ display: "block", minWidth: 0 }}>
@@ -161,10 +139,10 @@ function ActionTile({ icon, title, body, tone = "cyan", onClick, disabled = fals
 
 function FloatingDetailSheet({ title, eyebrow, icon = "coach", onClose, children }: { title: string; eyebrow?: string; icon?: string; onClose: () => void; children: React.ReactNode }) {
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 1100, display: "grid", placeItems: "end center", padding: 12, background: "rgba(3,5,10,.72)", backdropFilter: "blur(10px)" }} onClick={onClose}>
-    <div onClick={(event) => event.stopPropagation()} style={{ width: "min(620px,100%)", maxHeight: "76vh", overflow: "auto", padding: 14, borderRadius: 20, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(160deg,rgba(14,18,28,.99),rgba(8,10,16,.99))", boxShadow: "0 22px 70px rgba(0,0,0,.55)" }}>
+    <div onClick={(event) => event.stopPropagation()} style={{ width: "min(620px,100%)", maxHeight: "76vh", overflow: "auto", padding: 14, borderRadius: 20, border: "1px solid rgba(255,142,112,.18)", background: "linear-gradient(160deg,rgba(14,18,28,.99),rgba(8,10,16,.99))", boxShadow: "0 22px 70px rgba(0,0,0,.55)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-        <span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(39,220,255,.08)", border: "1px solid rgba(39,220,255,.15)", color: "#27dcff" }}><HubGlyph name={icon} size={17} /></span>
-        <div style={{ minWidth: 0, flex: 1 }}>{eyebrow && <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: .8, color: "#27dcff" }}>{eyebrow}</div>}<div style={{ marginTop: eyebrow ? 2 : 0, fontSize: 16, fontWeight: 950 }}>{title}</div></div>
+        <span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(255,142,112,.08)", border: "1px solid rgba(255,142,112,.15)", color: "#ff9f8b" }}><HubGlyph name={icon} size={17} /></span>
+        <div style={{ minWidth: 0, flex: 1 }}>{eyebrow && <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: .8, color: "#ff9f8b" }}>{eyebrow}</div>}<div style={{ marginTop: eyebrow ? 2 : 0, fontSize: 16, fontWeight: 950 }}>{title}</div></div>
         <button type="button" aria-label="Fermer" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 16, cursor: "pointer" }}>×</button>
       </div>
       <div style={{ marginTop: 12 }}>{children}</div>
@@ -176,8 +154,10 @@ function pct(value: number) {
   return `${Math.round(Number(value) || 0)}%`;
 }
 
-export default function TrainingLabConfig({ profiles, accountProfile, initialDetailExerciseId, initialChallengeCatalog = false, onOpenChallenge, onCustomizeChallenge, onStart, onExit }: { profiles?: Profile[]; accountProfile?: Profile | null; initialDetailExerciseId?: string | null; initialChallengeCatalog?: boolean; onOpenChallenge?: (config: any, presetId: string, snapshot?: any) => void; onCustomizeChallenge?: (presetId: string, participantId: string) => void; onStart: (cfg: any) => void; onExit: () => void; }) {
+export default function TrainingLabConfig({ profiles, accountProfile, initialDetailExerciseId, initialChallengeCatalog = false, onOpenChallenge, onCustomizeChallenge, onStart: launchTraining, onExit }: { profiles?: Profile[]; accountProfile?: Profile | null; initialDetailExerciseId?: string | null; initialChallengeCatalog?: boolean; onOpenChallenge?: (config: any, presetId: string, snapshot?: any) => void; onCustomizeChallenge?: (presetId: string, participantId: string) => void; onStart: (cfg: any) => void; onExit: () => void; }) {
   const accountParticipantId = accountProfile?.id ? String(accountProfile.id) : "";
+  const [dartSetId,setDartSetId] = React.useState("");
+  const onStart = React.useCallback((cfg:any)=>launchTraining({...cfg,dartSetsByParticipant:cfg.resumeExerciseDraft ? {[accountParticipantId]:cfg.resumeExerciseDraft.dartSet ?? null} : cfg.resumeStepIndex != null ? (cfg.dartSetsByParticipant || {}) : {[accountParticipantId]:trainingSetSnapshot(accountParticipantId,dartSetId)}}),[launchTraining,accountParticipantId,dartSetId]);
   const accountParticipant = React.useMemo(() => accountParticipantId ? {
     id: accountParticipantId,
     name: String((accountProfile as any)?.name || (accountProfile as any)?.displayName || "Mon compte"),
@@ -688,6 +668,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       sessionKind: "program",
       resumeStepIndex: programDraft.nextStepIndex,
       resumeProgramResults: programDraft.completedSteps,
+      dartSetsByParticipant: {[accountParticipantId]: programDraft.dartSet ?? null},
       ...accountParticipantConfig,
     });
   }
@@ -755,10 +736,11 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       header={<TrainingHeader title="Centre d'entraînement" tickerId="training_center" onBack={onExit} rules={<><p>Le centre regroupe programmes guidés, exercices unitaires, diagnostic et progression.</p><p>Awena utilise tes résultats Training enregistrés pour déterminer le prochain axe à travailler.</p></>} />}
       body={
         <div className="mssTrainingHub" data-mobile-details={showMobileDetails ? "open" : "closed"} data-active-tab={tab} style={{ width: "100%", boxSizing: "border-box", margin: 0, padding: "0 clamp(8px,1.3vw,18px) 28px" }}>
+          {accountParticipantId && <TrainingDartSetChoice profileId={accountParticipantId} value={dartSetId} onChange={setDartSetId} />}
           {showQuickGuide && <div role="dialog" aria-modal="true" aria-label="Guide express du centre d'entraînement" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 16, background: "rgba(3,5,10,.82)", backdropFilter: "blur(12px)" }}>
-            <div style={{ width: "min(620px,100%)", maxHeight: "86vh", overflow: "auto", padding: 18, borderRadius: 20, border: "1px solid rgba(39,220,255,.24)", background: "linear-gradient(160deg,rgba(14,18,28,.98),rgba(8,10,16,.98))", boxShadow: "0 24px 80px rgba(0,0,0,.45)" }}>
+            <div style={{ width: "min(620px,100%)", maxHeight: "86vh", overflow: "auto", padding: 18, borderRadius: 20, border: "1px solid rgba(255,142,112,.24)", background: "linear-gradient(160deg,rgba(14,18,28,.98),rgba(8,10,16,.98))", boxShadow: "0 24px 80px rgba(0,0,0,.45)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1.1, color: "#27dcff" }}>GUIDE EXPRESS</div><div style={{ marginTop: 4, fontSize: 19, fontWeight: 950 }}>Tu n'as besoin de retenir que 3 choses</div><div style={{ marginTop: 5, fontSize: 9.5, opacity: .58, lineHeight: 1.45 }}>Tout le reste est calculé automatiquement par Awena et reste disponible en mode COMPLET si tu veux creuser.</div></div>
+                <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1.1, color: "#ff9f8b" }}>GUIDE EXPRESS</div><div style={{ marginTop: 4, fontSize: 19, fontWeight: 950 }}>Tu n'as besoin de retenir que 3 choses</div><div style={{ marginTop: 5, fontSize: 9.5, opacity: .58, lineHeight: 1.45 }}>Tout le reste est calculé automatiquement par Awena et reste disponible en mode COMPLET si tu veux creuser.</div></div>
                 <button type="button" onClick={dismissQuickGuide} style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 16, cursor: "pointer" }}>×</button>
               </div>
               <div className="mssTrainingQuickGuideSteps" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 15 }}>
@@ -766,7 +748,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   ["1", "AUJOURD'HUI", "Awena te dit quoi faire maintenant. Tu peux simplement lancer le plan proposé."],
                   ["2", "S'ENTRAÎNER", "Tu veux choisir toi-même ? Parcours les compétences et lance un exercice ciblé."],
                   ["3", "MON NIVEAU", "Regarde où tu en es. Les progrès détaillés sont rangés dans MES PROGRÈS."],
-                ].map(([n, title, body]) => <div key={n} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ width: 27, height: 27, display: "grid", placeItems: "center", borderRadius: 9, background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.18)", fontWeight: 950 }}>{n}</div><div style={{ marginTop: 8, fontSize: 9.5, fontWeight: 950 }}>{title}</div><div style={{ marginTop: 4, fontSize: 8, lineHeight: 1.45, opacity: .54 }}>{body}</div></div>)}
+                ].map(([n, title, body]) => <div key={n} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ width: 27, height: 27, display: "grid", placeItems: "center", borderRadius: 9, background: "rgba(255,142,112,.10)", border: "1px solid rgba(255,142,112,.18)", fontWeight: 950 }}>{n}</div><div style={{ marginTop: 8, fontSize: 9.5, fontWeight: 950 }}>{title}</div><div style={{ marginTop: 4, fontSize: 8, lineHeight: 1.45, opacity: .54 }}>{body}</div></div>)}
               </div>
               <div style={{ marginTop: 14, padding: 13, borderRadius: 15, border: "1px solid rgba(80,255,174,.20)", background: "rgba(80,255,174,.045)" }}>
                 <div style={{ fontSize: 7.5, fontWeight: 950, letterSpacing: .8, color: "#8cffcb" }}>{quickStart.eyebrow}</div>
@@ -789,13 +771,13 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               <ActionTile icon="today" tone="green" title="ESSENTIEL" body="Interface légère : seulement les actions et repères importants." onClick={() => { setViewMode("essential"); setDetailSheet(null); }} />
               <ActionTile icon="progress" tone="purple" title="COMPLET" body="Toutes les analyses, cycles, historiques et réglages avancés." onClick={() => { setViewMode("complete"); setDetailSheet(null); }} />
             </div>
-            <button type="button" onClick={() => { setDetailSheet(null); setShowQuickGuide(true); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 11, border: "1px solid rgba(39,220,255,.15)", background: "rgba(39,220,255,.05)", color: "inherit", fontSize: 7.5, fontWeight: 950, cursor: "pointer" }}>OUVRIR LE GUIDE EXPRESS</button>
+            <button type="button" onClick={() => { setDetailSheet(null); setShowQuickGuide(true); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 11, border: "1px solid rgba(255,142,112,.15)", background: "rgba(255,142,112,.05)", color: "inherit", fontSize: 7.5, fontWeight: 950, cursor: "pointer" }}>OUVRIR LE GUIDE EXPRESS</button>
           </FloatingDetailSheet>}
           {detailSheet === "resume" && programDraft && <FloatingDetailSheet title={programDraft.programTitle} eyebrow="PROGRAMME INTERROMPU" icon="history" onClose={() => setDetailSheet(null)}>
             <div style={{ fontSize: 9, lineHeight: 1.5, opacity: .68 }}>Étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length} • {programDraft.completedSteps.length} déjà enregistrée{programDraft.completedSteps.length > 1 ? "s" : ""}.</div>
             <div style={{ marginTop: 4, fontSize: 7.2, opacity: .42 }}>Sauvegardé {new Date(programDraft.savedAt).toLocaleString()}</div>
             <div style={{ display: "flex", gap: 7, marginTop: 11 }}>
-              <button type="button" disabled={!resolved.length} onClick={() => { setDetailSheet(null); resumeProgramDraft(); }} style={{ flex: 1, padding: 10, borderRadius: 11, border: "1px solid rgba(255,216,107,.32)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>REPRENDRE</button>
+              <button type="button" disabled={!resolved.length} onClick={() => { setDetailSheet(null); resumeProgramDraft(); }} style={{ flex: 1, padding: 10, borderRadius: 11, border: "1px solid rgba(255,159,139,.32)", background: "rgba(255,159,139,.08)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>REPRENDRE</button>
               <button type="button" onClick={() => { clearTrainingProgramDraft(accountParticipantId || null); setDetailSheet(null); }} style={{ padding: "10px 12px", borderRadius: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>ABANDONNER</button>
             </div>
           </FloatingDetailSheet>}
@@ -827,20 +809,20 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
           <PrimaryNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} />
           {tab === "academy" && <TrainingAwenaAcademy participantId={accountParticipantId || null} />}
-          {tab === "program" && <section className="mssTrainingHubWelcome" aria-label="Bienvenue au Centre d'entraînement" style={{ position: "relative", overflow: "hidden", margin: "12px 2px 8px", padding: "clamp(15px,3vw,25px)", borderRadius: 20, border: "1px solid rgba(39,220,255,.3)", background: "radial-gradient(circle at 92% 18%,rgba(40,210,241,.21),transparent 32%),radial-gradient(circle at 0 100%,rgba(161,80,255,.15),transparent 45%),linear-gradient(140deg,#071a2a,#0a101d 60%,#120e21)", boxShadow: "0 14px 36px rgba(0,0,0,.22),inset 0 0 25px rgba(39,220,255,.035)" }}>
-            <div aria-hidden style={{ position: "absolute", width: 158, height: 158, border: "2px solid rgba(39,220,255,.20)", borderRadius: "50%", top: -45, right: -58, boxShadow: "0 0 0 25px rgba(39,220,255,.045),0 0 0 54px rgba(39,220,255,.025)", pointerEvents: "none" }}/>
+          {tab === "program" && <section className="mssTrainingHubWelcome" aria-label="Bienvenue au Centre d'entraînement" style={{ position: "relative", overflow: "hidden", margin: "12px 2px 8px", padding: "clamp(15px,3vw,25px)", borderRadius: 20, border: "1px solid rgba(255,142,112,.3)", background: "radial-gradient(circle at 92% 18%,rgba(255,159,139,.21),transparent 32%),radial-gradient(circle at 0 100%,rgba(216,110,96,.15),transparent 45%),linear-gradient(140deg,#15131c,#0a101d 60%,#15131c)", boxShadow: "0 14px 36px rgba(0,0,0,.22),inset 0 0 25px rgba(255,142,112,.035)" }}>
+            <div aria-hidden style={{ position: "absolute", width: 158, height: 158, border: "2px solid rgba(255,142,112,.20)", borderRadius: "50%", top: -45, right: -58, boxShadow: "0 0 0 25px rgba(255,142,112,.045),0 0 0 54px rgba(255,142,112,.025)", pointerEvents: "none" }}/>
             <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11 }}>
-              <div style={{ width: 51, height: 51, borderRadius: 15, border: "1px solid rgba(39,220,255,.45)", background: "rgba(39,220,255,.09)", display: "grid", placeItems: "center", flex: "0 0 auto", boxShadow: "0 0 20px rgba(39,220,255,.08)" }}><HubGlyph name="precision" size={29}/></div>
-              <div style={{ minWidth: 0 }}><div style={{ color: "#6ce9ff", letterSpacing: 1.1, fontSize: 10, fontWeight: 950 }}>TON ESPACE D'ENTRAÎNEMENT</div><div style={{ marginTop: 3, fontSize: "clamp(15px,3.7vw,24px)", lineHeight: 1.12, fontWeight: 1000 }}>Prêt à progresser{accountParticipant?.name ? `, ${accountParticipant.name}` : ""} ?</div></div>
+              <div style={{ width: 51, height: 51, borderRadius: 15, border: "1px solid rgba(255,142,112,.45)", background: "rgba(255,142,112,.09)", display: "grid", placeItems: "center", flex: "0 0 auto", boxShadow: "0 0 20px rgba(255,142,112,.08)" }}><HubGlyph name="precision" size={29}/></div>
+              <div style={{ minWidth: 0 }}><div style={{ color: "#ff9f8b", letterSpacing: 1.1, fontSize: 10, fontWeight: 950 }}>TON ESPACE D'ENTRAÎNEMENT</div><div style={{ marginTop: 3, fontSize: "clamp(15px,3.7vw,24px)", lineHeight: 1.12, fontWeight: 1000 }}>Prêt à progresser{accountParticipant?.name ? `, ${accountParticipant.name}` : ""} ?</div></div>
             </div>
             <p className="mssTrainingWelcomeSubtitle" style={{ position: "relative", margin: "12px 0 13px", fontSize: 12.5, lineHeight: 1.5, color: "rgba(238,249,255,.78)" }}>Un objectif clair, une séance à ton rythme et des progrès mesurables. À toi de jouer !</p>
             <div className="mssTrainingWelcomeMetrics" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, position: "relative" }}>
-              {[{ label: "SÉANCES", value: String(programSessions.length), color: "#76ecff" }, { label: "MOYENNE", value: `${Math.round(career.averagePerformance || 0)}/100`, color: "#9fffc2" }, { label: "PLAN", value: `${dailyPlan.durationMin} min`, color: "#ffd86b" }].map(item => <div key={item.label} style={{ minWidth: 0, padding: "9px 6px", textAlign: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(2,7,13,.43)" }}><div style={{ fontSize: 9, fontWeight: 950, letterSpacing: .6, opacity: .7 }}>{item.label}</div><div style={{ marginTop: 4, fontSize: "clamp(13px,3.6vw,21px)", fontWeight: 1000, color: item.color }}>{item.value}</div></div>)}
+              {[{ label: "SÉANCES", value: String(programSessions.length), color: "#ff9f8b" }, { label: "MOYENNE", value: `${Math.round(career.averagePerformance || 0)}/100`, color: "#9fffc2" }, { label: "PLAN", value: `${dailyPlan.durationMin} min`, color: "#ff9f8b" }].map(item => <div key={item.label} style={{ minWidth: 0, padding: "9px 6px", textAlign: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(2,7,13,.43)" }}><div style={{ fontSize: 9, fontWeight: 950, letterSpacing: .6, opacity: .7 }}>{item.label}</div><div style={{ marginTop: 4, fontSize: "clamp(13px,3.6vw,21px)", fontWeight: 1000, color: item.color }}>{item.value}</div></div>)}
             </div>
             <div className="mssTrainingWelcomeActions" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 13, position: "relative" }}>
-              <button type="button" disabled={!resolved.length} onClick={() => startProgram(dailyPlan.program, { adaptiveDailyPlan: true, dailyPlanDateKey: dailyPlan.dateKey })} style={{ flex: "1 1 160px", minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(39,220,255,.65)", color: "#05202c", background: "linear-gradient(120deg,#7deaff,#19bfdc)", boxShadow: "0 6px 20px rgba(25,190,220,.2)", fontWeight: 1000, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .5 }}>▶ LANCER MON PLAN</button>
+              <button type="button" disabled={!resolved.length} onClick={() => startProgram(dailyPlan.program, { adaptiveDailyPlan: true, dailyPlanDateKey: dailyPlan.dateKey })} style={{ flex: "1 1 160px", minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,142,112,.65)", color: "#24130f", background: "linear-gradient(120deg,#ffd1c4,#e88875)", boxShadow: "0 6px 20px rgba(216,110,96,.2)", fontWeight: 1000, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .5 }}>▶ LANCER MON PLAN</button>
               <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("catalog"); }} style={{ flex: "1 1 120px", minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.18)", color: "inherit", background: "rgba(255,255,255,.08)", fontWeight: 900, cursor: "pointer" }}>CHOISIR UN EXERCICE</button>
-              <button type="button" onClick={() => setTab("sessions")} style={{ minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,216,107,.27)", color: "#ffe6a3", background: "rgba(255,216,107,.055)", fontWeight: 900, cursor: "pointer" }}>MES SÉANCES</button>
+              <button type="button" onClick={() => setTab("sessions")} style={{ minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,159,139,.27)", color: "#ffd1c4", background: "rgba(255,159,139,.055)", fontWeight: 900, cursor: "pointer" }}>MES SÉANCES</button>
             </div>
           </section>}
 
@@ -867,18 +849,18 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               <div style={{ fontSize: 16, fontWeight: 950 }}>MES SÉANCES</div>
               <div style={{ marginTop: 5, fontSize: 10, opacity: .65, lineHeight: 1.5 }}>Retrouve tes séances complètes et reprends celles interrompues. Elles restent séparées de l’Historique des parties.</div>
             </div>
-            {programDraft && <div style={{ padding: 14, marginBottom: 10, borderRadius: 14, border: "1px solid rgba(255,216,107,.32)", background: "rgba(255,216,107,.06)" }}>
-              <div style={{ fontSize: 9, color: "#ffd86b", fontWeight: 950 }}>EN COURS · PROGRAMME</div>
+            {programDraft && <div style={{ padding: 14, marginBottom: 10, borderRadius: 14, border: "1px solid rgba(255,159,139,.32)", background: "rgba(255,159,139,.06)" }}>
+              <div style={{ fontSize: 9, color: "#ff9f8b", fontWeight: 950 }}>EN COURS · PROGRAMME</div>
               <div style={{ fontSize: 13, fontWeight: 900, marginTop: 5 }}>{programDraft.programTitle}</div>
               <div style={{ fontSize: 10, opacity: .75, marginTop: 5 }}>{programDraft.completedSteps.length}/{programDraft.exerciseIds.length} exercices terminés</div>
-              <div style={{ height: 5, borderRadius: 8, background: "rgba(255,255,255,.1)", marginTop: 10, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, programDraft.completedSteps.length / Math.max(1, programDraft.exerciseIds.length) * 100)}%`, background: "#ffd86b" }} /></div>
-              <button type="button" onClick={resumeProgramDraft} disabled={!resolved.length} style={{ marginTop: 12, padding: "10px 15px", borderRadius: 10, background: "rgba(255,216,107,.18)", color: "inherit", border: "1px solid rgba(255,216,107,.3)", fontWeight: 900, cursor: "pointer" }}>REPRENDRE LA SÉANCE</button>
+              <div style={{ height: 5, borderRadius: 8, background: "rgba(255,255,255,.1)", marginTop: 10, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, programDraft.completedSteps.length / Math.max(1, programDraft.exerciseIds.length) * 100)}%`, background: "#ff9f8b" }} /></div>
+              <button type="button" onClick={resumeProgramDraft} disabled={!resolved.length} style={{ marginTop: 12, padding: "10px 15px", borderRadius: 10, background: "rgba(255,159,139,.18)", color: "inherit", border: "1px solid rgba(255,159,139,.3)", fontWeight: 900, cursor: "pointer" }}>REPRENDRE LA SÉANCE</button>
             </div>}
-            {pausedExerciseDrafts.map(({ exercise, draft }) => <div key={`draft:${exercise.id}`} style={{ padding: 13, marginBottom: 8, borderRadius: 13, border: "1px solid rgba(255,216,107,.23)", background: "rgba(255,216,107,.035)" }}>
-              <div style={{ fontSize: 9, color: "#ffd86b", fontWeight: 900 }}>EN COURS · EXERCICE</div>
+            {pausedExerciseDrafts.map(({ exercise, draft }) => <div key={`draft:${exercise.id}`} style={{ padding: 13, marginBottom: 8, borderRadius: 13, border: "1px solid rgba(255,159,139,.23)", background: "rgba(255,159,139,.035)" }}>
+              <div style={{ fontSize: 9, color: "#ff9f8b", fontWeight: 900 }}>EN COURS · EXERCICE</div>
               <div style={{ fontWeight: 900, fontSize: 12, marginTop: 4 }}>{exercise.title}</div>
               <div style={{ fontSize: 9, opacity: .6, marginTop: 5 }}>{Number(draft?.state?.darts || 0)} fléchettes · progression conservée</div>
-              <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("catalog"); openExerciseDetail(exercise.id); }} style={{ marginTop: 10, padding: "9px 12px", borderRadius: 9, border: "1px solid rgba(255,216,107,.26)", background: "rgba(255,216,107,.1)", color: "inherit", fontWeight: 900, cursor: "pointer" }}>OUVRIR ET REPRENDRE</button>
+              <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("catalog"); openExerciseDetail(exercise.id); }} style={{ marginTop: 10, padding: "9px 12px", borderRadius: 9, border: "1px solid rgba(255,159,139,.26)", background: "rgba(255,159,139,.1)", color: "inherit", fontWeight: 900, cursor: "pointer" }}>OUVRIR ET REPRENDRE</button>
             </div>)}
             <div style={{ fontSize: 11, fontWeight: 950, margin: "18px 0 10px" }}>SÉANCES TERMINÉES</div>
             {!trainingSessionCards.length && <div style={{ opacity: .66, fontSize: 11, padding: 16 }}>Aucune séance terminée pour le moment.</div>}
@@ -898,13 +880,13 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
           {tab === "program" && <div className="mssTrainingHubSecondary" id="mss-training-details">
           {viewMode === "complete" && <>
-          <div style={{ marginTop: 10, padding: 12, borderRadius: 18, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(255,255,255,.02))" }}>
+          <div style={{ marginTop: 10, padding: 12, borderRadius: 18, border: "1px solid rgba(255,142,112,.18)", background: "linear-gradient(145deg,rgba(255,142,112,.055),rgba(255,255,255,.02))" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", flex: "0 0 auto", border: "1px solid rgba(39,220,255,.28)", background: "rgba(39,220,255,.08)", fontSize: 15, fontWeight: 950 }}>
+              <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", flex: "0 0 auto", border: "1px solid rgba(255,142,112,.28)", background: "rgba(255,142,112,.08)", fontSize: 15, fontWeight: 950 }}>
                 {accountParticipant?.avatarUrl || accountParticipant?.avatarDataUrl ? <img src={String(accountParticipant.avatarUrl || accountParticipant.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (accountParticipant?.name || "M").slice(0,1).toUpperCase()}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 7.1, letterSpacing: 1, fontWeight: 950, color: "#27dcff" }}>ENTRAÎNEMENT PERSONNEL</div>
+                <div style={{ fontSize: 7.1, letterSpacing: 1, fontWeight: 950, color: "#ff9f8b" }}>ENTRAÎNEMENT PERSONNEL</div>
                 <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 0, fontSize: 12.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{accountParticipant?.name || "Compte utilisateur requis"}</div>
                   <span style={{ padding: "4px 7px", borderRadius: 999, fontSize: 6.7, fontWeight: 950, border: "1px solid rgba(80,255,174,.18)", background: "rgba(80,255,174,.07)", color: "#8cffcb" }}>SOLO</span>
@@ -922,76 +904,76 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
           {viewMode === "essential" ? <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <div style={{ width: 34, height: 34, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(39,220,255,.06)", flex: "0 0 auto" }}>{accountParticipant?.avatarUrl || accountParticipant?.avatarDataUrl ? <img src={String(accountParticipant.avatarUrl || accountParticipant.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (accountParticipant?.name || "M").slice(0,1).toUpperCase()}</div>
+              <div style={{ width: 34, height: 34, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(255,142,112,.06)", flex: "0 0 auto" }}>{accountParticipant?.avatarUrl || accountParticipant?.avatarDataUrl ? <img src={String(accountParticipant.avatarUrl || accountParticipant.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (accountParticipant?.name || "M").slice(0,1).toUpperCase()}</div>
               <div style={{ minWidth: 0, fontSize: 10.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{accountParticipant?.name || "Mon compte"}</div>
             </div>
             <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
-              <button type="button" title="Conseil Awena" aria-label="Conseil Awena" onClick={() => setDetailSheet("coach")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(39,220,255,.06)", color: "#27dcff", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="coach" size={17}/></button>
-              {programDraft && <button type="button" title="Reprendre le programme" aria-label="Reprendre le programme" onClick={() => setDetailSheet("resume")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,216,107,.07)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center", position: "relative" }}><HubGlyph name="history" size={17}/><span style={{ position: "absolute", right: 5, top: 5, width: 7, height: 7, borderRadius: 999, background: "#ffd86b" }}/></button>}
+              <button type="button" title="Conseil Awena" aria-label="Conseil Awena" onClick={() => setDetailSheet("coach")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,142,112,.06)", color: "#ff9f8b", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="coach" size={17}/></button>
+              {programDraft && <button type="button" title="Reprendre le programme" aria-label="Reprendre le programme" onClick={() => setDetailSheet("resume")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,159,139,.07)", color: "#ff9f8b", cursor: "pointer", display: "grid", placeItems: "center", position: "relative" }}><HubGlyph name="history" size={17}/><span style={{ position: "absolute", right: 5, top: 5, width: 7, height: 7, borderRadius: 999, background: "#ff9f8b" }}/></button>}
               {nextRecommendation && <button type="button" title="Suite conseillée" aria-label="Suite conseillée" onClick={() => setDetailSheet("followup")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(185,156,255,.07)", color: "#b99cff", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="cycle" size={17}/></button>}
               <button type="button" title="Affichage et aide" aria-label="Affichage et aide" onClick={() => setDetailSheet("display")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,255,255,.035)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="progress" size={17}/></button>
             </div>
           </div> : <>
             <div style={{ marginTop: 10, padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 10, fontWeight: 950, color: "#27dcff" }}>COACH AWENA</div><div style={{ marginTop: 4, fontSize: 14, fontWeight: 950 }}>{prescription.title}</div></div>
-                <button type="button" onClick={() => setDetailSheet("coach")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(39,220,255,.06)", color: "#27dcff", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={17}/></button>
+                <div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 10, fontWeight: 950, color: "#ff9f8b" }}>COACH AWENA</div><div style={{ marginTop: 4, fontSize: 14, fontWeight: 950 }}>{prescription.title}</div></div>
+                <button type="button" onClick={() => setDetailSheet("coach")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,142,112,.06)", color: "#ff9f8b", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={17}/></button>
               </div>
             </div>
             <div style={{ marginTop: 6, display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={() => setDetailSheet("display")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,255,255,.03)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }} title="Affichage / guide"><HubGlyph name="progress" size={17}/></button></div>
           </>}
 
-          {tab === "program" && viewMode === "complete" && programDraft && <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(255,216,107,.24)", background: "rgba(255,216,107,.045)", display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", background: "rgba(255,216,107,.08)", color: "#ffd86b" }}><HubGlyph name="history" size={15}/></span><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 7, fontWeight: 950, color: "#ffd86b" }}>PROGRAMME INTERROMPU</div><div style={{ marginTop: 2, fontSize: 8.4, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{programDraft.programTitle} · étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length}</div></div><button type="button" onClick={() => setDetailSheet("resume")} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid rgba(255,216,107,.20)", background: "rgba(255,216,107,.06)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}>OUVRIR</button></div>}
+          {tab === "program" && viewMode === "complete" && programDraft && <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(255,159,139,.24)", background: "rgba(255,159,139,.045)", display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", background: "rgba(255,159,139,.08)", color: "#ff9f8b" }}><HubGlyph name="history" size={15}/></span><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 7, fontWeight: 950, color: "#ff9f8b" }}>PROGRAMME INTERROMPU</div><div style={{ marginTop: 2, fontSize: 8.4, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{programDraft.programTitle} · étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length}</div></div><button type="button" onClick={() => setDetailSheet("resume")} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid rgba(255,159,139,.20)", background: "rgba(255,159,139,.06)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}>OUVRIR</button></div>}
 
           {tab === "program" && viewMode === "complete" && nextRecommendation && <button type="button" onClick={() => setDetailSheet("followup")} style={{ width: "100%", marginTop: 8, padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(185,156,255,.14)", background: "rgba(140,90,255,.035)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}><span style={{ width: 26, height: 26, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(185,156,255,.07)", color: "#b99cff" }}><HubGlyph name="cycle" size={13}/></span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 6.4, fontWeight: 950, color: "#b99cff" }}>SUITE CONSEILLÉE</span><span style={{ display: "block", marginTop: 2, fontSize: 7.8, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextRecommendation.headline}</span></span><span style={{ fontSize: 6.7, opacity: .5 }}>{nextRecommendation.durationMin}′</span></button>}
 
           </div>}
 
           {tab === "program" && <div className="mssTrainingHubSecondary">
-            {viewMode === "complete" && <CompactIconNav items={programPanels.map((item) => ({ ...item, status: item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS` }))} activeId={programPanel} onChange={(id) => setProgramPanel(id as ProgramPanel)} stickyTop={48} />}
+            {viewMode === "complete" && <CompactIconNav items={programPanels.map((item) => ({ ...item, status: item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS` }))} activeId={programPanel} onChange={(id) => setProgramPanel(id as ProgramPanel)} />}
 
             {programPanel === "today" && <>
             {viewMode === "essential" && <CompactIconNav items={todayPanels} activeId={todayPanel} onChange={(id) => setTodayPanel(id as TodayPanel)} tone="gold" />}
-            {(viewMode === "complete" || todayPanel === "challenge") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "14px 2px" : 11, borderRadius: viewMode === "essential" ? 0 : 15, border: viewMode === "essential" ? "none" : (dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,216,107,.24)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(39,220,255,.025))" : "linear-gradient(135deg,rgba(255,216,107,.07),rgba(140,90,255,.025))") }}>
+            {(viewMode === "complete" || todayPanel === "challenge") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "14px 2px" : 11, borderRadius: viewMode === "essential" ? 0 : 15, border: viewMode === "essential" ? "none" : (dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,159,139,.24)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(255,142,112,.025))" : "linear-gradient(135deg,rgba(255,159,139,.07),rgba(140,90,255,.025))") }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: .6, color: dailyChallenge.completed ? "#8cffcb" : "#ffd86b" }}>{dailyChallenge.completed ? "✓ DÉFI VALIDÉ" : "★ DÉFI DU JOUR"}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: .6, color: dailyChallenge.completed ? "#8cffcb" : "#ff9f8b" }}>{dailyChallenge.completed ? "✓ DÉFI VALIDÉ" : "★ DÉFI DU JOUR"}</div>
                   <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dailyChallenge.headline}</div>
                   {viewMode === "complete" && <div style={{ marginTop: 5, fontSize: 10, opacity: .62, lineHeight: 1.4 }}>{dailyChallenge.body}</div>}
-                  {viewMode === "complete" && <div style={{ marginTop: 5, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 6px", borderRadius: 999, background: dailyChallenge.rotated ? "rgba(185,156,255,.08)" : "rgba(39,220,255,.07)", border: dailyChallenge.rotated ? "1px solid rgba(185,156,255,.16)" : "1px solid rgba(39,220,255,.14)", fontSize: 8.5, fontWeight: 900, opacity: .78 }}>{dailyChallenge.rotated ? "↻" : "◎"} {dailyChallenge.rotationLabel}</div>}
+                  {viewMode === "complete" && <div style={{ marginTop: 5, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 6px", borderRadius: 999, background: dailyChallenge.rotated ? "rgba(185,156,255,.08)" : "rgba(255,142,112,.07)", border: dailyChallenge.rotated ? "1px solid rgba(185,156,255,.16)" : "1px solid rgba(255,142,112,.14)", fontSize: 8.5, fontWeight: 900, opacity: .78 }}>{dailyChallenge.rotated ? "↻" : "◎"} {dailyChallenge.rotationLabel}</div>}
                 </div>
                 <div style={{ flex: "0 0 auto", textAlign: "right", minWidth: 66 }}>
                   <div style={{ fontSize: 9, opacity: .55 }}>SÉRIE</div>
                   <div style={{ fontSize: 16, fontWeight: 950 }}>{dailyChallenge.streakDays} 🔥</div>
-                  {viewMode === "complete" && <div style={{ marginTop: 5, padding: "4px 6px", borderRadius: 8, background: dailyChallenge.completed ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", border: dailyChallenge.completed ? "1px solid rgba(255,216,107,.16)" : "1px solid rgba(255,255,255,.05)" }}>
+                  {viewMode === "complete" && <div style={{ marginTop: 5, padding: "4px 6px", borderRadius: 8, background: dailyChallenge.completed ? "rgba(255,159,139,.08)" : "rgba(255,255,255,.025)", border: dailyChallenge.completed ? "1px solid rgba(255,159,139,.16)" : "1px solid rgba(255,255,255,.05)" }}>
                     <div style={{ fontSize: 6.2, opacity: .48 }}>MÉDAILLE</div>
-                    <div style={{ marginTop: 1, fontSize: 7.6, fontWeight: 950, color: dailyChallenge.completed ? "#ffd86b" : "inherit" }}>{dailyChallenge.reward.icon} {dailyChallenge.reward.label}</div>
+                    <div style={{ marginTop: 1, fontSize: 7.6, fontWeight: 950, color: dailyChallenge.completed ? "#ff9f8b" : "inherit" }}>{dailyChallenge.reward.icon} {dailyChallenge.reward.label}</div>
                   </div>}
                 </div>
               </div>
-              {viewMode === "complete" && (dailyChallenge.completed || dailyChallenge.bestScore > 0) && <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 10, background: "rgba(255,216,107,.035)", border: "1px solid rgba(255,216,107,.08)" }}>
+              {viewMode === "complete" && (dailyChallenge.completed || dailyChallenge.bestScore > 0) && <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 10, background: "rgba(255,159,139,.035)", border: "1px solid rgba(255,159,139,.08)" }}>
                 <div style={{ fontSize: 7.2, fontWeight: 900, opacity: .62 }}>MEILLEUR DU JOUR <strong style={{ color: "inherit", opacity: 1 }}>{Math.round(dailyChallenge.bestScore)}/100</strong></div>
-                <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.reward.nextScore ? "#ffd86b" : "#8cffcb" }}>{dailyChallenge.reward.nextScore ? `${dailyChallenge.reward.nextLabel} À ${dailyChallenge.reward.nextScore}` : "DIAMANT DÉCROCHÉ"}</div>
+                <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.reward.nextScore ? "#ff9f8b" : "#8cffcb" }}>{dailyChallenge.reward.nextScore ? `${dailyChallenge.reward.nextLabel} À ${dailyChallenge.reward.nextScore}` : "DIAMANT DÉCROCHÉ"}</div>
               </div>}
               {viewMode === "complete" && <div style={{ marginTop: 8, padding: "8px 9px", borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                   <div style={{ fontSize: 7.2, fontWeight: 900, opacity: .62 }}>PROCHAIN TROPHÉE</div>
-                  <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.nextMilestoneDays ? "#ffd86b" : "#8cffcb" }}>{dailyChallenge.nextMilestoneDays ? `${dailyChallenge.nextMilestoneDays} J · ${dailyChallenge.nextMilestoneLabel}` : dailyChallenge.nextMilestoneLabel}</div>
+                  <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.nextMilestoneDays ? "#ff9f8b" : "#8cffcb" }}>{dailyChallenge.nextMilestoneDays ? `${dailyChallenge.nextMilestoneDays} J · ${dailyChallenge.nextMilestoneLabel}` : dailyChallenge.nextMilestoneLabel}</div>
                 </div>
-                <div style={{ marginTop: 6, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${Math.max(3, dailyChallenge.milestoneProgressPct)}%`, height: "100%", background: "linear-gradient(90deg,#ffd86b,#ffb86b)" }} /></div>
+                <div style={{ marginTop: 6, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${Math.max(3, dailyChallenge.milestoneProgressPct)}%`, height: "100%", background: "linear-gradient(90deg,#ff9f8b,#ffb86b)" }} /></div>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 5, marginTop: 7 }}>
-                  {dailyChallenge.milestones.map((milestone) => <div key={milestone.days} title={`${milestone.days} jours • ${milestone.label}`} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "5px 3px", borderRadius: 8, border: milestone.unlocked ? "1px solid rgba(255,216,107,.20)" : "1px solid rgba(255,255,255,.04)", background: milestone.unlocked ? "rgba(255,216,107,.07)" : "rgba(255,255,255,.015)", opacity: milestone.unlocked ? 1 : .42 }}>
+                  {dailyChallenge.milestones.map((milestone) => <div key={milestone.days} title={`${milestone.days} jours • ${milestone.label}`} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "5px 3px", borderRadius: 8, border: milestone.unlocked ? "1px solid rgba(255,159,139,.20)" : "1px solid rgba(255,255,255,.04)", background: milestone.unlocked ? "rgba(255,159,139,.07)" : "rgba(255,255,255,.015)", opacity: milestone.unlocked ? 1 : .42 }}>
                     <div style={{ fontSize: 10 }}>{milestone.icon}</div><div style={{ marginTop: 1, fontSize: 6.6, fontWeight: 950 }}>{milestone.days}J</div>
                   </div>)}
                 </div>
               </div>}
-              {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("challenge")} style={{ marginTop: 8, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(255,216,107,.07)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du défi"><HubGlyph name="diagnosis" size={17}/></button>}
-              {!dailyChallenge.completed && <button type="button" disabled={!resolved.length} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.30)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
+              {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("challenge")} style={{ marginTop: 8, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(255,159,139,.07)", color: "#ff9f8b", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du défi"><HubGlyph name="diagnosis" size={17}/></button>}
+              {!dailyChallenge.completed && <button type="button" disabled={!resolved.length} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,159,139,.30)", background: "rgba(255,159,139,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
             </div>}
-            {(viewMode === "complete" || todayPanel === "plan") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "16px 2px" : 14, borderRadius: viewMode === "essential" ? 0 : 17, border: viewMode === "essential" ? "none" : (actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))") }}>
+            {(viewMode === "complete" || todayPanel === "plan") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "16px 2px" : 14, borderRadius: viewMode === "essential" ? 0 : 17, border: viewMode === "essential" ? "none" : (actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(255,142,112,.32)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(255,142,112,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(255,142,112,.035))" : "linear-gradient(135deg,rgba(255,142,112,.11),rgba(140,90,255,.045))") }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 300px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: .7, color: actionCoach.tone === "amber" ? "#ffd86b" : actionCoach.tone === "green" ? "#8cffcb" : actionCoach.tone === "violet" ? "#b99cff" : "#27dcff" }}>{actionCoach.eyebrow}</div>
+                  <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: .7, color: actionCoach.tone === "amber" ? "#ff9f8b" : actionCoach.tone === "green" ? "#8cffcb" : actionCoach.tone === "violet" ? "#b99cff" : "#ff9f8b" }}>{actionCoach.eyebrow}</div>
                   <div style={{ marginTop: 4, fontSize: 14, fontWeight: 950 }}>{actionCoach.title}</div>
                   {viewMode === "complete" && <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.45, opacity: .68 }}>{actionCoach.body}</div>}
                 </div>
@@ -1000,13 +982,13 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   {viewMode === "complete" && <button type="button" onClick={() => prepareRecommendedSession(actionCoach.durationMin, actionCoach.family)} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.16)", color: "inherit", fontSize: 8.2, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", opacity: .78 }}>AJUSTER</button>}
                 </div>
               </div>
-              {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("plan")} style={{ marginTop: 10, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(39,220,255,.06)", color: "#27dcff", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du plan"><HubGlyph name="diagnosis" size={17}/></button>}
+              {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("plan")} style={{ marginTop: 10, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(255,142,112,.06)", color: "#ff9f8b", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du plan"><HubGlyph name="diagnosis" size={17}/></button>}
               {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
                 {[
                   ["1", "ÉCHAUFFE-TOI", "Mets-toi en rythme"],
                   ["2", "POINT DU JOUR", dailyPlan.familyLabel],
                   ["3", "FINISH", "Termine proprement"],
-                ].map(([n, title, body]) => <div key={n} style={{ padding: "9px 7px", borderRadius: 11, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.065)", textAlign: "center" }}><div style={{ width: 20, height: 20, margin: "0 auto 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.20)", fontSize: 8, fontWeight: 950 }}>{n}</div><div style={{ fontSize: 7.3, fontWeight: 950 }}>{title}</div><div style={{ marginTop: 2, fontSize: 6.8, opacity: .46 }}>{body}</div></div>)}
+                ].map(([n, title, body]) => <div key={n} style={{ padding: "9px 7px", borderRadius: 11, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.065)", textAlign: "center" }}><div style={{ width: 20, height: 20, margin: "0 auto 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(255,142,112,.10)", border: "1px solid rgba(255,142,112,.20)", fontSize: 8, fontWeight: 950 }}>{n}</div><div style={{ fontSize: 7.3, fontWeight: 950 }}>{title}</div><div style={{ marginTop: 2, fontSize: 6.8, opacity: .46 }}>{body}</div></div>)}
               </div>}
               {viewMode === "complete" && <button type="button" onClick={() => setShowPlanDetails((v) => !v)} style={{ width: "100%", marginTop: 8, padding: 7, borderRadius: 9, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.12)", color: "inherit", fontSize: 7.4, fontWeight: 900, cursor: "pointer", opacity: .78 }}>{showPlanDetails ? "MASQUER LE CONTENU DU PLAN" : `VOIR LE CONTENU DU PLAN · ${dailyPlan.program.exerciseIds.length} ÉTAPES`}</button>}
               <div style={{ display: showPlanDetails ? "grid" : "none", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
@@ -1027,14 +1009,14 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 </div>
               </div>
             </div>}
-            {(viewMode === "complete" || todayPanel === "assessment") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "16px 2px" : 13, borderRadius: viewMode === "essential" ? 0 : 16, border: viewMode === "essential" ? "none" : (assessment.due ? "1px solid rgba(255,216,107,.30)" : "1px solid rgba(185,156,255,.20)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (assessment.due ? "linear-gradient(135deg,rgba(255,216,107,.085),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(140,90,255,.065),rgba(39,220,255,.035))") }}>
+            {(viewMode === "complete" || todayPanel === "assessment") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "16px 2px" : 13, borderRadius: viewMode === "essential" ? 0 : 16, border: viewMode === "essential" ? "none" : (assessment.due ? "1px solid rgba(255,159,139,.30)" : "1px solid rgba(185,156,255,.20)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (assessment.due ? "linear-gradient(135deg,rgba(255,159,139,.085),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(140,90,255,.065),rgba(255,142,112,.035))") }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 260px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: assessment.due ? "#ffd86b" : "#b99cff" }}>BILAN DE NIVEAU • 6 COMPÉTENCES</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: assessment.due ? "#ff9f8b" : "#b99cff" }}>BILAN DE NIVEAU • 6 COMPÉTENCES</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{assessment.headline}</div>
                   {viewMode === "complete" && <div style={{ marginTop: 5, fontSize: 10.5, lineHeight: 1.45, opacity: .66 }}>{assessment.body}</div>}
                 </div>
-                <button type="button" disabled={!resolved.length} onClick={() => startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,216,107,.25)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 10, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>{assessment.available ? "REJOUER LE BILAN" : "LANCER LE BILAN"}</button>
+                <button type="button" disabled={!resolved.length} onClick={() => startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,159,139,.25)", background: "rgba(255,159,139,.08)", color: "inherit", fontSize: 10, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>{assessment.available ? "REJOUER LE BILAN" : "LANCER LE BILAN"}</button>
               </div>
               {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("assessment")} style={{ marginTop: 9, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(185,156,255,.07)", color: "#b99cff", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du bilan"><HubGlyph name="diagnosis" size={17}/></button>}
               {viewMode === "complete" && assessment.available && <>
@@ -1042,7 +1024,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12 }}>{Math.round(assessment.overallScore)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>NIVEAU</div></div>
                   <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12 }}>{Math.round(assessment.accuracyPct)}%</b><div style={{ fontSize: 6.8, opacity: .42 }}>PRÉCISION</div></div>
                   <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12, color: "#8cffcb" }}>{assessment.strongestLabel}</b><div style={{ fontSize: 6.8, opacity: .42 }}>POINT FORT</div></div>
-                  <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12, color: "#ffd86b" }}>{assessment.weakestLabel}</b><div style={{ fontSize: 6.8, opacity: .42 }}>À TRAVAILLER</div></div>
+                  <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12, color: "#ff9f8b" }}>{assessment.weakestLabel}</b><div style={{ fontSize: 6.8, opacity: .42 }}>À TRAVAILLER</div></div>
                 </div>
                 <div style={{ marginTop: 7, fontSize: 7.8, opacity: .5 }}>{new Date(assessment.endedAt).toLocaleDateString()} • {assessment.sessionsSinceAssessment} séance{assessment.sessionsSinceAssessment > 1 ? "s" : ""} depuis le bilan{assessment.delta == null ? "" : ` • évolution ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
               </>}
@@ -1050,7 +1032,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {programPanel === "week" && <>
-            <div style={{ marginTop: 8, padding: 13, borderRadius: 16, border: "1px solid rgba(80,255,174,.24)", background: "linear-gradient(135deg,rgba(80,255,174,.09),rgba(39,220,255,.045))" }}>
+            <div style={{ marginTop: 8, padding: 13, borderRadius: 16, border: "1px solid rgba(80,255,174,.24)", background: "linear-gradient(135deg,rgba(80,255,174,.09),rgba(255,142,112,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>PLAN HEBDOMADAIRE</div>
@@ -1063,7 +1045,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   <button type="button" onClick={() => updateWeeklyTarget(preferences.weeklySessionTarget + 1)} style={{ width: 28, height: 28, borderRadius: 9, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>+</button>
                 </div>
               </div>
-              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, weeklyPlan.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#8cffcb,#27dcff)" }} /></div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, weeklyPlan.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#8cffcb,#ff9f8b)" }} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9, textAlign: "center" }}>
                 <div style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 12 }}>{weeklyPlan.streakWeeks}</b><div style={{ fontSize: 7.5, opacity: .48 }}>SEMAINES DE SÉRIE</div></div>
                 <div style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 12 }}>{weeklyPlan.bestSession ? Math.round(weeklyPlan.bestSession.performanceScore) : 0}</b><div style={{ fontSize: 7.5, opacity: .48 }}>MEILLEURE SÉANCE</div></div>
@@ -1072,26 +1054,26 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               <button type="button" onClick={() => { setProgramId(coachProgram.id); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(80,255,174,.28)", background: "rgba(80,255,174,.08)", color: "inherit", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>PROCHAINE SÉANCE AWENA • {coachProgram.title}</button>
             </div>
 
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.075),rgba(39,220,255,.035))" }}>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(255,159,139,.22)", background: "linear-gradient(135deg,rgba(255,159,139,.075),rgba(255,142,112,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>MISSIONS AWENA</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>MISSIONS AWENA</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{missionBoard.headline} • {missionBoard.completed}/{missionBoard.total}</div>
                   <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .62 }}>{missionBoard.summary}</div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {missionBoard.nextMission && <button type="button" onClick={() => prepareRecommendedSession(missionBoard.nextMission!.recommendedDurationMin, missionBoard.nextMission!.family)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.28)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>MISSION SUIVANTE</button>}
+                  {missionBoard.nextMission && <button type="button" onClick={() => prepareRecommendedSession(missionBoard.nextMission!.recommendedDurationMin, missionBoard.nextMission!.family)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,159,139,.28)", background: "rgba(255,159,139,.08)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>MISSION SUIVANTE</button>}
                   <button type="button" onClick={() => setShowMissionDetails((v) => !v)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 7.8, fontWeight: 900, cursor: "pointer" }}>{showMissionDetails ? "MASQUER" : "VOIR TOUTES"}</button>
                 </div>
               </div>
-              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, missionBoard.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#ffd86b,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, missionBoard.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#ff9f8b,#ff9f8b,#8c5aff)" }} /></div>
               <div style={{ display: showMissionDetails ? "grid" : "none", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 7, marginTop: 10 }}>
                 {missionBoard.missions.map((mission) => {
                   const ratio = Math.max(0, Math.min(100, (mission.progress / Math.max(1, mission.target)) * 100));
                   return <div key={mission.id} style={{ padding: 10, borderRadius: 12, border: mission.completed ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.075)", background: mission.completed ? "rgba(80,255,174,.05)" : "rgba(255,255,255,.025)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ fontSize: 9.5 }}>{mission.completed ? "✓ " : ""}{mission.title}</b><span style={{ fontSize: 8, color: mission.completed ? "#8cffcb" : "#ffd86b" }}>{Math.round(mission.progress)}/{mission.target}{mission.unit === "%" ? "%" : ""}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ fontSize: 9.5 }}>{mission.completed ? "✓ " : ""}{mission.title}</b><span style={{ fontSize: 8, color: mission.completed ? "#8cffcb" : "#ff9f8b" }}>{Math.round(mission.progress)}/{mission.target}{mission.unit === "%" ? "%" : ""}</span></div>
                     <div style={{ marginTop: 4, minHeight: 28, fontSize: 8, lineHeight: 1.35, opacity: .5 }}>{mission.description}</div>
-                    <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden", marginTop: 7 }}><div style={{ width: `${Math.max(2, ratio)}%`, height: "100%", background: mission.completed ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#ffd86b,#8c5aff)" }} /></div>
+                    <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden", marginTop: 7 }}><div style={{ width: `${Math.max(2, ratio)}%`, height: "100%", background: mission.completed ? "linear-gradient(90deg,#8cffcb,#ff9f8b)" : "linear-gradient(90deg,#ff9f8b,#8c5aff)" }} /></div>
                   </div>;
                 })}
               </div>
@@ -1109,21 +1091,21 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,auto)", gap: 6, textAlign: "center" }}>
                   <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(cycleComparison.recentAverage)}</b><div style={{ fontSize: 6.8, opacity: .43 }}>ACTUEL</div></div>
                   <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{cycleComparison.previousSessions ? Math.round(cycleComparison.previousAverage) : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>AVANT</div></div>
-                  <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: cycleComparison.delta > 3 ? "#8cffcb" : cycleComparison.delta < -3 ? "#ffd86b" : "inherit" }}>{cycleComparison.previousSessions ? `${cycleComparison.delta > 0 ? "+" : ""}${Math.round(cycleComparison.delta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>DELTA</div></div>
+                  <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: cycleComparison.delta > 3 ? "#8cffcb" : cycleComparison.delta < -3 ? "#ff9f8b" : "inherit" }}>{cycleComparison.previousSessions ? `${cycleComparison.delta > 0 ? "+" : ""}${Math.round(cycleComparison.delta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>DELTA</div></div>
                 </div>
               </div>
             </div>
             <button type="button" onClick={() => setShowCycleDetails((v) => !v)} style={{ width: "100%", marginTop: 8, padding: 8, borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", color: "inherit", fontSize: 7.8, fontWeight: 900, cursor: "pointer" }}>{showCycleDetails ? "MASQUER LES DÉTAILS COACH" : "VOIR LES DÉTAILS DU CAP"}</button>
             <div style={{ display: showCycleDetails ? "block" : "none" }}>
 
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: adaptationCoach.status === "progressing" ? "1px solid rgba(80,255,174,.24)" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "1px solid rgba(255,184,76,.26)" : "1px solid rgba(39,220,255,.18)", background: adaptationCoach.status === "progressing" ? "linear-gradient(135deg,rgba(80,255,174,.06),rgba(39,220,255,.035))" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" : "rgba(255,255,255,.025)" }}>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: adaptationCoach.status === "progressing" ? "1px solid rgba(80,255,174,.24)" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "1px solid rgba(255,184,76,.26)" : "1px solid rgba(255,142,112,.18)", background: adaptationCoach.status === "progressing" ? "linear-gradient(135deg,rgba(80,255,174,.06),rgba(255,142,112,.035))" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" : "rgba(255,255,255,.025)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 260px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: adaptationCoach.status === "progressing" ? "#8cffcb" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "#ffd86b" : "#27dcff" }}>PILOTAGE AWENA • {adaptationCoach.label}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: adaptationCoach.status === "progressing" ? "#8cffcb" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "#ff9f8b" : "#ff9f8b" }}>PILOTAGE AWENA • {adaptationCoach.label}</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{adaptationCoach.headline}</div>
                   <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{adaptationCoach.summary}</div>
                 </div>
-                <button type="button" onClick={() => prepareRecommendedSession(adaptationCoach.recommendedDurationMin, adaptationCoach.recommendedFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.22)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>{adaptationCoach.actionLabel} • {adaptationCoach.recommendedDurationMin} MIN</button>
+                <button type="button" onClick={() => prepareRecommendedSession(adaptationCoach.recommendedDurationMin, adaptationCoach.recommendedFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,142,112,.22)", background: "rgba(255,142,112,.07)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>{adaptationCoach.actionLabel} • {adaptationCoach.recommendedDurationMin} MIN</button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{programSessions.length >= 4 ? Math.round(adaptationCoach.recentAverage) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>4 DERNIÈRES</div></div>
@@ -1134,16 +1116,16 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               {adaptationCoach.targetRequiredAverage !== null && <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: adaptationCoach.targetFeasible ? "rgba(80,255,174,.035)" : "rgba(255,184,76,.055)", border: adaptationCoach.targetFeasible ? "1px solid rgba(80,255,174,.12)" : "1px solid rgba(255,184,76,.18)", fontSize: 8.8, lineHeight: 1.4, opacity: .75 }}><b>Cible du bloc :</b> il faut environ {Math.round(adaptationCoach.targetRequiredAverage)}/100 de moyenne sur les {blockCoach.remainingSessions} séance{blockCoach.remainingSessions > 1 ? "s" : ""} restante{blockCoach.remainingSessions > 1 ? "s" : ""}.{!adaptationCoach.targetFeasible ? " Awena considère la cible trop agressive : privilégie d’abord la reconstruction du niveau." : ""}</div>}
             </div>
 
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.065),rgba(140,90,255,.045))" }}>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(255,142,112,.20)", background: "linear-gradient(135deg,rgba(255,142,112,.065),rgba(140,90,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>BLOC DE PROGRESSION AWENA • 12 SÉANCES</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>BLOC DE PROGRESSION AWENA • 12 SÉANCES</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{blockCoach.headline}</div>
                   <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{blockCoach.summary}</div>
                 </div>
-                <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, blockCoach.recommendedFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.24)", background: "rgba(39,220,255,.08)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>POURSUIVRE • {blockCoach.recommendedLabel.toUpperCase()}</button>
+                <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, blockCoach.recommendedFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,142,112,.24)", background: "rgba(255,142,112,.08)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>POURSUIVRE • {blockCoach.recommendedLabel.toUpperCase()}</button>
               </div>
-              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, blockCoach.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#27dcff,#8c5aff,#ffd86b)" }} /></div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, blockCoach.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#ff9f8b,#8c5aff,#ff9f8b)" }} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 9, textAlign: "center" }}>
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockCoach.completedSessions}/{blockCoach.blockSize}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉANCES</div></div>
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockCoach.completedCycles}/3</b><div style={{ fontSize: 7, opacity: .45 }}>CYCLES</div></div>
@@ -1160,10 +1142,10 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               </div>}
             </div>
 
-            {blockHandoff.justStartedNewBlock && blockHandoff.latest && <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: blockHandoff.latest.outcome === "rebuild" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(80,255,174,.26)", background: blockHandoff.latest.outcome === "rebuild" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(80,255,174,.07),rgba(39,220,255,.04))" }}>
+            {blockHandoff.justStartedNewBlock && blockHandoff.latest && <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: blockHandoff.latest.outcome === "rebuild" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(80,255,174,.26)", background: blockHandoff.latest.outcome === "rebuild" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(80,255,174,.07),rgba(255,142,112,.04))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 260px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: blockHandoff.latest.outcome === "rebuild" ? "#ffd86b" : "#8cffcb" }}>BILAN DE BLOC • {blockHandoff.latest.outcomeLabel}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: blockHandoff.latest.outcome === "rebuild" ? "#ff9f8b" : "#8cffcb" }}>BILAN DE BLOC • {blockHandoff.latest.outcomeLabel}</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{blockHandoff.latest.headline}</div>
                   <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{blockHandoff.latest.summary}</div>
                 </div>
@@ -1178,16 +1160,16 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)", fontSize: 8.8, lineHeight: 1.4, opacity: .72 }}><b>Passage au bloc {blockHandoff.nextBlockNumber} :</b> nouvelle cible {blockHandoff.targetAverage}/100 • priorité d’ouverture {blockHandoff.recommendedLabel}. Aucune donnée n’est remise à zéro : le nouveau bloc repart de la référence réellement atteinte.</div>
             </div>}
 
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: cycleCoach.onTrack ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,184,76,.24)", background: cycleCoach.onTrack ? "linear-gradient(135deg,rgba(80,255,174,.055),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" }}>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: cycleCoach.onTrack ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,184,76,.24)", background: cycleCoach.onTrack ? "linear-gradient(135deg,rgba(80,255,174,.055),rgba(255,142,112,.035))" : "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 250px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: cycleCoach.onTrack ? "#8cffcb" : "#ffd86b" }}>CAP DE CYCLE AWENA • 4 SÉANCES</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: cycleCoach.onTrack ? "#8cffcb" : "#ff9f8b" }}>CAP DE CYCLE AWENA • 4 SÉANCES</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{cycleCoach.headline}</div>
                   <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{cycleCoach.summary}</div>
                 </div>
-                <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, cycleCoach.priority.family)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.22)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>TRAVAILLER {cycleCoach.priority.label.toUpperCase()}</button>
+                <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, cycleCoach.priority.family)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,142,112,.22)", background: "rgba(255,142,112,.07)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>TRAVAILLER {cycleCoach.priority.label.toUpperCase()}</button>
               </div>
-              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, cycleCoach.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#8cffcb,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, cycleCoach.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#8cffcb,#ff9f8b,#8c5aff)" }} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{cycleCoach.completedSessions}/{cycleCoach.cycleSize}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉANCES</div></div>
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{cycleCoach.completedSessions ? Math.round(cycleCoach.currentAverage) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>MOY. / {cycleCoach.targetAverage}</div></div>
@@ -1203,10 +1185,10 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {programPanel === "week" && <>
-            <div style={{ marginTop: 8, padding: 13, borderRadius: 16, border: loadSummary.status === "recovery" || loadSummary.status === "high" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(39,220,255,.20)", background: loadSummary.status === "recovery" || loadSummary.status === "high" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(255,255,255,.02))" : "linear-gradient(135deg,rgba(39,220,255,.07),rgba(140,90,255,.035))" }}>
+            <div style={{ marginTop: 8, padding: 13, borderRadius: 16, border: loadSummary.status === "recovery" || loadSummary.status === "high" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(255,142,112,.20)", background: loadSummary.status === "recovery" || loadSummary.status === "high" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(255,255,255,.02))" : "linear-gradient(135deg,rgba(255,142,112,.07),rgba(140,90,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 260px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: loadSummary.status === "recovery" || loadSummary.status === "high" ? "#ffd86b" : "#27dcff" }}>CHARGE & FORME</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: loadSummary.status === "recovery" || loadSummary.status === "high" ? "#ff9f8b" : "#ff9f8b" }}>CHARGE & FORME</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{loadSummary.statusLabel}</div>
                   <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{loadSummary.statusMessage} {loadSummary.recommendedAction}</div>
                 </div>
@@ -1219,19 +1201,19 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{loadSummary.last7Sessions}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉANCES / 7J</div></div>
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{loadSummary.last7Minutes}</b><div style={{ fontSize: 7, opacity: .45 }}>MINUTES / 7J</div></div>
                 <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{loadSummary.activeDays7}</b><div style={{ fontSize: 7, opacity: .45 }}>JOURS ACTIFS</div></div>
-                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11, color: loadSummary.formDelta > 5 ? "#8cffcb" : loadSummary.formDelta < -5 ? "#ffd86b" : "inherit" }}>{loadSummary.formDelta > 0 ? "+" : ""}{Math.round(loadSummary.formDelta)}</b><div style={{ fontSize: 7, opacity: .45 }}>FORME</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11, color: loadSummary.formDelta > 5 ? "#8cffcb" : loadSummary.formDelta < -5 ? "#ff9f8b" : "inherit" }}>{loadSummary.formDelta > 0 ? "+" : ""}{Math.round(loadSummary.formDelta)}</b><div style={{ fontSize: 7, opacity: .45 }}>FORME</div></div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 4, marginTop: 10 }}>
-                {loadSummary.calendar.map((day) => <div key={day.dayStart} title={`${day.sessions} séance(s) • ${day.minutes} min`} style={{ textAlign: "center", padding: "6px 2px", borderRadius: 8, border: day.sessions ? "1px solid rgba(39,220,255,.18)" : "1px solid rgba(255,255,255,.055)", background: day.sessions ? "rgba(39,220,255,.07)" : "rgba(255,255,255,.018)" }}>
+                {loadSummary.calendar.map((day) => <div key={day.dayStart} title={`${day.sessions} séance(s) • ${day.minutes} min`} style={{ textAlign: "center", padding: "6px 2px", borderRadius: 8, border: day.sessions ? "1px solid rgba(255,142,112,.18)" : "1px solid rgba(255,255,255,.055)", background: day.sessions ? "rgba(255,142,112,.07)" : "rgba(255,255,255,.018)" }}>
                   <div style={{ fontSize: 6.5, opacity: .45 }}>{day.label}</div>
                   <div style={{ marginTop: 3, fontSize: 10, fontWeight: 950 }}>{day.sessions || "·"}</div>
                   <div style={{ marginTop: 1, fontSize: 6.5, opacity: .42 }}>{day.minutes ? `${day.minutes}m` : "—"}</div>
                 </div>)}
               </div>
-              <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, recommendedFamily)} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(39,220,255,.20)", background: "rgba(39,220,255,.06)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE CONSEILLÉE • {loadSummary.recommendedDurationMin} MIN • {TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</button>
+              <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, recommendedFamily)} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(255,142,112,.20)", background: "rgba(255,142,112,.06)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE CONSEILLÉE • {loadSummary.recommendedDurationMin} MIN • {TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</button>
             </div>
 
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(140,90,255,.22)", background: "linear-gradient(135deg,rgba(140,90,255,.08),rgba(39,220,255,.035))" }}>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(140,90,255,.22)", background: "linear-gradient(135deg,rgba(140,90,255,.08),rgba(255,142,112,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>FIL CONDUCTEUR AWENA</div>
@@ -1252,20 +1234,20 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
             {programPanel === "library" && <>
             {!!preferences.favoritePrograms.length && <>
-              <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>★ MES SÉANCES FAVORITES</div>
+              <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>★ MES SÉANCES FAVORITES</div>
               <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 3 }}>
-                {preferences.favoritePrograms.map((favorite) => <button key={favorite.id} type="button" onClick={() => setProgramId(favorite.id)} style={{ flex: "0 0 auto", minWidth: 170, maxWidth: 230, textAlign: "left", padding: 10, borderRadius: 12, border: selectedProgram.id === favorite.id ? "1px solid #ffd86b" : "1px solid rgba(255,216,107,.18)", background: selectedProgram.id === favorite.id ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.03)", color: "inherit", cursor: "pointer" }}>
+                {preferences.favoritePrograms.map((favorite) => <button key={favorite.id} type="button" onClick={() => setProgramId(favorite.id)} style={{ flex: "0 0 auto", minWidth: 170, maxWidth: 230, textAlign: "left", padding: 10, borderRadius: 12, border: selectedProgram.id === favorite.id ? "1px solid #ff9f8b" : "1px solid rgba(255,159,139,.18)", background: selectedProgram.id === favorite.id ? "rgba(255,159,139,.10)" : "rgba(255,255,255,.03)", color: "inherit", cursor: "pointer" }}>
                   <b style={{ fontSize: 10 }}>{favorite.title}</b>
                   <div style={{ marginTop: 4, fontSize: 8.5, opacity: .55 }}>{favorite.durationMin} min • {favorite.exerciseIds.length} étapes</div>
                 </button>)}
               </div>
             </>}
-            <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>SÉANCES GUIDÉES</div>
+            <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>SÉANCES GUIDÉES</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 9 }}>
               {programs.map((program) => {
                 const active = selectedProgram.id === program.id;
                 const coach = program.level === "Coach";
-                return <button key={program.id} type="button" onClick={() => setProgramId(program.id)} style={{ textAlign: "left", padding: 13, borderRadius: 15, border: active ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.11)", background: active ? "rgba(39,220,255,.12)" : coach ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.035)", color: "inherit", cursor: "pointer" }}>
+                return <button key={program.id} type="button" onClick={() => setProgramId(program.id)} style={{ textAlign: "left", padding: 13, borderRadius: 15, border: active ? "1px solid #ff9f8b" : "1px solid rgba(255,255,255,.11)", background: active ? "rgba(255,142,112,.12)" : coach ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.035)", color: "inherit", cursor: "pointer" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b style={{ fontSize: 12 }}>{program.title}</b><span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,.08)" }}>{program.durationMin} MIN</span></div>
                   <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.35, opacity: .7 }}>{program.subtitle}</div>
                   <div style={{ marginTop: 9, fontSize: 9.5, opacity: .55 }}>{program.exerciseIds.length} étapes • {program.level}</div>
@@ -1273,20 +1255,20 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               })}
             </div>
 
-            <div style={{ marginTop: 12, padding: 13, borderRadius: 15, border: "1px solid rgba(140,90,255,.28)", background: "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" }}>
+            <div style={{ marginTop: 12, padding: 13, borderRadius: 15, border: "1px solid rgba(140,90,255,.28)", background: "linear-gradient(135deg,rgba(140,90,255,.10),rgba(255,142,112,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#b49cff" }}>PROGRAMME SUR MESURE</div>
                   <div style={{ marginTop: 4, fontSize: 10, opacity: .64 }}>Choisis durée, axe de travail et intensité. Le parcours est construit automatiquement.</div>
                 </div>
-                <button type="button" onClick={() => setProgramId(customProgram.id)} style={{ padding: "7px 10px", borderRadius: 10, border: programId === customProgram.id ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.12)", background: programId === customProgram.id ? "rgba(39,220,255,.14)" : "rgba(255,255,255,.05)", color: "inherit", fontWeight: 900, fontSize: 9, cursor: "pointer" }}>UTILISER CE PROGRAMME</button>
+                <button type="button" onClick={() => setProgramId(customProgram.id)} style={{ padding: "7px 10px", borderRadius: 10, border: programId === customProgram.id ? "1px solid #ff9f8b" : "1px solid rgba(255,255,255,.12)", background: programId === customProgram.id ? "rgba(255,142,112,.14)" : "rgba(255,255,255,.05)", color: "inherit", fontWeight: 900, fontSize: 9, cursor: "pointer" }}>UTILISER CE PROGRAMME</button>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 11 }}>
                 <div>
                   <div style={{ fontSize: 8, opacity: .5, marginBottom: 5 }}>DURÉE</div>
                   <div style={{ display: "flex", gap: 5 }}>
-                    {([15,30,45] as const).map((duration) => <button key={duration} type="button" onClick={() => { setCustomDuration(duration); setProgramId(`custom_${duration}_${customFocus}_${customIntensity}`); }} style={{ flex: 1, padding: "7px 4px", borderRadius: 9, border: customDuration === duration ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.09)", background: customDuration === duration ? "rgba(39,220,255,.12)" : "rgba(0,0,0,.15)", color: "inherit", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{duration}m</button>)}
+                    {([15,30,45] as const).map((duration) => <button key={duration} type="button" onClick={() => { setCustomDuration(duration); setProgramId(`custom_${duration}_${customFocus}_${customIntensity}`); }} style={{ flex: 1, padding: "7px 4px", borderRadius: 9, border: customDuration === duration ? "1px solid #ff9f8b" : "1px solid rgba(255,255,255,.09)", background: customDuration === duration ? "rgba(255,142,112,.12)" : "rgba(0,0,0,.15)", color: "inherit", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{duration}m</button>)}
                   </div>
                 </div>
                 <div>
@@ -1311,7 +1293,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               </div>
             </div>
 
-            <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: "1px solid rgba(39,220,255,.17)", background: "rgba(39,220,255,.045)" }}>
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: "1px solid rgba(255,142,112,.17)", background: "rgba(255,142,112,.045)" }}>
               <div style={{ fontSize: 9.5, opacity: .58 }}>PARCOURS SÉLECTIONNÉ</div>
               <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {selectedProgram.exerciseIds.map((id, index) => {
@@ -1321,7 +1303,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-              <button type="button" onClick={() => toggleProgramFavorite(selectedProgram)} style={{ padding: "8px 11px", borderRadius: 10, border: favoriteProgramIds.has(selectedProgram.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteProgramIds.has(selectedProgram.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{favoriteProgramIds.has(selectedProgram.id) ? "★ RETIRER DES FAVORIS" : selectedProgram.id.startsWith("custom_") ? "★ ENREGISTRER CETTE SÉANCE" : "☆ AJOUTER AUX FAVORIS"}</button>
+              <button type="button" onClick={() => toggleProgramFavorite(selectedProgram)} style={{ padding: "8px 11px", borderRadius: 10, border: favoriteProgramIds.has(selectedProgram.id) ? "1px solid rgba(255,159,139,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteProgramIds.has(selectedProgram.id) ? "rgba(255,159,139,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{favoriteProgramIds.has(selectedProgram.id) ? "★ RETIRER DES FAVORIS" : selectedProgram.id.startsWith("custom_") ? "★ ENREGISTRER CETTE SÉANCE" : "☆ AJOUTER AUX FAVORIS"}</button>
             </div>
             <TrainingStartButton disabled={!resolved.length} label={`LANCER ${selectedProgram.title}`} onClick={() => startProgram(selectedProgram)} />
             </>}
@@ -1335,24 +1317,24 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               { id: "challenge", label: "CHALLENGE", icon: "bull", status: `${CHALLENGE_TRAINING_ALL.length} EX.` },
               { id: "technique", label: "TECHNIQUE", icon: "skills", status: `${techniqueItems.length}` },
               { id: "favorites", label: "FAVORIS", icon: "library", status: `${favoriteExercises.length}` },
-            ]} activeId={exercisePanel} onChange={(id) => setExercisePanel(id as ExercisePanel)} stickyTop={56} />
+            ]} activeId={exercisePanel} onChange={(id) => setExercisePanel(id as ExercisePanel)} />
 
-            {exercisePanel !== "challenge" && <><div style={{ margin: "10px 0 4px", fontSize: 8.2, fontWeight: 950, letterSpacing: .8, color: "#27dcff", opacity: .72 }}>COMPÉTENCE</div>
+            {exercisePanel !== "challenge" && <><div style={{ margin: "10px 0 4px", fontSize: 8.2, fontWeight: 950, letterSpacing: .8, color: "#ff9f8b", opacity: .72 }}>COMPÉTENCE</div>
             <CompactIconNav items={familyOrder.map((id) => { const row = diagnosis.find((x) => x.family === id); return { id, label: `${TRAINING_FAMILY_META[id].label}${id === recommendedFamily ? " ★" : ""}`, icon: id, status: row?.sessions ? `${Math.round(row.recentScore)}/100` : "NOUVEAU" }; })} activeId={family} onChange={(id) => setFamily(id as TrainingExerciseFamily)} /></>}
             {exercisePanel === "challenge" && <TrainingChallengeCatalog participantId={accountParticipantId} sessions={challengeSessions} canStart={Boolean(accountParticipantId && onOpenChallenge)} onStart={launchChallengeExercise} onResume={resumeChallengeExercise} onCustomize={customizeChallengeExercise} />}
 
             {exercisePanel === "path" && <>
-              <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.22)", background: "linear-gradient(135deg,rgba(39,220,255,.08),rgba(140,90,255,.04))" }}>
+              <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(255,142,112,.22)", background: "linear-gradient(135deg,rgba(255,142,112,.08),rgba(140,90,255,.04))" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                   <div style={{ minWidth: 0, flex: "1 1 280px" }}>
-                    <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>TON PARCOURS · {skillPath.label}</div>
+                    <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>TON PARCOURS · {skillPath.label}</div>
                     <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{skillPath.headline}</div>
                     <div style={{ marginTop: 4, fontSize: 9, opacity: .62, lineHeight: 1.4 }}>{skillPath.body}</div>
                   </div>
                   <div style={{ textAlign: "right" }}><b style={{ fontSize: 18 }}>{Math.round(skillPath.score)}</b><div style={{ fontSize: 7, opacity: .45 }}>NIVEAU RÉCENT</div></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 10 }}>
-                  {skillPath.steps.map((step) => <button key={step.level} type="button" disabled={!step.unlocked || !step.exercise} onClick={() => { if (step.exercise) openExerciseDetail(step.exercise.id); }} style={{ minWidth: 0, padding: "9px 4px", borderRadius: 10, border: step.exercise?.id === exerciseId ? "1px solid #27dcff" : step.mastered ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.07)", background: step.exercise?.id === exerciseId ? "rgba(39,220,255,.10)" : step.mastered ? "rgba(80,255,174,.05)" : "rgba(255,255,255,.025)", color: "inherit", opacity: step.unlocked ? 1 : .34, cursor: step.unlocked && step.exercise ? "pointer" : "default" }}>
+                  {skillPath.steps.map((step) => <button key={step.level} type="button" disabled={!step.unlocked || !step.exercise} onClick={() => { if (step.exercise) openExerciseDetail(step.exercise.id); }} style={{ minWidth: 0, padding: "9px 4px", borderRadius: 10, border: step.exercise?.id === exerciseId ? "1px solid #ff9f8b" : step.mastered ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.07)", background: step.exercise?.id === exerciseId ? "rgba(255,142,112,.10)" : step.mastered ? "rgba(80,255,174,.05)" : "rgba(255,255,255,.025)", color: "inherit", opacity: step.unlocked ? 1 : .34, cursor: step.unlocked && step.exercise ? "pointer" : "default" }}>
                     <div style={{ fontSize: 12, fontWeight: 950 }}>{step.mastered ? "✓" : step.unlocked ? step.level : "⌁"}</div>
                     <div style={{ marginTop: 2, fontSize: 6.5, fontWeight: 950 }}>{step.label}</div>
                     <div style={{ marginTop: 2, fontSize: 5.8, opacity: .42 }}>{step.exerciseCount} EX.</div>
@@ -1378,40 +1360,40 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 {skillCertification.status === "ready" ? <button type="button" onClick={startCertification} style={{ width: "100%", marginTop: 8, padding: 9, borderRadius: 10, border: "1px solid rgba(80,255,174,.28)", background: "rgba(80,255,174,.08)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>LANCER LE TEST · NIV. {skillCertification.targetLevel}</button> : null}
               </div>
 
-              <div style={{ marginTop: 9, padding: 12, borderRadius: 14, border: "1px solid rgba(255,216,107,.18)", background: "rgba(255,216,107,.045)" }}>
-                <div style={{ fontSize: 7.5, fontWeight: 950, letterSpacing: .9, color: "#ffd86b" }}>À TOI DE JOUER</div>
+              <div style={{ marginTop: 9, padding: 12, borderRadius: 14, border: "1px solid rgba(255,159,139,.18)", background: "rgba(255,159,139,.045)" }}>
+                <div style={{ fontSize: 7.5, fontWeight: 950, letterSpacing: .9, color: "#ff9f8b" }}>À TOI DE JOUER</div>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 0, flex: "1 1 240px" }}>
                     <div style={{ fontSize: 11.5, fontWeight: 950 }}>{skillPath.recommendedExercise.title}</div>
                     <div style={{ marginTop: 3, fontSize: 8.5, opacity: .58 }}>{skillPath.recommendedExercise.subtitle}</div>
                   </div>
-                  <button type="button" onClick={() => openExerciseDetail(skillPath.recommendedExercise.id)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.24)", background: "rgba(255,216,107,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>SÉLECTIONNER</button>
+                  <button type="button" onClick={() => openExerciseDetail(skillPath.recommendedExercise.id)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,159,139,.24)", background: "rgba(255,159,139,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>SÉLECTIONNER</button>
                 </div>
               </div>
             </>}
 
             {exercisePanel === "catalog" && <>
-              {dailyQueueItems.length ? <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(80,255,174,.02))" }}>
+              {dailyQueueItems.length ? <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(255,142,112,.18)", background: "linear-gradient(145deg,rgba(255,142,112,.055),rgba(80,255,174,.02))" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>MA SÉANCE DU JOUR</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>3 exercices maximum • avance à ton rythme • reprise possible.</div></div>
+                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#ff9f8b" }}>MA SÉANCE DU JOUR</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>3 exercices maximum • avance à ton rythme • reprise possible.</div></div>
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(80,255,174,.18)", background: "rgba(80,255,174,.055)", color: "#8cffcb", fontSize: 7.5, fontWeight: 950 }}>{dailyQueueSummary.done}/{dailyQueueSummary.total} FAITS</span><button type="button" onClick={rebuildDailyQueue} title="Reconstruire la séance" aria-label="Reconstruire la séance" style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", fontSize: 14 }}>↻</button></div>
                 </div>
-                <div style={{ marginTop: 9, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.055)" }}><div style={{ width: `${dailyQueueSummary.progressPct}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,rgba(39,220,255,.9),rgba(80,255,174,.9))", transition: "width .18s ease" }} /></div>
+                <div style={{ marginTop: 9, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.055)" }}><div style={{ width: `${dailyQueueSummary.progressPct}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,rgba(255,142,112,.9),rgba(80,255,174,.9))", transition: "width .18s ease" }} /></div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                   <MetricChip icon="progress" label="PROGRESSION" value={`${dailyQueueSummary.progressPct}%`} tone="cyan" />
                   <MetricChip icon="skills" label="MOYENNE DU JOUR" value={dailyQueueSummary.done ? `${dailyQueueSummary.averageScore}/100` : "—"} tone="purple" />
                   <MetricChip icon="records" label="MEILLEUR DU JOUR" value={dailyQueueSummary.done ? `${dailyQueueSummary.bestScore}/100` : "—"} tone="gold" />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,210px),1fr))", gap: 7, marginTop: 9 }}>
-                  {dailyQueueItems.map(({ exercise, personal, done, today }, index) => <div key={exercise.id} style={{ minWidth: 0, padding: 10, borderRadius: 11, border: done ? "1px solid rgba(80,255,174,.22)" : index === 0 ? "1px solid rgba(39,220,255,.25)" : "1px solid rgba(255,255,255,.07)", background: done ? "rgba(80,255,174,.045)" : "rgba(255,255,255,.018)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: done ? "rgba(80,255,174,.10)" : "rgba(39,220,255,.08)", color: done ? "#8cffcb" : "#27dcff", fontSize: 10, fontWeight: 950 }}>{done ? "✓" : index + 1}</span><button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, flex: 1, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><b style={{ display: "block", fontSize: 9.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ display: "block", marginTop: 3, fontSize: 7.6, opacity: .5 }}>{TRAINING_FAMILY_META[exercise.family].label} • NIV. {personal.level}/5</span>{today ? <span style={{ display: "block", marginTop: 4, fontSize: 7.3, fontWeight: 900, color: today.latestPassed ? "#8cffcb" : "#ffd86b" }}>Aujourd'hui : {Math.round(today.latestScore)}/100{today.attempts > 1 ? ` • ${today.attempts} essais` : ""}</span> : null}</button><button type="button" disabled={done} onClick={() => replaceDailyQueueItem(exercise.id)} title="Remplacer cet exercice" aria-label={`Remplacer ${exercise.title}`} style={{ width: 27, height: 27, borderRadius: 8, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", opacity: done ? .25 : .55, cursor: done ? "default" : "pointer" }}>↻</button></div>
-                    <button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ width: "100%", marginTop: 8, padding: "7px 8px", borderRadius: 9, border: done ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(39,220,255,.16)", background: done ? "rgba(80,255,174,.05)" : "rgba(39,220,255,.045)", color: done ? "#8cffcb" : "inherit", fontSize: 7.7, fontWeight: 950, cursor: "pointer" }}>{done ? `VOIR LE RÉSULTAT${today && today.bestScore > today.latestScore ? ` • RECORD ${Math.round(today.bestScore)}` : ""}` : "OUVRIR LA FICHE"}</button>
+                  {dailyQueueItems.map(({ exercise, personal, done, today }, index) => <div key={exercise.id} style={{ minWidth: 0, padding: 10, borderRadius: 11, border: done ? "1px solid rgba(80,255,174,.22)" : index === 0 ? "1px solid rgba(255,142,112,.25)" : "1px solid rgba(255,255,255,.07)", background: done ? "rgba(80,255,174,.045)" : "rgba(255,255,255,.018)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: done ? "rgba(80,255,174,.10)" : "rgba(255,142,112,.08)", color: done ? "#8cffcb" : "#ff9f8b", fontSize: 10, fontWeight: 950 }}>{done ? "✓" : index + 1}</span><button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, flex: 1, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><b style={{ display: "block", fontSize: 9.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ display: "block", marginTop: 3, fontSize: 7.6, opacity: .5 }}>{TRAINING_FAMILY_META[exercise.family].label} • NIV. {personal.level}/5</span>{today ? <span style={{ display: "block", marginTop: 4, fontSize: 7.3, fontWeight: 900, color: today.latestPassed ? "#8cffcb" : "#ff9f8b" }}>Aujourd'hui : {Math.round(today.latestScore)}/100{today.attempts > 1 ? ` • ${today.attempts} essais` : ""}</span> : null}</button><button type="button" disabled={done} onClick={() => replaceDailyQueueItem(exercise.id)} title="Remplacer cet exercice" aria-label={`Remplacer ${exercise.title}`} style={{ width: 27, height: 27, borderRadius: 8, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", opacity: done ? .25 : .55, cursor: done ? "default" : "pointer" }}>↻</button></div>
+                    <button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ width: "100%", marginTop: 8, padding: "7px 8px", borderRadius: 9, border: done ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,142,112,.16)", background: done ? "rgba(80,255,174,.05)" : "rgba(255,142,112,.045)", color: done ? "#8cffcb" : "inherit", fontSize: 7.7, fontWeight: 950, cursor: "pointer" }}>{done ? `VOIR LE RÉSULTAT${today && today.bestScore > today.latestScore ? ` • RECORD ${Math.round(today.bestScore)}` : ""}` : "OUVRIR LA FICHE"}</button>
                   </div>)}
                 </div>
               </div> : null}
               <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(255,255,255,.075)", background: "rgba(255,255,255,.018)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#8fefff" }}>RYTHME 7 JOURS</div><div style={{ marginTop: 3, fontSize: 8.5, opacity: .5 }}>Ta régularité récente, sans alourdir le suivi.</div></div>
+                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#ffd1c4" }}>RYTHME 7 JOURS</div><div style={{ marginTop: 3, fontSize: 8.5, opacity: .5 }}>Ta régularité récente, sans alourdir le suivi.</div></div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <MetricChip icon="week" label="JOURS ACTIFS" value={`${dailyReview.activeDays}/7`} tone="cyan" />
                     <MetricChip icon="progress" label="MOY. SEMAINE" value={dailyReview.weekAverage ? `${dailyReview.weekAverage}/100` : "—"} tone="purple" />
@@ -1422,7 +1404,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   {dailyReview.days.map((day) => {
                     const active = day.attempts > 0;
                     const isToday = day.dateKey === todayKey;
-                    return <div key={day.dateKey} title={active ? `${day.exercises} exercice(s) • ${day.attempts} essai(s) • moyenne ${day.averageScore}/100` : "Aucune séance"} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 9, textAlign: "center", border: isToday ? "1px solid rgba(39,220,255,.28)" : active ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(255,255,255,.05)", background: isToday ? "rgba(39,220,255,.055)" : active ? "rgba(80,255,174,.035)" : "rgba(255,255,255,.012)" }}>
+                    return <div key={day.dateKey} title={active ? `${day.exercises} exercice(s) • ${day.attempts} essai(s) • moyenne ${day.averageScore}/100` : "Aucune séance"} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 9, textAlign: "center", border: isToday ? "1px solid rgba(255,142,112,.28)" : active ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(255,255,255,.05)", background: isToday ? "rgba(255,142,112,.055)" : active ? "rgba(80,255,174,.035)" : "rgba(255,255,255,.012)" }}>
                       <div style={{ fontSize: 6.8, fontWeight: 950, opacity: isToday ? .9 : .5 }}>{day.label}</div>
                       <div style={{ marginTop: 4, fontSize: 9, fontWeight: 950, color: active ? "#8cffcb" : "rgba(255,255,255,.24)" }}>{active ? day.averageScore : "—"}</div>
                       <div style={{ marginTop: 2, fontSize: 6.2, opacity: .35 }}>{active ? `${day.exercises} ex.` : "repos"}</div>
@@ -1432,60 +1414,60 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 8, fontSize: 7.4 }}>
                   <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", opacity: .72 }}>Aujourd'hui {dailyReview.today.attempts ? `${dailyReview.today.averageScore}/100` : "—"}</span>
                   <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", opacity: .72 }}>Hier {dailyReview.yesterday.attempts ? `${dailyReview.yesterday.averageScore}/100` : "—"}</span>
-                  <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsPreviousWeek === null ? "inherit" : dailyReview.deltaVsPreviousWeek >= 0 ? "#8cffcb" : "#ffd86b", opacity: .82 }}>Vs semaine préc. {dailyReview.deltaVsPreviousWeek === null ? "—" : `${dailyReview.deltaVsPreviousWeek >= 0 ? "+" : ""}${dailyReview.deltaVsPreviousWeek} pts`}</span>
-                  {dailyReview.deltaVsYesterday !== null ? <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsYesterday >= 0 ? "#8cffcb" : "#ffd86b", opacity: .82 }}>Vs hier {dailyReview.deltaVsYesterday >= 0 ? "+" : ""}{dailyReview.deltaVsYesterday} pts</span> : null}
+                  <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsPreviousWeek === null ? "inherit" : dailyReview.deltaVsPreviousWeek >= 0 ? "#8cffcb" : "#ff9f8b", opacity: .82 }}>Vs semaine préc. {dailyReview.deltaVsPreviousWeek === null ? "—" : `${dailyReview.deltaVsPreviousWeek >= 0 ? "+" : ""}${dailyReview.deltaVsPreviousWeek} pts`}</span>
+                  {dailyReview.deltaVsYesterday !== null ? <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsYesterday >= 0 ? "#8cffcb" : "#ff9f8b", opacity: .82 }}>Vs hier {dailyReview.deltaVsYesterday >= 0 ? "+" : ""}{dailyReview.deltaVsYesterday} pts</span> : null}
                 </div>
               </div>
               <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(80,255,174,.14)", background: "rgba(80,255,174,.025)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#8cffcb" }}>TENDANCE COMPÉTENCES · 14 JOURS</div><div style={{ marginTop: 3, fontSize: 8.5, opacity: .5 }}>Repère les progrès, les plateaux et la compétence à renforcer maintenant.</div></div>
-                  <span style={{ padding: "5px 8px", borderRadius: 9, border: "1px solid rgba(255,216,107,.18)", background: "rgba(255,216,107,.045)", fontSize: 7.4, fontWeight: 950, color: "#ffd86b" }}>PRIORITÉ · {TRAINING_FAMILY_META[skillTrend.priorityFamily].label.toUpperCase()}</span>
+                  <span style={{ padding: "5px 8px", borderRadius: 9, border: "1px solid rgba(255,159,139,.18)", background: "rgba(255,159,139,.045)", fontSize: 7.4, fontWeight: 950, color: "#ff9f8b" }}>PRIORITÉ · {TRAINING_FAMILY_META[skillTrend.priorityFamily].label.toUpperCase()}</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 6, marginTop: 9 }}>
                   {skillTrend.rows.map((row) => {
                     const meta = TRAINING_FAMILY_META[row.family];
                     const statusLabel = row.status === "progress" ? "EN PROGRÈS" : row.status === "decline" ? "À RELANCER" : row.status === "new" ? "À DÉCOUVRIR" : "STABLE";
-                    const statusColor = row.status === "progress" ? "#8cffcb" : row.status === "decline" ? "#ffd86b" : row.status === "new" ? "#8fefff" : "rgba(255,255,255,.55)";
-                    return <button key={row.family} type="button" onClick={() => { setFamily(row.family); setCatalogProgressFilter("all"); setCatalogSearch(""); }} style={{ textAlign: "left", padding: 9, borderRadius: 10, border: row.family === skillTrend.priorityFamily ? "1px solid rgba(255,216,107,.24)" : "1px solid rgba(255,255,255,.06)", background: row.family === skillTrend.priorityFamily ? "rgba(255,216,107,.04)" : "rgba(255,255,255,.015)", color: "inherit", cursor: "pointer" }}>
+                    const statusColor = row.status === "progress" ? "#8cffcb" : row.status === "decline" ? "#ff9f8b" : row.status === "new" ? "#ffd1c4" : "rgba(255,255,255,.55)";
+                    return <button key={row.family} type="button" onClick={() => { setFamily(row.family); setCatalogProgressFilter("all"); setCatalogSearch(""); }} style={{ textAlign: "left", padding: 9, borderRadius: 10, border: row.family === skillTrend.priorityFamily ? "1px solid rgba(255,159,139,.24)" : "1px solid rgba(255,255,255,.06)", background: row.family === skillTrend.priorityFamily ? "rgba(255,159,139,.04)" : "rgba(255,255,255,.015)", color: "inherit", cursor: "pointer" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}><b style={{ fontSize: 8.5 }}>{meta.label}</b><span style={{ fontSize: 6.8, fontWeight: 950, color: statusColor }}>{statusLabel}</span></div>
-                      <div style={{ marginTop: 5, display: "flex", alignItems: "baseline", gap: 5 }}><span style={{ fontSize: 13, fontWeight: 950 }}>{row.attempts ? row.currentAverage : "—"}</span><span style={{ fontSize: 6.8, opacity: .4 }}>/100</span>{row.delta !== null ? <span style={{ marginLeft: "auto", fontSize: 7.2, fontWeight: 950, color: row.delta >= 0 ? "#8cffcb" : "#ffd86b" }}>{row.delta >= 0 ? "+" : ""}{row.delta}</span> : null}</div>
+                      <div style={{ marginTop: 5, display: "flex", alignItems: "baseline", gap: 5 }}><span style={{ fontSize: 13, fontWeight: 950 }}>{row.attempts ? row.currentAverage : "—"}</span><span style={{ fontSize: 6.8, opacity: .4 }}>/100</span>{row.delta !== null ? <span style={{ marginLeft: "auto", fontSize: 7.2, fontWeight: 950, color: row.delta >= 0 ? "#8cffcb" : "#ff9f8b" }}>{row.delta >= 0 ? "+" : ""}{row.delta}</span> : null}</div>
                       <div style={{ marginTop: 3, fontSize: 6.8, opacity: .38 }}>{row.attempts ? `${row.attempts} essai${row.attempts > 1 ? "s" : ""} sur 14 j` : "Pas encore de donnée récente"}</div>
                     </button>;
                   })}
                 </div>
                 <div style={{ marginTop: 7, fontSize: 7.2, opacity: .5 }}>Point fort actuel : <b style={{ color: "#8cffcb" }}>{TRAINING_FAMILY_META[skillTrend.strongestFamily].label}</b> · {skillTrend.activeFamilies}/6 compétences actives sur la période.</div>
               </div>
-              {priorityActionPlan.items.length ? <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(255,216,107,.18)", background: "linear-gradient(145deg,rgba(255,216,107,.05),rgba(255,184,76,.02))" }}>
+              {priorityActionPlan.items.length ? <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(255,159,139,.18)", background: "linear-gradient(145deg,rgba(255,159,139,.05),rgba(255,184,76,.02))" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 0, flex: "1 1 220px" }}>
-                    <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#ffd86b" }}>PLAN CIBLÉ · {TRAINING_FAMILY_META[priorityActionPlan.family].label.toUpperCase()}</div>
+                    <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#ff9f8b" }}>PLAN CIBLÉ · {TRAINING_FAMILY_META[priorityActionPlan.family].label.toUpperCase()}</div>
                     <div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 950 }}>{priorityActionPlan.headline}</div>
                     <div style={{ marginTop: 3, fontSize: 8.2, opacity: .5 }}>3 étapes maximum • ouvre chaque fiche avant de jouer • le plan reste entièrement modifiable.</div>
                   </div>
-                  <button type="button" onClick={usePriorityPlanAsDailyQueue} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid rgba(255,216,107,.26)", background: "rgba(255,216,107,.06)", color: "inherit", fontSize: 7.4, fontWeight: 950, cursor: "pointer" }}>UTILISER COMME SÉANCE DU JOUR</button>
+                  <button type="button" onClick={usePriorityPlanAsDailyQueue} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid rgba(255,159,139,.26)", background: "rgba(255,159,139,.06)", color: "inherit", fontSize: 7.4, fontWeight: 950, cursor: "pointer" }}>UTILISER COMME SÉANCE DU JOUR</button>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7, marginTop: 9 }}>
                   {priorityActionPlan.items.map(({ exercise, personal }, index) => {
                     const stepLabel = index === 0 ? "1 · REPRENDRE" : index === 1 ? "2 · CONSOLIDER" : "3 · VALIDER";
-                    return <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,216,107,.24)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,216,107,.045)" : "rgba(255,255,255,.016)", color: "inherit", cursor: "pointer" }}>
-                      <div style={{ fontSize: 6.9, fontWeight: 950, letterSpacing: .6, color: index === 2 ? "#8cffcb" : "#ffd86b" }}>{stepLabel}</div>
+                    return <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,159,139,.24)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,159,139,.045)" : "rgba(255,255,255,.016)", color: "inherit", cursor: "pointer" }}>
+                      <div style={{ fontSize: 6.9, fontWeight: 950, letterSpacing: .6, color: index === 2 ? "#8cffcb" : "#ff9f8b" }}>{stepLabel}</div>
                       <div style={{ marginTop: 4, display: "flex", justifyContent: "space-between", gap: 7, alignItems: "center" }}><b style={{ minWidth: 0, fontSize: 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ flex: "0 0 auto", fontSize: 7, fontWeight: 950, color: "#b99cff" }}>NIV. {personal.level}/5</span></div>
                       <div style={{ marginTop: 4 }}><GameDifficultyStars level={exercise.difficulty} compact /></div>
-                      <div style={{ marginTop: 4, fontSize: 7.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: personal.level > 0 ? "rgba(255,255,255,.62)" : "#8fefff" }}>{personal.level > 0 ? personal.nextObjective : "Créer une première référence"}</div>
+                      <div style={{ marginTop: 4, fontSize: 7.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: personal.level > 0 ? "rgba(255,255,255,.62)" : "#ffd1c4" }}>{personal.level > 0 ? personal.nextObjective : "Créer une première référence"}</div>
                     </button>;
                   })}
                 </div>
               </div> : null}
-              <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(185,156,255,.16)", background: "linear-gradient(180deg,rgba(140,90,255,.055),rgba(39,220,255,.025))" }}>
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(185,156,255,.16)", background: "linear-gradient(180deg,rgba(140,90,255,.055),rgba(255,142,112,.025))" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#b99cff" }}>À TRAVAILLER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>Priorité à tes exercices en cours, à ta compétence cible et aux prochains paliers.</div></div>
-                  <span style={{ padding: "5px 8px", borderRadius: 9, border: "1px solid rgba(39,220,255,.14)", background: "rgba(39,220,255,.045)", fontSize: 7.4, fontWeight: 950, color: "#8fefff" }}>{TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</span>
+                  <span style={{ padding: "5px 8px", borderRadius: 9, border: "1px solid rgba(255,142,112,.14)", background: "rgba(255,142,112,.045)", fontSize: 7.4, fontWeight: 950, color: "#ffd1c4" }}>{TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7, marginTop: 9 }}>
-                  {focusNowItems.map(({ exercise, personal }, index) => <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,216,107,.28)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer" }}>
+                  {focusNowItems.map(({ exercise, personal }, index) => <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,159,139,.28)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,159,139,.055)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><b style={{ minWidth: 0, fontSize: 9.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ flex: "0 0 auto", fontSize: 7.2, fontWeight: 950, color: personal.level > 0 ? "#b99cff" : "rgba(255,255,255,.48)" }}>NIV. {personal.level}/5</span></div>
                     <div style={{ marginTop: 4, fontSize: 7.7, opacity: .52 }}>{TRAINING_FAMILY_META[exercise.family].label} <GameDifficultyStars level={exercise.difficulty} compact /></div>
-                    <div style={{ marginTop: 5, fontSize: 7.5, color: index === 0 ? "#ffd86b" : "rgba(255,255,255,.48)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.level > 0 ? personal.nextObjective : "Découvrir cet exercice"}</div>
+                    <div style={{ marginTop: 5, fontSize: 7.5, color: index === 0 ? "#ff9f8b" : "rgba(255,255,255,.48)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.level > 0 ? personal.nextObjective : "Découvrir cet exercice"}</div>
                   </button>)}
                 </div>
               </div>
@@ -1511,33 +1493,21 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                     <option value="level">TRI · TON NIVEAU</option>
                   </select>
                 </div>
-                <div>
-                  <div style={{ fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>PROGRESSION</div>
-                  <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 2px" }}>
-                    {([
-                      ["all", "TOUS"],
-                      ["new", "À DÉCOUVRIR"],
-                      ["in_progress", "EN COURS"],
-                      ["mastered", "MAÎTRISÉS"],
-                    ] as Array<[CatalogProgressFilter,string]>).map(([value,label]) => <button key={value} type="button" onClick={() => setCatalogProgressFilter(value)} style={{ flex: "0 0 auto", minHeight: 34, padding: "0 10px", borderRadius: 10, border: catalogProgressFilter === value ? "1px solid rgba(185,156,255,.38)" : "1px solid rgba(255,255,255,.07)", background: catalogProgressFilter === value ? "rgba(140,90,255,.09)" : "transparent", color: "inherit", fontSize: 8.6, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>DIFFICULTÉ</div>
-                  <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 2px" }}>
-                    {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 34, padding: "0 10px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 8.6, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUTES" : <GameDifficultyStars level={value as 1 | 2 | 3 | 4 | 5} compact />}</button>)}
-                  </div>
+                <div className="mssTrainingExerciseFilters">
+                  <select aria-label="Progression" value={catalogProgressFilter} onChange={event => setCatalogProgressFilter(event.target.value as CatalogProgressFilter)}>
+                    <option value="all">TOUTE PROGRESSION</option><option value="new">À DÉCOUVRIR</option><option value="in_progress">EN COURS</option><option value="mastered">MAÎTRISÉS</option>
+                  </select>
+                  <GameDifficultyFilter compact levels={[1,2,3,4,5]} value={difficultyFilter} onChange={value => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} label="Difficulté des exercices" />
                 </div>
               </div>
-              {!visibleCatalogItems.length ? <div style={{ marginTop: 8, padding: 15, borderRadius: 13, border: "1px dashed rgba(255,255,255,.12)", textAlign: "center", background: "rgba(255,255,255,.015)" }}><div style={{ fontSize: 10, fontWeight: 950 }}>Aucun exercice ne correspond</div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .5 }}>Modifie la recherche ou réinitialise les filtres.</div><button type="button" onClick={() => { setCatalogSearch(""); setCatalogProgressFilter("all"); setDifficultyFilter(0); setCatalogSort("smart"); }} style={{ marginTop: 9, padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(39,220,255,.24)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 7.8, fontWeight: 950, cursor: "pointer" }}>RÉINITIALISER</button></div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
+              {!visibleCatalogItems.length ? <div style={{ marginTop: 8, padding: 15, borderRadius: 13, border: "1px dashed rgba(255,255,255,.12)", textAlign: "center", background: "rgba(255,255,255,.015)" }}><div style={{ fontSize: 10, fontWeight: 950 }}>Aucun exercice ne correspond</div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .5 }}>Modifie la recherche ou réinitialise les filtres.</div><button type="button" onClick={() => { setCatalogSearch(""); setCatalogProgressFilter("all"); setDifficultyFilter(0); setCatalogSort("smart"); }} style={{ marginTop: 9, padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(255,142,112,.24)", background: "rgba(255,142,112,.07)", color: "inherit", fontSize: 7.8, fontWeight: 950, cursor: "pointer" }}>RÉINITIALISER</button></div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
                 {visibleCatalogItems.map((item) => {
                   const active = Boolean(item.exerciseId && item.exerciseId === exerciseId);
                   const personal = item.personal;
-                  return <button key={item.key} type="button" onClick={() => openExerciseDetail(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : personal.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : personal.mastered ? "rgba(80,255,174,.026)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: personal.mastered ? "rgba(80,255,174,.07)" : "rgba(39,220,255,.07)", color: personal.mastered ? "#8cffcb" : "#27dcff" }}><HubGlyph name={family} size={16}/></span>
-                    <span style={{ minWidth: 0 }}><span style={{ display: "block", fontSize: 10.5, lineHeight: 1.15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span><span style={{ display: "block", marginTop: 4, fontSize: 8.6, lineHeight: 1.3, opacity: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</span><span style={{ display: "block", marginTop: 5, fontSize: 7.5, lineHeight: 1.25, color: personal.mastered ? "#8cffcb" : personal.level > 0 ? "#b99cff" : "rgba(255,255,255,.42)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.mastered ? "MAÎTRISE VALIDÉE" : personal.level > 0 ? `Prochain : ${personal.nextObjective}` : "Pas encore commencé"}</span></span>
-                    <span style={{ display: "grid", gap: 5, justifyItems: "end" }}><span style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 950, opacity: .64 }}><GameDifficultyStars level={Math.max(1, Math.min(5, Number(item.difficulty) || 2)) as 1 | 2 | 3 | 4 | 5} compact /></span><span style={{ padding: "4px 6px", borderRadius: 7, background: personal.mastered ? "rgba(80,255,174,.08)" : "rgba(140,90,255,.07)", border: personal.mastered ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(140,90,255,.14)", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></span>
-                  </button>;
+                  return <TrainingExerciseListRow key={item.key} title={item.title} description={item.subtitle} icon={family}
+                    level={Math.max(1, Math.min(5, Number(item.difficulty) || 2)) as 1 | 2 | 3 | 4 | 5}
+                    active={active} mastered={personal.mastered} status={personal.mastered ? "MAÎTRISE VALIDÉE" : personal.level > 0 ? `Prochain : ${personal.nextObjective}` : "Pas encore commencé"}
+                    badge={personal.mastered ? "MAX" : `NIV. ${personal.level}/5`} onClick={() => openExerciseDetail(item.exerciseId)} />;
                 })}
               </div>}
             </>}
@@ -1565,7 +1535,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
             {exercisePanel === "favorites" && <>
               {!favoriteExercises.length ? <div style={{ marginTop: 10, padding: 14, borderRadius: 13, border: "1px dashed rgba(255,255,255,.12)", textAlign: "center", fontSize: 9, opacity: .5 }}>Aucun exercice favori. Sélectionne un exercice puis utilise ☆ AJOUTER AUX FAVORIS.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 7, marginTop: 10 }}>
-                {favoriteExercises.map((favorite: any) => { const personal = exerciseProgressionById.get(favorite.id) || buildTrainingExerciseProgression(favorite, []); return <button key={favorite.id} type="button" onClick={() => openExerciseDetail(favorite.id)} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: exerciseId === favorite.id ? "1px solid #ffd86b" : personal.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,216,107,.16)", background: exerciseId === favorite.id ? "rgba(255,216,107,.08)" : personal.mastered ? "rgba(80,255,174,.025)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ minWidth: 0, fontSize: 10, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>★ {favorite.title}</div><span style={{ flex: "0 0 auto", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .56 }}>{TRAINING_FAMILY_META[favorite.family as TrainingExerciseFamily].label} • difficulté {favorite.difficulty}/5</div><div style={{ marginTop: 4, fontSize: 7.4, color: personal.mastered ? "#8cffcb" : "rgba(255,255,255,.44)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.mastered ? "Maîtrise validée" : personal.level > 0 ? personal.nextObjective : "Pas encore commencé"}</div></button>; })}
+                {favoriteExercises.map((favorite: any) => { const personal = exerciseProgressionById.get(favorite.id) || buildTrainingExerciseProgression(favorite, []); return <button key={favorite.id} type="button" onClick={() => openExerciseDetail(favorite.id)} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: exerciseId === favorite.id ? "1px solid #ff9f8b" : personal.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,159,139,.16)", background: exerciseId === favorite.id ? "rgba(255,159,139,.08)" : personal.mastered ? "rgba(80,255,174,.025)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ minWidth: 0, fontSize: 10, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>★ {favorite.title}</div><span style={{ flex: "0 0 auto", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .56 }}>{TRAINING_FAMILY_META[favorite.family as TrainingExerciseFamily].label} • difficulté {favorite.difficulty}/5</div><div style={{ marginTop: 4, fontSize: 7.4, color: personal.mastered ? "#8cffcb" : "rgba(255,255,255,.44)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.mastered ? "Maîtrise validée" : personal.level > 0 ? personal.nextObjective : "Pas encore commencé"}</div></button>; })}
               </div>}
             </>}
 
@@ -1576,7 +1546,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{selected.title}</div>
                   <div style={{ marginTop: 3, fontSize: 8.5, opacity: .56 }}>{selected.maxDarts} fléchettes max • {selected.subtitle}</div>
                 </div>
-                <button type="button" onClick={() => toggleExerciseFavorite(selected.id)} style={{ padding: "8px 10px", borderRadius: 10, border: favoriteExerciseIds.has(selected.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteExerciseIds.has(selected.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>{favoriteExerciseIds.has(selected.id) ? "★ FAVORI" : "☆ FAVORI"}</button>
+                <button type="button" onClick={() => toggleExerciseFavorite(selected.id)} style={{ padding: "8px 10px", borderRadius: 10, border: favoriteExerciseIds.has(selected.id) ? "1px solid rgba(255,159,139,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteExerciseIds.has(selected.id) ? "rgba(255,159,139,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>{favoriteExerciseIds.has(selected.id) ? "★ FAVORI" : "☆ FAVORI"}</button>
               </div>
               <TrainingStartButton disabled={!resolved.length} label="LANCER L'EXERCICE" onClick={startExercise} />
             </>}
@@ -1584,13 +1554,13 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
           </div>}
 
           {tab === "diagnosis" && <div>
-            {viewMode === "complete" && <CompactIconNav items={diagnosisPanels.map((item) => ({ ...item, status: item.id === "overview" ? `${Math.round(diagnosticBoard.overallScore)}/100` : item.id === "skill" ? TRAINING_FAMILY_META[diagnosisFamily].label.toUpperCase() : `${diagnosticBoard.reachedGoals}/6 ATTEINTS` }))} activeId={diagnosisPanel} onChange={(id) => setDiagnosisPanel(id as DiagnosisPanel)} stickyTop={48} />}
+            {viewMode === "complete" && <CompactIconNav items={diagnosisPanels.map((item) => ({ ...item, status: item.id === "overview" ? `${Math.round(diagnosticBoard.overallScore)}/100` : item.id === "skill" ? TRAINING_FAMILY_META[diagnosisFamily].label.toUpperCase() : `${diagnosticBoard.reachedGoals}/6 ATTEINTS` }))} activeId={diagnosisPanel} onChange={(id) => setDiagnosisPanel(id as DiagnosisPanel)} />}
 
             {diagnosisPanel === "overview" && <>
-              <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
+              <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: "1px solid rgba(255,142,112,.20)", background: "linear-gradient(135deg,rgba(255,142,112,.065),rgba(140,90,255,.035))" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 200, flex: 1 }}><div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>DIAGNOSTIC AWENA</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>Priorité • {diagnosticBoard.priorityLabel}</div><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .56 }}>{prescription.body}</div></div>
-                  <button type="button" onClick={() => { prepareRecommendedSession(actionCoach.durationMin, diagnosticBoard.priorityFamily); setTab("program"); setProgramPanel("library"); }} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.30)", background: "rgba(39,220,255,.09)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE</button>
+                  <div style={{ minWidth: 200, flex: 1 }}><div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>DIAGNOSTIC AWENA</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>Priorité • {diagnosticBoard.priorityLabel}</div><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .56 }}>{prescription.body}</div></div>
+                  <button type="button" onClick={() => { prepareRecommendedSession(actionCoach.durationMin, diagnosticBoard.priorityFamily); setTab("program"); setProgramPanel("library"); }} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,142,112,.30)", background: "rgba(255,142,112,.09)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE</button>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
                   {[
@@ -1603,7 +1573,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div style={{ marginTop: 8, fontSize: 7.8, opacity: .5 }}>Point fort : <b style={{ color: "#8cffcb" }}>{diagnosticBoard.strongestLabel}</b>{diagnosticBoard.strongestFamily ? ` • ${Math.round(diagnosticBoard.strongestScore)}/100` : ""} • données : {diagnosticBoard.totalSessions} séances ciblées.</div>
               </div>
 
-              <div style={{ margin: "12px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>SIGNAUX À TRAITER</div>
+              <div style={{ margin: "12px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>SIGNAUX À TRAITER</div>
               {!diagnosticBoard.alerts.length ? <div style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(80,255,174,.14)", background: "rgba(80,255,174,.035)", fontSize: 8.8, opacity: .65 }}>Aucun signal prioritaire détecté. Le plan peut rester équilibré.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 6 }}>
                 {diagnosticBoard.alerts.map((alert) => <button key={alert.id} type="button" onClick={() => { if (alert.family) setDiagnosisFamily(alert.family); setDiagnosisPanel("skill"); }} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: alert.level === "priority" ? "1px solid rgba(255,184,76,.22)" : "1px solid rgba(255,255,255,.07)", background: alert.level === "priority" ? "rgba(255,184,76,.045)" : "rgba(255,255,255,.022)", color: "inherit", cursor: "pointer" }}><b style={{ fontSize: 8.8 }}>{alert.title}</b><div style={{ marginTop: 3, fontSize: 7.7, lineHeight: 1.35, opacity: .52 }}>{alert.body}</div></button>)}
               </div>}
@@ -1617,28 +1587,28 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 const mastery = career.mastery.find((item) => item.family === diagnosisFamily);
                 const path = buildTrainingSkillPath(diagnosisFamily, progression);
                 const trend = row.trend > 3 ? `+${Math.round(row.trend)}` : Math.round(row.trend);
-                return <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: diagnosisFamily === recommendedFamily ? "1px solid rgba(39,220,255,.30)" : "1px solid rgba(255,255,255,.085)", background: "rgba(255,255,255,.025)" }}>
+                return <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: diagnosisFamily === recommendedFamily ? "1px solid rgba(255,142,112,.30)" : "1px solid rgba(255,255,255,.085)", background: "rgba(255,255,255,.025)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><div><div style={{ fontSize: 8, opacity: .45 }}>COMPÉTENCE</div><div style={{ marginTop: 2, fontSize: 14, fontWeight: 950 }}>{row.label}{diagnosisFamily === recommendedFamily ? " ★" : ""}</div></div><div style={{ textAlign: "right" }}><b style={{ fontSize: 18 }}>{row.sessions ? Math.round(row.recentScore) : "—"}</b><div style={{ fontSize: 6.8, opacity: .42 }}>INDICE RÉCENT</div></div></div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
-                    <div><b style={{ fontSize: 11 }}>{pct(row.accuracyPct)}</b><div style={{ fontSize: 6.4, opacity: .42 }}>PRÉCISION</div></div><div><b style={{ fontSize: 11 }}>{pct(row.successPct)}</b><div style={{ fontSize: 6.4, opacity: .42 }}>RÉUSSITE</div></div><div><b style={{ fontSize: 11, color: row.trend >= 0 ? "#8cffcb" : "#ffd86b" }}>{trend}</b><div style={{ fontSize: 6.4, opacity: .42 }}>TENDANCE</div></div><div><b style={{ fontSize: 11 }}>{mastery?.tier || "—"}</b><div style={{ fontSize: 6.4, opacity: .42 }}>MAÎTRISE</div></div>
+                    <div><b style={{ fontSize: 11 }}>{pct(row.accuracyPct)}</b><div style={{ fontSize: 6.4, opacity: .42 }}>PRÉCISION</div></div><div><b style={{ fontSize: 11 }}>{pct(row.successPct)}</b><div style={{ fontSize: 6.4, opacity: .42 }}>RÉUSSITE</div></div><div><b style={{ fontSize: 11, color: row.trend >= 0 ? "#8cffcb" : "#ff9f8b" }}>{trend}</b><div style={{ fontSize: 6.4, opacity: .42 }}>TENDANCE</div></div><div><b style={{ fontSize: 11 }}>{mastery?.tier || "—"}</b><div style={{ fontSize: 6.4, opacity: .42 }}>MAÎTRISE</div></div>
                   </div>
                   <div style={{ marginTop: 9, padding: 9, borderRadius: 10, background: "rgba(140,90,255,.045)", border: "1px solid rgba(140,90,255,.10)", fontSize: 8.2, lineHeight: 1.4 }}>Parcours niveau <b>{path.currentLevel}/5 • {path.steps[path.currentLevel - 1]?.label}</b>. Record {Math.round(prog?.bestScore || 0)}/100 • {row.sessions} séance{row.sessions > 1 ? "s" : ""} analysée{row.sessions > 1 ? "s" : ""}.</div>
-                  <button type="button" onClick={() => { setFamily(diagnosisFamily); setExerciseId(path.recommendedExercise.id); setExercisePanel("path"); setTab("exercises"); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(39,220,255,.24)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>OUVRIR LE PARCOURS {row.label.toUpperCase()}</button>
+                  <button type="button" onClick={() => { setFamily(diagnosisFamily); setExerciseId(path.recommendedExercise.id); setExercisePanel("path"); setTab("exercises"); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(255,142,112,.24)", background: "rgba(255,142,112,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>OUVRIR LE PARCOURS {row.label.toUpperCase()}</button>
                 </div>;
               })()}
             </>}
 
             {diagnosisPanel === "goal" && <>
               <CompactIconNav items={familyOrder.map((familyId) => { const status = goalStatuses.find((item) => item.family === familyId); return { id: familyId, label: TRAINING_FAMILY_META[familyId].label.toUpperCase(), icon: familyId, status: `${Math.round(status?.current || 0)}/${status?.goal || 0}` }; })} activeId={diagnosisFamily} onChange={(id) => setDiagnosisFamily(id as TrainingExerciseFamily)} tone="gold" />
-              {(() => { const status = goalStatuses.find((item) => item.family === diagnosisFamily)!; const deadline = preferences.familyGoalDeadlines[diagnosisFamily] || ""; return <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: status.reached ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,216,107,.18)", background: status.reached ? "rgba(80,255,174,.035)" : "rgba(255,216,107,.03)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}><div><div style={{ fontSize: 8, opacity: .45 }}>OBJECTIF • {status.label.toUpperCase()}</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>{status.reached ? "Objectif atteint" : `Encore ${Math.ceil(status.gap)} pts à gagner`}</div></div><b style={{ fontSize: 18, color: status.reached ? "#8cffcb" : "#ffd86b" }}>{Math.round(status.current)}<span style={{ fontSize: 8, opacity: .45 }}>/{status.goal}</span></b></div>
-                <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ height: "100%", width: `${Math.max(2, Math.min(100, (status.current / Math.max(1, status.goal)) * 100))}%`, background: status.reached ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#ffd86b,#27dcff)" }} /></div>
+              {(() => { const status = goalStatuses.find((item) => item.family === diagnosisFamily)!; const deadline = preferences.familyGoalDeadlines[diagnosisFamily] || ""; return <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: status.reached ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,159,139,.18)", background: status.reached ? "rgba(80,255,174,.035)" : "rgba(255,159,139,.03)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}><div><div style={{ fontSize: 8, opacity: .45 }}>OBJECTIF • {status.label.toUpperCase()}</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>{status.reached ? "Objectif atteint" : `Encore ${Math.ceil(status.gap)} pts à gagner`}</div></div><b style={{ fontSize: 18, color: status.reached ? "#8cffcb" : "#ff9f8b" }}>{Math.round(status.current)}<span style={{ fontSize: 8, opacity: .45 }}>/{status.goal}</span></b></div>
+                <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ height: "100%", width: `${Math.max(2, Math.min(100, (status.current / Math.max(1, status.goal)) * 100))}%`, background: status.reached ? "linear-gradient(90deg,#8cffcb,#ff9f8b)" : "linear-gradient(90deg,#ff9f8b,#ff9f8b)" }} /></div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginTop: 10, alignItems: "end" }}><div><div style={{ fontSize: 7.5, opacity: .45, marginBottom: 4 }}>DATE CIBLE</div><input type="date" value={deadline} onChange={(event) => updateGoalDeadline(diagnosisFamily, event.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "7px 8px", borderRadius: 9, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.18)", color: "inherit", fontSize: 8.5 }} /></div><div style={{ display: "flex", gap: 5 }}><button type="button" onClick={() => updateGoal(diagnosisFamily, status.goal - 5)} style={{ width: 32, height: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>−</button><button type="button" onClick={() => updateGoal(diagnosisFamily, status.goal + 5)} style={{ width: 32, height: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>+</button></div></div>
               </div>; })()}
             </>}
           </div>}
           {tab === "progress" && <div>
-            {viewMode === "complete" && <CompactIconNav items={progressPanels.map((item) => ({ ...item, status: item.id === "overview" ? `NIV. ${career.level.level}` : item.id === "skills" ? `${progression.filter((row) => row.sessions > 0).length}/6` : item.id === "coach" ? `${liveCoachHistory.sampleSize} SÉANCES` : item.id === "cycles" ? `${cycleHistory.length} CYCLES` : `${programSessions.length} PLANS` }))} activeId={progressPanel} onChange={(id) => setProgressPanel(id as ProgressPanel)} stickyTop={48} />}
+            {viewMode === "complete" && <CompactIconNav items={progressPanels.map((item) => ({ ...item, status: item.id === "overview" ? `NIV. ${career.level.level}` : item.id === "skills" ? `${progression.filter((row) => row.sessions > 0).length}/6` : item.id === "coach" ? `${liveCoachHistory.sampleSize} SÉANCES` : item.id === "cycles" ? `${cycleHistory.length} CYCLES` : `${programSessions.length} PLANS` }))} activeId={progressPanel} onChange={(id) => setProgressPanel(id as ProgressPanel)} />}
 
             {progressPanel === "coach" && <CompactIconNav items={coachPanels} activeId={coachPanel} onChange={(id) => setCoachPanel(id as CoachPanel)} tone="green" />}
             {progressPanel === "history" && <CompactIconNav items={historyPanels} activeId={historyPanel} onChange={(id) => setHistoryPanel(id as HistoryPanel)} tone="purple" />}
@@ -1646,26 +1616,26 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             {progressPanel === "skills" && <CompactIconNav items={skillProgressPanels} activeId={skillProgressPanel} onChange={(id) => setSkillProgressPanel(id as SkillProgressPanel)} tone="purple" />}
 
             {progressPanel === "overview" && <>
-            <div style={{ marginTop: 8, padding: 12, borderRadius: 15, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(80,255,174,.025))" }}>
+            <div style={{ marginTop: 8, padding: 12, borderRadius: 15, border: "1px solid rgba(255,142,112,.18)", background: "linear-gradient(135deg,rgba(255,142,112,.055),rgba(80,255,174,.025))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                <div><div style={{ fontSize: 7.6, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>TA ROUTE JOUEUR</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{playerJourney.headline}</div></div>
+                <div><div style={{ fontSize: 7.6, fontWeight: 950, letterSpacing: .9, color: "#ff9f8b" }}>TA ROUTE JOUEUR</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{playerJourney.headline}</div></div>
                 <b style={{ fontSize: 15 }}>{playerJourney.progressPct}%</b>
               </div>
               <div style={{ marginTop: 4, fontSize: 8.2, opacity: .56, lineHeight: 1.38 }}>{playerJourney.body}</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 4, marginTop: 9 }}>
-                {playerJourney.stages.map((stage, index) => <div key={stage.id} title={stage.description} style={{ minWidth: 0, padding: "7px 2px", borderRadius: 9, textAlign: "center", border: stage.completed ? "1px solid rgba(80,255,174,.20)" : index === playerJourney.currentIndex ? "1px solid rgba(39,220,255,.28)" : "1px solid rgba(255,255,255,.06)", background: stage.completed ? "rgba(80,255,174,.05)" : index === playerJourney.currentIndex ? "rgba(39,220,255,.055)" : "rgba(255,255,255,.018)" }}><div style={{ fontSize: 10, fontWeight: 950 }}>{stage.completed ? "✓" : index + 1}</div><div style={{ marginTop: 2, fontSize: 5.8, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage.shortLabel}</div></div>)}
+                {playerJourney.stages.map((stage, index) => <div key={stage.id} title={stage.description} style={{ minWidth: 0, padding: "7px 2px", borderRadius: 9, textAlign: "center", border: stage.completed ? "1px solid rgba(80,255,174,.20)" : index === playerJourney.currentIndex ? "1px solid rgba(255,142,112,.28)" : "1px solid rgba(255,255,255,.06)", background: stage.completed ? "rgba(80,255,174,.05)" : index === playerJourney.currentIndex ? "rgba(255,142,112,.055)" : "rgba(255,255,255,.018)" }}><div style={{ fontSize: 10, fontWeight: 950 }}>{stage.completed ? "✓" : index + 1}</div><div style={{ marginTop: 2, fontSize: 5.8, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage.shortLabel}</div></div>)}
               </div>
             </div>
-            <div style={{ marginTop: 8, padding: 14, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.055))" }}>
+            <div style={{ marginTop: 8, padding: 14, borderRadius: 16, border: "1px solid rgba(255,159,139,.22)", background: "linear-gradient(135deg,rgba(255,159,139,.08),rgba(140,90,255,.055))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#ffd86b" }}>CARRIÈRE TRAINING</div>
+                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#ff9f8b" }}>CARRIÈRE TRAINING</div>
                   <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950 }}>Niveau {career.level.level} • {career.level.title}</div>
                   <div style={{ marginTop: 3, fontSize: 9, opacity: .56 }}>{career.xp} XP • {career.completedPrograms} programme{career.completedPrograms > 1 ? "s" : ""} • {career.unlockedBadges}/{career.totalBadges} badges</div>
                 </div>
                 <div style={{ textAlign: "right" }}><b style={{ fontSize: 19 }}>{Math.round(career.averagePerformance)}</b><div style={{ fontSize: 7, opacity: .45 }}>PERF. CARRIÈRE</div></div>
               </div>
-              <div style={{ height: 7, marginTop: 10, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${Math.max(2, career.level.progressPct)}%`, height: "100%", background: "linear-gradient(90deg,#ffd86b,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ height: 7, marginTop: 10, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${Math.max(2, career.level.progressPct)}%`, height: "100%", background: "linear-gradient(90deg,#ff9f8b,#ff9f8b,#8c5aff)" }} /></div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 7.5, opacity: .45 }}><span>{career.level.minXp} XP</span><span>{career.level.nextXp ? `PROCHAIN NIVEAU ${career.level.nextXp} XP` : "NIVEAU MAX"}</span></div>
             </div>
             </>}
@@ -1674,64 +1644,64 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>MAÎTRISES</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
               {career.mastery.map((item) => <div key={`mastery-${item.family}`} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(185,156,255,.12)", background: "rgba(140,90,255,.03)" }}>
-                <div style={{ fontSize: 7.2, opacity: .5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 950 }}>{item.tier}</div><div style={{ marginTop: 2, fontSize: 7.3, opacity: .46 }}>{Math.round(item.score)}/100 • {item.sessions} séances</div>{item.nextTarget && <div style={{ marginTop: 4, fontSize: 6.6, color: "#ffd86b" }}>PALIER {item.nextTarget}</div>}
+                <div style={{ fontSize: 7.2, opacity: .5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 950 }}>{item.tier}</div><div style={{ marginTop: 2, fontSize: 7.3, opacity: .46 }}>{Math.round(item.score)}/100 • {item.sessions} séances</div>{item.nextTarget && <div style={{ marginTop: 4, fontSize: 6.6, color: "#ff9f8b" }}>PALIER {item.nextTarget}</div>}
               </div>)}
             </div>
             </>}
 
             {progressPanel === "skills" && skillProgressPanel === "badges" && <>
-            <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>BADGES TRAINING • {career.unlockedBadges}/{career.totalBadges}</div>
+            <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>BADGES TRAINING • {career.unlockedBadges}/{career.totalBadges}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 6 }}>
-              {career.badges.map((badge) => <div key={badge.id} style={{ padding: 9, borderRadius: 11, border: badge.unlocked ? "1px solid rgba(255,216,107,.26)" : "1px solid rgba(255,255,255,.07)", background: badge.unlocked ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.02)", opacity: badge.unlocked ? 1 : .58 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 8.8 }}>{badge.unlocked ? "◆ " : "◇ "}{badge.title}</b><span style={{ fontSize: 7.2, color: badge.unlocked ? "#ffd86b" : "inherit" }}>{badge.unlocked ? "OK" : `${Math.min(badge.progress,badge.target)}/${badge.target}`}</span></div><div style={{ marginTop: 3, fontSize: 7.4, lineHeight: 1.3, opacity: .48 }}>{badge.description}</div>
+              {career.badges.map((badge) => <div key={badge.id} style={{ padding: 9, borderRadius: 11, border: badge.unlocked ? "1px solid rgba(255,159,139,.26)" : "1px solid rgba(255,255,255,.07)", background: badge.unlocked ? "rgba(255,159,139,.055)" : "rgba(255,255,255,.02)", opacity: badge.unlocked ? 1 : .58 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 8.8 }}>{badge.unlocked ? "◆ " : "◇ "}{badge.title}</b><span style={{ fontSize: 7.2, color: badge.unlocked ? "#ff9f8b" : "inherit" }}>{badge.unlocked ? "OK" : `${Math.min(badge.progress,badge.target)}/${badge.target}`}</span></div><div style={{ marginTop: 3, fontSize: 7.4, lineHeight: 1.3, opacity: .48 }}>{badge.description}</div>
               </div>)}
             </div>
             </>}
 
             {viewMode === "complete" && progressPanel === "overview" && <>
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(140,90,255,.035))" }}>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(255,142,112,.16)", background: "linear-gradient(135deg,rgba(255,142,112,.055),rgba(140,90,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>SYNTHÈSE DU CYCLE</div>
+                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>SYNTHÈSE DU CYCLE</div>
                   <div style={{ marginTop: 4, fontSize: 12, fontWeight: 950 }}>{missionBoard.cycleChallenge.completed ? "Défi validé" : missionBoard.cycleChallenge.title}</div>
                   <div style={{ marginTop: 3, fontSize: 8.8, lineHeight: 1.4, opacity: .56 }}>{missionBoard.cycleChallenge.description}</div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,auto)", gap: 6, textAlign: "center" }}>
                   <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(missionBoard.record.recentAverage)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>MOY. 4</div></div>
                   <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(missionBoard.record.weekBest)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>BEST SEM.</div></div>
-                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: "#ffd86b" }}>{Math.round(missionBoard.record.careerBest)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>RECORD</div></div>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: "#ff9f8b" }}>{Math.round(missionBoard.record.careerBest)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>RECORD</div></div>
                 </div>
               </div>
-              <div style={{ marginTop: 9, height: 6, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}><div style={{ width: `${Math.max(2, Math.min(100, (missionBoard.cycleChallenge.progress / Math.max(1, missionBoard.cycleChallenge.target)) * 100))}%`, height: "100%", background: missionBoard.cycleChallenge.completed ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ marginTop: 9, height: 6, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}><div style={{ width: `${Math.max(2, Math.min(100, (missionBoard.cycleChallenge.progress / Math.max(1, missionBoard.cycleChallenge.target)) * 100))}%`, height: "100%", background: missionBoard.cycleChallenge.completed ? "linear-gradient(90deg,#8cffcb,#ff9f8b)" : "linear-gradient(90deg,#ff9f8b,#8c5aff)" }} /></div>
               <div style={{ marginTop: 7, fontSize: 8, opacity: .5 }}>PROCHAIN RECORD GLOBAL À BATTRE • {Math.round(missionBoard.record.personalBestTarget)}/100</div>
             </div>
             </>}
 
             {progressPanel === "coach" && coachPanel === "brief" && <>
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: coachDashboard.status === "recalibrate" ? "1px solid rgba(255,184,76,.24)" : "1px solid rgba(39,220,255,.17)", background: coachDashboard.status === "recalibrate" ? "linear-gradient(135deg,rgba(255,184,76,.06),rgba(140,90,255,.025))" : "linear-gradient(135deg,rgba(39,220,255,.05),rgba(140,90,255,.025))" }}>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: coachDashboard.status === "recalibrate" ? "1px solid rgba(255,184,76,.24)" : "1px solid rgba(255,142,112,.17)", background: coachDashboard.status === "recalibrate" ? "linear-gradient(135deg,rgba(255,184,76,.06),rgba(140,90,255,.025))" : "linear-gradient(135deg,rgba(255,142,112,.05),rgba(140,90,255,.025))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 180, flex: 1 }}><div style={{ fontSize: 8, fontWeight: 950, color: "#27dcff", letterSpacing: 1 }}>ÉTAT DU COACHING</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{coachDashboard.headline}</div><div style={{ marginTop: 4, fontSize: 8.6, lineHeight: 1.4, opacity: .58 }}>{coachDashboard.body}</div></div>
+                <div style={{ minWidth: 180, flex: 1 }}><div style={{ fontSize: 8, fontWeight: 950, color: "#ff9f8b", letterSpacing: 1 }}>ÉTAT DU COACHING</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{coachDashboard.headline}</div><div style={{ marginTop: 4, fontSize: 8.6, lineHeight: 1.4, opacity: .58 }}>{coachDashboard.body}</div></div>
                 <span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.045)", fontSize: 7.5, fontWeight: 950 }}>{coachDashboard.statusLabel}</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>{coachDashboard.signals.map((signal) => <div key={signal.id} style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 10.5, color: signal.tone === "watch" ? "#ffd86b" : signal.tone === "good" ? "#8cffcb" : "inherit" }}>{signal.value}</b><div style={{ marginTop: 2, fontSize: 6.3, opacity: .42 }}>{signal.label}</div></div>)}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>{coachDashboard.signals.map((signal) => <div key={signal.id} style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 10.5, color: signal.tone === "watch" ? "#ff9f8b" : signal.tone === "good" ? "#8cffcb" : "inherit" }}>{signal.value}</b><div style={{ marginTop: 2, fontSize: 6.3, opacity: .42 }}>{signal.label}</div></div>)}</div>
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.055)", fontSize: 8, opacity: .58 }}><b>RÈGLE ACTIVE :</b> {coachDashboard.nextRule}</div>
             </div>
             </>}
 
             {progressPanel === "coach" && coachPanel === "weeks" && <>
             <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>BILAN COACH HEBDOMADAIRE</div>
-            <div style={{ padding: 13, borderRadius: 15, border: "1px solid rgba(80,255,174,.16)", background: "linear-gradient(135deg,rgba(80,255,174,.05),rgba(39,220,255,.025))" }}>
+            <div style={{ padding: 13, borderRadius: 15, border: "1px solid rgba(80,255,174,.16)", background: "linear-gradient(135deg,rgba(80,255,174,.05),rgba(255,142,112,.025))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 260px" }}>
                   <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>AWENA · SYNTHÈSE DE LA SEMAINE</div>
                   <div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{coachHistory.headline}</div>
                   <div style={{ marginTop: 4, fontSize: 8.8, lineHeight: 1.45, opacity: .58 }}>{coachHistory.body}</div>
-                  <div style={{ marginTop: 6, fontSize: 8.5, lineHeight: 1.45, color: "#ffd86b" }}>{coachHistory.recommendation}</div>
+                  <div style={{ marginTop: 6, fontSize: 8.5, lineHeight: 1.45, color: "#ff9f8b" }}>{coachHistory.recommendation}</div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,auto)", gap: 6, textAlign: "center" }}>
                   <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{coachHistory.current.completedMissions}/{coachHistory.current.totalMissions}</b><div style={{ fontSize: 6.8, opacity: .42 }}>MISSIONS</div></div>
                   <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(coachHistory.consistencyPct)}%</b><div style={{ fontSize: 6.8, opacity: .42 }}>RÉGULARITÉ</div></div>
-                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: coachHistory.performanceDelta >= 0 ? "#8cffcb" : "#ffd86b" }}>{coachHistory.previous ? `${coachHistory.performanceDelta >= 0 ? "+" : ""}${Math.round(coachHistory.performanceDelta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .42 }}>VS SEM. -1</div></div>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: coachHistory.performanceDelta >= 0 ? "#8cffcb" : "#ff9f8b" }}>{coachHistory.previous ? `${coachHistory.performanceDelta >= 0 ? "+" : ""}${Math.round(coachHistory.performanceDelta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .42 }}>VS SEM. -1</div></div>
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(115px,1fr))", gap: 6, marginTop: 10 }}>
@@ -1743,17 +1713,17 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
             <div style={{ margin: "12px 0 8px", fontSize: 10, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>HISTORIQUE DES MISSIONS · 6 SEMAINES</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {coachHistory.weeks.map((week, index) => <div key={week.weekStart} style={{ display: "grid", gridTemplateColumns: "minmax(110px,1fr) auto auto auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 11, border: index === 0 ? "1px solid rgba(39,220,255,.16)" : "1px solid rgba(255,255,255,.065)", background: index === 0 ? "rgba(39,220,255,.035)" : "rgba(255,255,255,.018)", opacity: week.sessions ? 1 : .52 }}>
+              {coachHistory.weeks.map((week, index) => <div key={week.weekStart} style={{ display: "grid", gridTemplateColumns: "minmax(110px,1fr) auto auto auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,142,112,.16)" : "1px solid rgba(255,255,255,.065)", background: index === 0 ? "rgba(255,142,112,.035)" : "rgba(255,255,255,.018)", opacity: week.sessions ? 1 : .52 }}>
                 <div><b style={{ fontSize: 8.8 }}>{index === 0 ? "CETTE SEMAINE" : week.label}</b><div style={{ marginTop: 2, fontSize: 7.3, opacity: .45 }}>{week.headline} • {week.dominantFamilyLabel}</div></div>
                 <div style={{ textAlign: "center" }}><b style={{ fontSize: 9.5 }}>{week.sessions}</b><div style={{ fontSize: 6.4, opacity: .4 }}>SÉANCES</div></div>
                 <div style={{ textAlign: "center" }}><b style={{ fontSize: 9.5 }}>{week.completedMissions}/{week.totalMissions}</b><div style={{ fontSize: 6.4, opacity: .4 }}>MISSIONS</div></div>
-                <div style={{ minWidth: 42, textAlign: "center" }}><b style={{ fontSize: 10.5, color: week.status === "mastered" ? "#8cffcb" : week.status === "solid" ? "#27dcff" : "inherit" }}>{week.sessions ? Math.round(week.averagePerformance) : "—"}</b><div style={{ fontSize: 6.4, opacity: .4 }}>MOY.</div></div>
+                <div style={{ minWidth: 42, textAlign: "center" }}><b style={{ fontSize: 10.5, color: week.status === "mastered" ? "#8cffcb" : week.status === "solid" ? "#ff9f8b" : "inherit" }}>{week.sessions ? Math.round(week.averagePerformance) : "—"}</b><div style={{ fontSize: 6.4, opacity: .4 }}>MOY.</div></div>
               </div>)}
             </div>
             </>}
 
             {progressPanel === "skills" && skillProgressPanel === "mastery" && <>
-            <div style={{ margin: "12px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>ÉVOLUTION DÉTAILLÉE</div>
+            <div style={{ margin: "12px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>ÉVOLUTION DÉTAILLÉE</div>
             <CompactIconNav items={familyOrder.map((familyId) => ({ id: familyId, label: TRAINING_FAMILY_META[familyId].label.toUpperCase(), icon: familyId }))} activeId={diagnosisFamily} onChange={(id) => setDiagnosisFamily(id as TrainingExerciseFamily)} />
             {(() => {
               const row = progression.find((item) => item.family === diagnosisFamily) || progression[0];
@@ -1762,8 +1732,8 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               const points = row.points;
               const maxScore = Math.max(100, ...points.map((point) => point.score));
               return <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.025)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}><b style={{ fontSize: 10.5 }}>{row.label}</b><span style={{ fontSize: 9, color: row.delta >= 0 ? "#8cffcb" : "#ffd86b", opacity: .78 }}>{deltaLabel}</span></div>
-                <div style={{ marginTop: 9, height: 52, display: "flex", gap: 3, alignItems: "end" }}>{points.length ? points.map((point, index) => <div key={`${point.endedAt}-${index}`} title={`${Math.round(point.score)}/100`} style={{ flex: 1, minWidth: 4, height: `${Math.max(5, (point.score / maxScore) * 100)}%`, borderRadius: "4px 4px 2px 2px", background: point.success ? "linear-gradient(180deg,#27dcff,#8c5aff)" : "rgba(255,255,255,.18)" }} />) : <div style={{ fontSize: 9, opacity: .45, alignSelf: "center" }}>Pas encore de données</div>}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}><b style={{ fontSize: 10.5 }}>{row.label}</b><span style={{ fontSize: 9, color: row.delta >= 0 ? "#8cffcb" : "#ff9f8b", opacity: .78 }}>{deltaLabel}</span></div>
+                <div style={{ marginTop: 9, height: 52, display: "flex", gap: 3, alignItems: "end" }}>{points.length ? points.map((point, index) => <div key={`${point.endedAt}-${index}`} title={`${Math.round(point.score)}/100`} style={{ flex: 1, minWidth: 4, height: `${Math.max(5, (point.score / maxScore) * 100)}%`, borderRadius: "4px 4px 2px 2px", background: point.success ? "linear-gradient(180deg,#ff9f8b,#8c5aff)" : "rgba(255,255,255,.18)" }} />) : <div style={{ fontSize: 9, opacity: .45, alignSelf: "center" }}>Pas encore de données</div>}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 5, marginTop: 9, textAlign: "center" }}><div><b style={{ fontSize: 11 }}>{Math.round(row.recentAverage)}</b><div style={{ fontSize: 7, opacity: .45 }}>RÉCENT</div></div><div><b style={{ fontSize: 11 }}>{Math.round(row.previousAverage)}</b><div style={{ fontSize: 7, opacity: .45 }}>AVANT</div></div><div><b style={{ fontSize: 11 }}>{Math.round(row.bestScore)}</b><div style={{ fontSize: 7, opacity: .45 }}>RECORD</div></div><div><b style={{ fontSize: 11 }}>{row.streak}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉRIE</div></div></div>
                 <div style={{ marginTop: 8, fontSize: 7.6, opacity: .5 }}>Objectifs et échéances sont désormais regroupés dans <b>DIAGNOSTIC → OBJECTIF</b>.</div>
               </div>;
@@ -1771,10 +1741,10 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {progressPanel === "cycles" && <>
-            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>BILANS DE BLOCS • 12 SÉANCES</div>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>BILANS DE BLOCS • 12 SÉANCES</div>
             {!blockReviews.length ? <div style={{ padding: 14, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", fontSize: 9.5, opacity: .58 }}>Le premier bilan complet apparaîtra après 12 programmes terminés.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 7 }}>
-              {blockReviews.map((review, index) => <div key={`block-review-${review.blockNumber}`} style={{ padding: 11, borderRadius: 13, border: index === 0 ? "1px solid rgba(39,220,255,.22)" : "1px solid rgba(255,255,255,.075)", background: index === 0 ? "rgba(39,220,255,.045)" : "rgba(255,255,255,.022)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b style={{ fontSize: 9.5 }}>Bloc {review.blockNumber}</b><span style={{ fontSize: 7.5, color: review.outcome === "rebuild" ? "#ffd86b" : review.outcome === "breakthrough" || review.outcome === "progress" ? "#8cffcb" : "#27dcff" }}>{review.outcomeLabel}</span></div>
+              {blockReviews.map((review, index) => <div key={`block-review-${review.blockNumber}`} style={{ padding: 11, borderRadius: 13, border: index === 0 ? "1px solid rgba(255,142,112,.22)" : "1px solid rgba(255,255,255,.075)", background: index === 0 ? "rgba(255,142,112,.045)" : "rgba(255,255,255,.022)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b style={{ fontSize: 9.5 }}>Bloc {review.blockNumber}</b><span style={{ fontSize: 7.5, color: review.outcome === "rebuild" ? "#ff9f8b" : review.outcome === "breakthrough" || review.outcome === "progress" ? "#8cffcb" : "#ff9f8b" }}>{review.outcomeLabel}</span></div>
                 <div style={{ marginTop: 6, fontSize: 8.2, lineHeight: 1.35, opacity: .52 }}>{new Date(review.startAt).toLocaleDateString()} → {new Date(review.endAt).toLocaleDateString()} • dominante {review.dominantLabel}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 5, marginTop: 9, textAlign: "center" }}>
                   <div><b style={{ fontSize: 11 }}>{Math.round(review.average)}</b><div style={{ fontSize: 6.2, opacity: .42 }}>MOY.</div></div>
@@ -1801,9 +1771,9 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {progressPanel === "skills" && skillProgressPanel === "records" && <>
-            <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RECORDS PERSONNELS</div>
+            <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>RECORDS PERSONNELS</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 7 }}>
-              {progression.map((row) => <div key={`record-${row.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,216,107,.12)", background: "rgba(255,216,107,.035)" }}>
+              {progression.map((row) => <div key={`record-${row.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,159,139,.12)", background: "rgba(255,159,139,.035)" }}>
                 <div style={{ fontSize: 8.5, opacity: .55 }}>{row.label.toUpperCase()}</div>
                 <div style={{ marginTop: 3, fontSize: 18, fontWeight: 950 }}>{Math.round(row.bestScore)}<span style={{ fontSize: 9, opacity: .5 }}>/100</span></div>
                 <div style={{ marginTop: 3, fontSize: 8, opacity: .45 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""} • série {row.streak}</div>
@@ -1812,8 +1782,8 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {progressPanel === "overview" && <>
-            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RÉFÉRENCE DE NIVEAU</div>
-            <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,216,107,.16)", background: "linear-gradient(135deg,rgba(255,216,107,.045),rgba(140,90,255,.025))" }}>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>RÉFÉRENCE DE NIVEAU</div>
+            <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,159,139,.16)", background: "linear-gradient(135deg,rgba(255,159,139,.045),rgba(140,90,255,.025))" }}>
               {!assessment.available ? <div style={{ fontSize: 9, opacity: .58 }}>Aucun bilan standardisé enregistré. Lance le Bilan de niveau depuis PROGRAMME pour obtenir une référence comparable sur les 6 compétences.</div> : <>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
                   <div><b style={{ fontSize: 11 }}>{assessment.headline}</b><div style={{ marginTop: 3, fontSize: 8, opacity: .48 }}>{new Date(assessment.endedAt).toLocaleDateString()} • couverture {assessment.coverage}%</div></div>
@@ -1822,14 +1792,14 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
                   {assessment.familyScores.map((row) => <div key={row.family} style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><div style={{ fontSize: 6.8, opacity: .42 }}>{row.label}</div><b style={{ display: "block", marginTop: 2, fontSize: 12 }}>{Math.round(row.score)}</b><div style={{ marginTop: 2, fontSize: 6.8, opacity: .38 }}>{Math.round(row.accuracyPct)}% précision</div></div>)}
                 </div>
-                <div style={{ marginTop: 8, fontSize: 7.8, opacity: .5 }}>Point fort : <b style={{ color: "#8cffcb" }}>{assessment.strongestLabel}</b> • axe prioritaire : <b style={{ color: "#ffd86b" }}>{assessment.weakestLabel}</b>{assessment.delta == null ? "" : ` • évolution globale ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
+                <div style={{ marginTop: 8, fontSize: 7.8, opacity: .5 }}>Point fort : <b style={{ color: "#8cffcb" }}>{assessment.strongestLabel}</b> • axe prioritaire : <b style={{ color: "#ff9f8b" }}>{assessment.weakestLabel}</b>{assessment.delta == null ? "" : ` • évolution globale ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
               </>}
             </div>
             </>}
 
             {progressPanel === "coach" && coachPanel === "live" && <>
-            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>LIVE COACH • 6 DERNIÈRES SÉANCES</div>
-            <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.045),rgba(140,90,255,.03))" }}>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>LIVE COACH • 6 DERNIÈRES SÉANCES</div>
+            <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,142,112,.16)", background: "linear-gradient(135deg,rgba(255,142,112,.045),rgba(140,90,255,.03))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 180, flex: 1 }}><b style={{ fontSize: 10.5 }}>{liveCoachHistory.headline}</b><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .58 }}>{liveCoachHistory.body}</div></div>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1845,7 +1815,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   ["FINISH", liveCoachHistory.finishAverage],
                 ].map(([label, value]) => <div key={String(label)} style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 12 }}>{Number(value) > 0 ? Math.round(Number(value)) : "—"}</b><div style={{ marginTop: 2, fontSize: 6.8, opacity: .42 }}>{label}</div></div>)}
               </div>
-              {liveCoachHistory.recurringFamily && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.055)", fontSize: 8.2, opacity: .62 }}>Signal récurrent : <b style={{ color: "#ffd86b" }}>{liveCoachHistory.recurringFamilyLabel}</b> • {liveCoachHistory.recurringFamilyCount}/{liveCoachHistory.sampleSize} séances. Ce signal peut désormais peser davantage que l'incident isolé de la dernière séance.</div>}
+              {liveCoachHistory.recurringFamily && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.055)", fontSize: 8.2, opacity: .62 }}>Signal récurrent : <b style={{ color: "#ff9f8b" }}>{liveCoachHistory.recurringFamilyLabel}</b> • {liveCoachHistory.recurringFamilyCount}/{liveCoachHistory.sampleSize} séances. Ce signal peut désormais peser davantage que l'incident isolé de la dernière séance.</div>}
               <div style={{ marginTop: 7, fontSize: 7.8, opacity: .48 }}>Plans stables : <b>{liveCoachHistory.stableSessions}</b> • plans adaptés : <b>{liveCoachHistory.adaptedSessions}</b>{liveCoachHistory.stableAverage > 0 && liveCoachHistory.adaptedAverage > 0 ? ` • perf. stable ${Math.round(liveCoachHistory.stableAverage)} vs adaptée ${Math.round(liveCoachHistory.adaptedAverage)}` : ""}</div>
             </div>
 
@@ -1853,7 +1823,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
             {progressPanel === "coach" && coachPanel === "effectiveness" && <>
             <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>EFFICACITÉ DU COACHING • 10 SÉANCES</div>
-            <div style={{ padding: 12, borderRadius: 14, border: coachingEffectiveness.adaptationEffect === "negative" ? "1px solid rgba(255,184,76,.22)" : "1px solid rgba(80,255,174,.16)", background: coachingEffectiveness.adaptationEffect === "negative" ? "linear-gradient(135deg,rgba(255,184,76,.055),rgba(140,90,255,.025))" : "linear-gradient(135deg,rgba(80,255,174,.045),rgba(39,220,255,.025))" }}>
+            <div style={{ padding: 12, borderRadius: 14, border: coachingEffectiveness.adaptationEffect === "negative" ? "1px solid rgba(255,184,76,.22)" : "1px solid rgba(80,255,174,.16)", background: coachingEffectiveness.adaptationEffect === "negative" ? "linear-gradient(135deg,rgba(255,184,76,.055),rgba(140,90,255,.025))" : "linear-gradient(135deg,rgba(80,255,174,.045),rgba(255,142,112,.025))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 180, flex: 1 }}><b style={{ fontSize: 10.5 }}>{coachingEffectiveness.headline}</b><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .6 }}>{coachingEffectiveness.body}</div></div>
                 <span style={{ padding: "5px 8px", borderRadius: 999, background: coachingEffectiveness.adaptationEffect === "positive" ? "rgba(80,255,174,.10)" : coachingEffectiveness.adaptationEffect === "negative" ? "rgba(255,184,76,.10)" : "rgba(255,255,255,.045)", fontSize: 7.5, fontWeight: 950 }}>{coachingEffectiveness.adaptationEffectLabel}</span>
@@ -1866,8 +1836,8 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   ["PERF. ADAPTÉE", coachingEffectiveness.adaptedAverage > 0 ? Math.round(coachingEffectiveness.adaptedAverage) : "—"],
                 ].map(([label, value]) => <div key={String(label)} style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 11.5 }}>{value}</b><div style={{ marginTop: 2, fontSize: 6.4, opacity: .42 }}>{label}</div></div>)}
               </div>
-              {coachingEffectiveness.stagnatingFamily && <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: "rgba(255,216,107,.055)", border: "1px solid rgba(255,216,107,.14)", fontSize: 8.2, lineHeight: 1.4 }}>
-                <b style={{ color: "#ffd86b" }}>FOCUS EN STAGNATION :</b> {coachingEffectiveness.stagnatingFamilyLabel} • {coachingEffectiveness.stagnationSamples} prescriptions suivies • évolution {coachingEffectiveness.stagnationDelta >= 0 ? "+" : ""}{Math.round(coachingEffectiveness.stagnationDelta)} pts.
+              {coachingEffectiveness.stagnatingFamily && <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: "rgba(255,159,139,.055)", border: "1px solid rgba(255,159,139,.14)", fontSize: 8.2, lineHeight: 1.4 }}>
+                <b style={{ color: "#ff9f8b" }}>FOCUS EN STAGNATION :</b> {coachingEffectiveness.stagnatingFamilyLabel} • {coachingEffectiveness.stagnationSamples} prescriptions suivies • évolution {coachingEffectiveness.stagnationDelta >= 0 ? "+" : ""}{Math.round(coachingEffectiveness.stagnationDelta)} pts.
                 {coachingEffectiveness.relayFamily && <> Relais conseillé : <b style={{ color: "#8cffcb" }}>{coachingEffectiveness.relayFamilyLabel}</b>.</>}
               </div>}
               <div style={{ marginTop: 7, fontSize: 7.7, opacity: .48 }}>Évolution du taux d'adaptation : <b>{coachingEffectiveness.adaptationRateDelta >= 0 ? "+" : ""}{Math.round(coachingEffectiveness.adaptationRateDelta)} pts</b> vs période précédente. Awena privilégie désormais la stabilité si les adaptations n'apportent plus de gain mesurable.</div>
@@ -1881,13 +1851,13 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 <div><b style={{ fontSize: 9.5 }}>{session.programTitle}</b><div style={{ marginTop: 2, fontSize: 7.8, opacity: .45 }}>{new Date(session.endedAt).toLocaleDateString()} • {session.durationMin || "—"} min • {session.steps} étapes</div></div>
                 <div style={{ textAlign: "center" }}><b style={{ fontSize: 10 }}>{session.successes}/{session.steps}</b><div style={{ fontSize: 6.8, opacity: .4 }}>RÉUSSIES</div></div>
                 <div style={{ textAlign: "center" }}><b style={{ fontSize: 10 }}>{Math.round(session.accuracyPct)}%</b><div style={{ fontSize: 6.8, opacity: .4 }}>PRÉC.</div></div>
-                <div style={{ minWidth: 38, textAlign: "center" }}><b style={{ fontSize: 12, color: session.performanceScore >= 75 ? "#8cffcb" : session.performanceScore < 50 ? "#ffd86b" : "inherit" }}>{Math.round(session.performanceScore)}</b><div style={{ fontSize: 6.8, opacity: .4 }}>PERF.</div></div>
+                <div style={{ minWidth: 38, textAlign: "center" }}><b style={{ fontSize: 12, color: session.performanceScore >= 75 ? "#8cffcb" : session.performanceScore < 50 ? "#ff9f8b" : "inherit" }}>{Math.round(session.performanceScore)}</b><div style={{ fontSize: 6.8, opacity: .4 }}>PERF.</div></div>
               </div>)}
             </div>}
             </>}
 
             {progressPanel === "history" && historyPanel === "exercises" && <>
-            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>DERNIÈRES SÉANCES DU CENTRE</div>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ff9f8b" }}>DERNIÈRES SÉANCES DU CENTRE</div>
             {!labSessions.length ? <div style={{ padding: 18, borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", fontSize: 11, opacity: .7 }}>Aucune séance du Centre enregistrée pour le moment. Lance un exercice ou un programme pour créer ta courbe de progression.</div> : <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               {labSessions.map((row) => {
                 const exerciseId = String(row.metrics?.exerciseId || row.config?.exerciseId || "");
