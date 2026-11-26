@@ -33,6 +33,7 @@ import { History, type SavedMatch } from "../lib/history";
 import { canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 import { resolveAudioVolume } from "../lib/audioPreferences";
+import DartboardClickable from "../components/DartboardClickable";
 
 /**
  * GOLF (darts) — Play
@@ -190,9 +191,11 @@ type GolfConfig = {
   missStrokes?: number; // configurable: 4..8
   holeOrderMode?: "chronological" | "random"; // config officielle
   order?: "chronological" | "random"; // legacy
-  scoringMode?: "strokes" | "rounds"; // config officielle
+  scoringMode?: "strokes" | "points" | "rounds"; // config officielle
   showHoleGrid?: boolean; // config officielle
   showGrid?: boolean; // legacy
+  scoreInputMethod?: "keypad" | "dartboard";
+  audioEnabled?: boolean;
 };
 
 
@@ -902,6 +905,8 @@ export default function GolfPlay(props: Props) {
 
   // ✅ Voix IA : final uniquement (pas de "à toi de jouer" pendant le match)
   const VOICE_FINAL_ONLY = true;
+  const golfAudioEnabled = (cfg as any).audioEnabled !== false;
+  const golfInputMethod = (cfg as any).scoreInputMethod === "dartboard" ? "dartboard" : "keypad";
 
   // =====================================================
   // HISTORY / RESUME (GOLF)
@@ -938,7 +943,7 @@ export default function GolfPlay(props: Props) {
     try {
       // ✅ Voix IA DÉSACTIVÉE pendant la partie (final uniquement)
       setVoiceEnabled(false);
-      playGolfIntro(0.45);
+      if (golfAudioEnabled) playGolfIntro(0.45);
       return () => {
         try { stopGolfIntro(); } catch {}
         try {
@@ -1347,17 +1352,21 @@ const teamIndexByKey = useMemo(() => {
     try {
       if (perfTimerRef.current) window.clearTimeout(perfTimerRef.current);
       setPerfOverlay(perf);      // 🔊 SFX + petit blip arcade + bruitage ticker (immédiat)
-      playTickerBlip();
-      try { playGolfTickerSound(perf as any); } catch {}
+      if (golfAudioEnabled) {
+        playTickerBlip();
+        try { playGolfTickerSound(perf as any); } catch {}
+      }
 
       // marque la fenêtre audio occupée (blip + ticker + sfx perf)
       audioBusyUntilRef.current = Date.now() + TTS_AFTER_AUDIO_MS + 200;
 
       // 🔓 unlock mobile + 🔊 SFX perf (décalé de 1.5s pour laisser respirer le blip)
-      try { unlockAudio(); } catch {}
-      window.setTimeout(() => {
-        try { playGolfPerfSfx(perf as any, 0.9); } catch {}
-      }, PERF_SFX_DELAY_MS);
+      if (golfAudioEnabled) {
+        try { unlockAudio(); } catch {}
+        window.setTimeout(() => {
+          try { playGolfPerfSfx(perf as any, 0.9); } catch {}
+        }, PERF_SFX_DELAY_MS);
+      }
 
       perfTimerRef.current = window.setTimeout(() => setPerfOverlay(null), 1600);
     } catch {}
@@ -1504,8 +1513,8 @@ function pct(n: number, d: number): number {
 }
 
 function rankCompare(a: any, b: any): number {
-  // 1) plus petit score
-  if (a.total !== b.total) return a.total - b.total;
+  // En mode POINTS, le plus grand score l'emporte. En STROKES, c'est le plus petit.
+  if (a.total !== b.total) return (cfg as any).scoringMode === "points" ? b.total - a.total : a.total - b.total;
 
   // 2) meilleur hit (DBULL > BULL > D > T > S > M)
   const ha = hitRank(a.bestHit);
@@ -1694,7 +1703,7 @@ const ranking = useMemo(() => {
         mode: "golf",
         holes,
         teamsEnabled: teamsOk,
-        scoringMode: roundsMode ? "rounds" : "strokes",
+        scoringMode: (cfg as any).scoringMode === "points" ? "points" : roundsMode ? "rounds" : "strokes",
       },
       summary: {
         finished: status === "finished",
@@ -2081,7 +2090,7 @@ React.useEffect(() => {
       try {
         if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
         const msgFinal = buildRankingTts("final", ranking);
-        if (msgFinal) {
+        if (msgFinal && golfAudioEnabled) {
           // voix ré-activée uniquement au final
           setVoiceEnabled(true);
           ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
@@ -2165,7 +2174,7 @@ React.useEffect(() => {
     try {
       if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
       const msgFinal = buildRankingTts("final", ranking);
-      if (msgFinal) {
+      if (msgFinal && golfAudioEnabled) {
         setVoiceEnabled(true);
         ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
       }
@@ -3027,7 +3036,18 @@ const throwChips = [0, 1, 2].map((i) => {
               })}
             </div>
 
-            <div
+            {golfInputMethod === "dartboard" && (
+              <div style={{ maxWidth: 370, margin: "0 auto 12px", width: "100%" }}>
+                <DartboardClickable multiplier={1} disabled={turnThrows.length >= 3}
+                  onHit={(segment, mult) => {
+                    const target = Number(holeTargets[holeIdx] || holeIdx + 1);
+                    if (segment === 25) recordThrow(mult === 2 ? "DB" : "B");
+                    else if (segment !== target) recordThrow("M");
+                    else recordThrow(mult === 3 ? "T" : mult === 2 ? "D" : "S");
+                  }} />
+              </div>
+            )}
+            {golfInputMethod === "keypad" && <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
@@ -3162,7 +3182,7 @@ const throwChips = [0, 1, 2].map((i) => {
                   {keyValueBadge("M", kindToScore("M", missStrokesVal))}
                 </span>
               </button>
-            </div>
+            </div>}
 
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12 }}>
               <button

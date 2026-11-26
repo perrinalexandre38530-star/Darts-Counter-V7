@@ -8209,6 +8209,7 @@ case "babyfoot_team_edit":
   const isDartsEntryChoice = React.isValidElement(page) && page.type === GameModeEntryChoice;
   const needsUniversalDartsConfigGuide =
     !isDartsEntryChoice &&
+    gameRouteName !== "golf_config" && // Golf possède sa navigation guidée/complète native : aucun second bandeau.
     routeParams?.launchMode !== "quick" &&
     DARTS_CONFIG_TABS.has(gameRouteName) &&
     !NATIVE_GUIDED_DARTS_CONFIG_TABS.has(gameRouteName) &&

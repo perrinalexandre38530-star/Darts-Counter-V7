@@ -1,4 +1,4 @@
-import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
+import { MssQuickStartOrder, type QuickStartOrderMode } from "../components/config/MssGolfQuickControls";
 import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 // =============================================================
 // src/pages/GolfConfig.tsx
@@ -65,7 +65,7 @@ import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png
 type BotLevel = "easy" | "normal" | "hard";
 type HoleOrderMode = "chronological" | "random";
 type GolfScoringMode = "strokes" | "points";
-type StartOrderMode = "chronological" | "random";
+type StartOrderMode = QuickStartOrderMode;
 type TeamKey = "gold" | "pink" | "blue" | "green";
 
 export type GolfConfigPayload = {
@@ -86,6 +86,8 @@ export type GolfConfigPayload = {
 
   // ✅ ordre de départ (joueurs ou équipes)
   startOrderMode: StartOrderMode;
+  scoreInputMethod?: "keypad" | "dartboard";
+  audioEnabled?: boolean;
 
   showHoleGrid: boolean;
 };
@@ -250,7 +252,9 @@ export default function GolfConfig(props: any) {
   const [showHoleGrid, setShowHoleGrid] = React.useState(true);
 
   // ✅ ordre de départ (joueurs ou équipes)
-  const [startOrderMode, setStartOrderMode] = React.useState<StartOrderMode>("chronological");
+  const [startOrderMode, setStartOrderMode] = React.useState<StartOrderMode>("alternate");
+  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">("keypad");
+  const [audioEnabled, setAudioEnabled] = React.useState(true);
 
   const [userBots, setUserBots] = React.useState<BotLite[]>([]);
   React.useEffect(() => {
@@ -292,7 +296,9 @@ export default function GolfConfig(props: any) {
       setMissStrokes((Number(parsed?.missStrokes) === 4 ? 4 : Number(parsed?.missStrokes) === 5 ? 5 : Number(parsed?.missStrokes) === 6 ? 6 : Number(parsed?.missStrokes) === 7 ? 7 : Number(parsed?.missStrokes) === 8 ? 8 : 5) as any);
       setShowHoleGrid(parsed?.showHoleGrid !== false);
 
-      setStartOrderMode(parsed?.startOrderMode === "random" ? "random" : "chronological");
+      setStartOrderMode((["random", "alternate", "manual", "bull"].includes(parsed?.startOrderMode) ? parsed.startOrderMode : "alternate") as StartOrderMode);
+      setScoreInputMethod(parsed?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
+      setAudioEnabled(parsed?.audioEnabled !== false);
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -318,6 +324,8 @@ export default function GolfConfig(props: any) {
           missStrokes,
 
           startOrderMode,
+          scoreInputMethod,
+          audioEnabled,
 
           showHoleGrid,
         })
@@ -335,6 +343,8 @@ export default function GolfConfig(props: any) {
     scoringMode,
     missStrokes,
     startOrderMode,
+    scoreInputMethod,
+    audioEnabled,
     showHoleGrid,
   ]);
 
@@ -390,6 +400,8 @@ export default function GolfConfig(props: any) {
       scoringMode,
 
       startOrderMode,
+      scoreInputMethod,
+      audioEnabled,
 
       showHoleGrid,
     };
@@ -836,7 +848,7 @@ export default function GolfConfig(props: any) {
               />
             </OptionRow>
 
-            <NativeStartOrderConfig initialMode={startOrderMode === "random" ? "random" : "alternate"} onModeChange={(mode) => setStartOrderMode(mode === "random" ? "random" : "chronological")} />
+            <MssQuickStartOrder value={startOrderMode} onChange={setStartOrderMode} />
 
             <OptionRow label="Mode de scoring" hint={scoringMode === "strokes" ? "Score bas gagne" : "Score haut gagne"}>
               <OptionSelect
@@ -860,6 +872,12 @@ export default function GolfConfig(props: any) {
             <OptionRow label="Afficher la grille des trous">
               <OptionToggle value={showHoleGrid} onChange={setShowHoleGrid} />
             </OptionRow>
+            <OptionRow label="Mode de saisie">
+              <OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: "CIBLE" }]} onChange={(v: any) => setScoreInputMethod(v === "dartboard" ? "dartboard" : "keypad")} />
+            </OptionRow>
+            <OptionRow label="Options audio">
+              <OptionSelect value={audioEnabled ? "on" : "off"} options={[{ value: "on", label: "Activé" }, { value: "off", label: "Silencieux" }]} onChange={(v: any) => setAudioEnabled(v !== "off")} />
+            </OptionRow>
           </div>
         </Section>
         </div>
@@ -870,7 +888,9 @@ export default function GolfConfig(props: any) {
           ["Parcours", `${holes} trous · ${holeOrderMode === "random" ? "Aléatoire" : "Chronologique"}`],
           ["Scoring", scoringMode === "strokes" ? "Strokes · total bas gagnant" : "Points · total haut gagnant"],
           ["Pénalité MISS", `${missStrokes} coups`],
-          ["Départ", startOrderMode === "random" ? "Aléatoire" : "Chronologique"],
+          ["Départ", ({random:"Aléatoire",alternate:"Alterné",manual:"Manuel",bull:"Bull"} as const)[startOrderMode]],
+          ["Saisie", scoreInputMethod === "dartboard" ? "Cible" : "Keypad"],
+          ["Audio", audioEnabled ? "Activé" : "Silencieux"],
         ]} />}
 
         {/* CTA collée au-dessus de la barre de nav (même design que X01/Killer) */}
