@@ -77,6 +77,7 @@ export function MssQuickPlayers({
   teamCount = 2,
   onTeamCount,
   teamsInfo,
+  hideCountForTeams = false,
 }: {
   count: number;
   choices: readonly number[];
@@ -92,6 +93,7 @@ export function MssQuickPlayers({
   teamCount?: number;
   onTeamCount?: (count: number) => void;
   teamsInfo?: string;
+  hideCountForTeams?: boolean;
 }) {
   const { theme } = useTheme();
   const accent = theme?.primary || "#f5c257";
@@ -133,7 +135,7 @@ export function MssQuickPlayers({
       })}
     </div>
 
-    {(resolvedMode === "multi" || resolvedMode === "teams") && (
+    {(resolvedMode === "multi" || (resolvedMode === "teams" && !hideCountForTeams)) && (
       <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
         <strong style={{ fontSize: 12, color: "#b5bfd7", textTransform: "uppercase" }}>
           {resolvedMode === "teams" ? "Nombre de participants" : "Nombre de joueurs"}

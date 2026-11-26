@@ -196,6 +196,7 @@ type GolfConfig = {
   showGrid?: boolean; // legacy
   scoreInputMethod?: "keypad" | "dartboard";
   audioEnabled?: boolean;
+  audio?: { arcadeEnabled?: boolean; hitEnabled?: boolean; voiceEnabled?: boolean; voiceId?: string };
 };
 
 
@@ -905,7 +906,17 @@ export default function GolfPlay(props: Props) {
 
   // ✅ Voix IA : final uniquement (pas de "à toi de jouer" pendant le match)
   const VOICE_FINAL_ONLY = true;
+  // Rétrocompatibilité avec les configurations GOLF antérieures à l'audio détaillé.
   const golfAudioEnabled = (cfg as any).audioEnabled !== false;
+  const golfArcadeEnabled = golfAudioEnabled && (cfg as any).audio?.arcadeEnabled !== false;
+  const golfHitEnabled = golfAudioEnabled && (cfg as any).audio?.hitEnabled !== false;
+  const golfVoiceEnabled = golfAudioEnabled && (cfg as any).audio?.voiceEnabled !== false;
+  const golfVoiceId = String((cfg as any).audio?.voiceId || "default");
+  // Les voix natives disponibles dépendent du navigateur ; ce réglage est une
+  // préférence TTS légère, sans prétendre remplacer la voix officielle Awena.
+  const golfVoiceOptions = golfVoiceId === "female" ? { pitch: 1.18 } :
+    golfVoiceId === "male" ? { pitch: 0.83 } :
+    golfVoiceId === "robot" ? { rate: 0.86, pitch: 0.72 } : {};
   const golfInputMethod = (cfg as any).scoreInputMethod === "dartboard" ? "dartboard" : "keypad";
 
   // =====================================================
@@ -943,7 +954,7 @@ export default function GolfPlay(props: Props) {
     try {
       // ✅ Voix IA DÉSACTIVÉE pendant la partie (final uniquement)
       setVoiceEnabled(false);
-      if (golfAudioEnabled) playGolfIntro(0.45);
+      if (golfArcadeEnabled) playGolfIntro(0.45);
       return () => {
         try { stopGolfIntro(); } catch {}
         try {
@@ -1352,7 +1363,7 @@ const teamIndexByKey = useMemo(() => {
     try {
       if (perfTimerRef.current) window.clearTimeout(perfTimerRef.current);
       setPerfOverlay(perf);      // 🔊 SFX + petit blip arcade + bruitage ticker (immédiat)
-      if (golfAudioEnabled) {
+      if (golfArcadeEnabled) {
         playTickerBlip();
         try { playGolfTickerSound(perf as any); } catch {}
       }
@@ -1361,7 +1372,7 @@ const teamIndexByKey = useMemo(() => {
       audioBusyUntilRef.current = Date.now() + TTS_AFTER_AUDIO_MS + 200;
 
       // 🔓 unlock mobile + 🔊 SFX perf (décalé de 1.5s pour laisser respirer le blip)
-      if (golfAudioEnabled) {
+      if (golfHitEnabled) {
         try { unlockAudio(); } catch {}
         window.setTimeout(() => {
           try { playGolfPerfSfx(perf as any, 0.9); } catch {}
@@ -2090,10 +2101,10 @@ React.useEffect(() => {
       try {
         if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
         const msgFinal = buildRankingTts("final", ranking);
-        if (msgFinal && golfAudioEnabled) {
+        if (msgFinal && golfVoiceEnabled) {
           // voix ré-activée uniquement au final
           setVoiceEnabled(true);
-          ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
+          ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang, ...golfVoiceOptions }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
         }
       } catch {
         // ignore
@@ -2174,9 +2185,9 @@ React.useEffect(() => {
     try {
       if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
       const msgFinal = buildRankingTts("final", ranking);
-      if (msgFinal && golfAudioEnabled) {
+      if (msgFinal && golfVoiceEnabled) {
         setVoiceEnabled(true);
-        ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
+        ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang, ...golfVoiceOptions }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
       }
     } catch {
       // ignore

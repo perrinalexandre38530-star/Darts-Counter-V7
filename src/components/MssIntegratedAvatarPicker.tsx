@@ -13,9 +13,10 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onChooseFile: (file: File) => void | Promise<void>;
+  zIndex?: number;
 };
 
-export default function MssIntegratedAvatarPicker({ open, onClose, onChooseFile }: Props) {
+export default function MssIntegratedAvatarPicker({ open, onClose, onChooseFile, zIndex = 10040 }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang();
   const primary = theme.primary;
@@ -38,7 +39,7 @@ export default function MssIntegratedAvatarPicker({ open, onClose, onChooseFile 
   };
   return (
     <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: "fixed", inset: 0, zIndex: 10040, background: "rgba(0,0,0,.80)", display: "flex", justifyContent: "center", alignItems: "center", padding: 14 }}>
+      style={{ position: "fixed", inset: 0, zIndex, background: "rgba(0,0,0,.80)", display: "flex", justifyContent: "center", alignItems: "center", padding: 14 }}>
       <div role="dialog" aria-modal="true" aria-label="Choisir un avatar" style={{ width: "min(520px, 96vw)", maxHeight: "88dvh", overflowY: "auto", borderRadius: 18,
         border: `1px solid ${primary}77`, background: `linear-gradient(180deg, ${theme.card}, ${theme.bg})`,
         boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${primary}44` }}>

@@ -57,6 +57,21 @@
 
 **Contrôles de non-régression :** vérifier bascule JOUEURS ↔ ÉQUIPES, DUEL ↔ MULTI, formats 2/3/4 équipes, sélection humaine/bot/équipes enregistrées/brassage, changement de format avec sélection déjà présente, retour en arrière, étape recap, lancer en guidée et en complète. Sur mobile, aucun bloc ni bouton principal ne doit se retrouver sous la BottomNav.
 
+## 2.2. AWENA ASTUCE — contrat obligatoire de configuration (tous modes)
+
+Cette règle s'applique à tous les menus de configuration MSS, tous modes et sports confondus, y compris les entraînements lorsqu'ils proposent ces parcours. Elle prévaut sur les comportements historiques divergents. Ne pas confondre PARTIE RAPIDE avec la vue complète de la configuration ARCADE : le choix du comportement dépend du parcours réel, pas du nombre de blocs visibles ni du scroll.
+
+| Parcours | Nombre et placement | Comportement du conseil |
+|---|---|---|
+| **PARTIE RAPIDE (PR)** | Une seule image/bulle AWENA ASTUCE, tout en bas du contenu de configuration, après les réglages. Jamais une bulle par bloc, option ou section. | L'image, son cadre et le libellé ASTUCE restent fixes. Seul le texte dans la bulle change automatiquement toutes les **5 secondes (5 000 ms)**, en boucle parmi les conseils du mode. |
+| **CONFIGURATION ARCADE (AR) — parcours par étapes** | Une image/bulle AWENA ASTUCE en bas de **chaque étape**, y compris l'étape finale de récapitulatif. Une seule bulle sur l'étape active ; les étapes masquées ne doivent pas afficher de bulle supplémentaire. | Un texte fixe, spécifique à l'étape et au mode. Aucun défilement, aucun minuteur. Le conseil change uniquement lorsque l'utilisateur change d'étape. |
+
+**Implémentation et identité visuelle :** réutiliser le composant AWENA ASTUCE commun s'il existe dans la version de référence ; à défaut, mutualiser le rendu existant de `src/pages/KillerConfig.tsx` et son image `src/assets/president/awena_conseils.webp`. Ne pas inventer un autre visuel. Conserver le médaillon d'Awena, la bulle et le libellé ASTUCE ; le texte est centré, lisible, contenu dans la bulle, traduit via le système de langues MSS et adapté aux règles réelles du mode. Le visuel reste de taille stable lors d'un changement de conseil. Ne pas dupliquer ce bloc avec l'assistant Awena flottant ou la présentation vidéo initiale.
+
+**Cycle de vie :** un seul minuteur de 5 000 ms en PR, uniquement si plusieurs conseils sont disponibles ; nettoyage au démontage ou à la sortie de PR. Aucun minuteur actif en AR. Ne pas déduire PR/AR de la hauteur de fenêtre, du scroll ou d'une heuristique DOM. La vue complète AR ne doit pas activer le carrousel PR simplement parce que plusieurs sections sont visibles ; conserver le commutateur Guidée / Complète existant.
+
+**Recette bloquante :** vérifier sur mobile et desktop (1) une seule bulle en bas de PR, (2) image immobile et texte renouvelé à 5 s puis 10 s, (3) une bulle en bas de chaque étape AR, (4) conseil AR inchangé après au moins 10 s et adapté à l'étape suivante/précédente, (5) absence de minuteur résiduel et de doublons après changement de parcours, (6) aucun chevauchement du bouton de lancement ou de la BottomNav. Tout écart est une non-conformité à corriger avant livraison.
+
 ## 3. Règles techniques et lisibilité
 
 - Portrait : une seule zone contextuelle affichée à la fois ; score, objectif, volée et commandes nécessaires visibles ; pas de configuration complète au-dessus du keypad en pleine partie.
@@ -95,6 +110,9 @@
 - [ ] Pas de scroll pour accéder à la saisie principale pendant une volée sur les tailles testées.
 - [ ] Les modales, la BottomNav et le pad ne se chevauchent pas.
 - [ ] Les états vides, chargements, erreurs et fin de manche restent lisibles.
+- [ ] AWENA ASTUCE : en PR, une seule bulle en bas et texte renouvelé toutes les 5 s ; en AR, une bulle par étape et texte fixe, conformément au § 2.2.
+- [ ] Contrôle code AWENA : PR = exactement 1 instance visible, placée après le dernier bloc et le bouton de lancement ; image stable, texte seul piloté par un intervalle 5 000 ms nettoyé au démontage. AR = exactement 1 instance pour l’étape active ; aucun intervalle ni conseil inséré entre des sections de la vue complète.
+- [ ] Vérifier par inspection du rendu à chaque patch : 0 duplication de bulle en PR comme en AR, texte contenu dans la bulle, conseils spécifiques au mode.
 - [ ] Capture avant/après et contrôle comparatif avec page MSS existante.
 
 ## 6. Gouvernance
@@ -177,3 +195,82 @@ Le présent fichier est la référence écrite **V1** ; `src/styles/mss-ui-contr
 - **Contrôle local** : `node tools/test-mss-config-wave-v75.mjs` analyse les TSX et vérifie les contrats visibles. Il ne valide ni rendu navigateur ni fonctionnement Android, qui demandent des essais interactifs réels.
 
 **Restant à migrer :** audit mode par mode des autres configurateurs Arcade, de leurs panneaux de sélection humains/bots/équipes, des aides, de la saisie et des récapitulatifs, avec vérification des règles métiers et de toutes les langues. Éviter toute migration globale en une opération non testée.
+
+
+### Parcours Partie rapide compact (GOLF V92 — référence d'ergonomie)
+
+- En Partie rapide, lorsqu'un mode comporte de nombreux réglages, privilégier un parcours guidé à étapes courtes plutôt qu'une page unique à défilement long.
+- Référence : **Participants → Parcours / règles propres au jeu → Options (saisie, audio, départ) → Récapitulatif / lancement**. Adapter les intitulés aux règles réelles du mode.
+- Afficher **une seule étape active** à la fois, des boutons **Précédent / Suivant**, un indicateur de progression et conserver les choix lors du changement d'étape. Ne pas afficher un second bloc Guidée/Complète en Partie rapide.
+- Respecter la charte AWENA : en PR **un seul visuel Awena tout en bas**, sur l'étape finale, avec texte en rotation toutes les **5 secondes** et image immobile. En configuration Arcade, un conseil fixe par étape active.
+- Lancer uniquement depuis le récapitulatif ; garder les réglages et les contrats de démarrage existants du jeu.
+- Checklist UI : une seule section active, pas de duplication d'Awena ou des boutons de lancement, navigation fonctionnelle et aucun changement des autres modes via un composant partagé.
+
+
+## STANDARD MSS — CONFIGURATION ET SÉLECTEURS (obligatoire)
+
+- **Partie rapide** : parcours compact découpé en étapes, un seul panneau de réglages à la fois. Une seule image AWENA ASTUCE en bas de la **dernière** étape, visuel fixe, texte des conseils propres au mode défilant toutes les 5 secondes en boucle.
+- **Configuration Arcade guidée** : étape 1 = présentation Awena, **sans** image AWENA ASTUCE ; chaque étape suivante affiche **une seule** bulle Awena en bas, avec un conseil précis **fixe** qui ne change qu'au passage d'étape.
+- **Participants** : réutiliser le sélecteur visuel de référence KILLER (joueurs, équipes, profils, bots, création) plutôt que d'inventer une nouvelle disposition. Les galeries s'ouvrent dans des fenêtres modales centrées largeur/hauteur, contraintes à la taille de l'écran et sans pousser le contenu de la configuration.
+- **Bots IA** : quatre par page, pagination interne ; pas de défilement de page sous la modale. Les profils joueurs restent scrollables à l'intérieur de leur fenêtre.
+- **Couleurs** : suivre la couleur `primary` du ThemeContext pour les commandes des configs, sauf exceptions explicitement documentées (notamment couleurs conventionnelles keypad).
+- **Affichage compact** : les choix courts comme les six cœurs de vies doivent tenir sur une seule rangée, même sur petit écran.
+- **Contrôle avant patch** : vérifier étapes, conseils, absence de doublons, modales mobiles, couleurs, imports, syntaxe TSX, compilation et lancement.
+
+
+### Standard obligatoire de sélection (référence KILLER)
+
+Dans chaque configuration **ARCADE** proposant joueurs et équipes, le parcours guidé est strictement séquencé :
+
+1. **Type de participants** : deux grandes cartes **JOUEURS** / **ÉQUIPES** uniquement. Aucun sélecteur de profils, aucun bot, aucune création, aucun choix de format dans cette étape.
+2. **Format conditionnel** : si JOUEURS, **DUEL** / **MULTI** ; si ÉQUIPES, **Nombre d’équipes** et **Joueurs/bots par équipe**, identiques dans leur organisation au KILLER.
+3. **Choix des participants** : seulement après le format, afficher les commandes **Profils / Bots / Créer**, et si besoin les affectations des équipes. Les listes s’ouvrent en modales centrées sans déplacer la page ; hauteur bornée et contenu paginé (4 bots par page).
+
+Toujours utiliser la **couleur thème du mode**, conserver les sélections entre étapes et séparer la sélection visuelle du moteur de jeu. Une configuration n’est pas conforme si la première étape mélange JOUEURS/ÉQUIPES avec des profils, bots ou options supplémentaires.
+
+## MSS — Sélecteur universel de participants (SOURCE UNIQUE KILLER)
+
+Les étapes de configuration **Type de participants → Format → Sélection** sont obligatoires et identiques pour tous les modes compatibles. **Ne jamais créer une variante graphique locale.** Les composants de référence sont `src/components/config/MssKillerParticipantProtocol.tsx` (type, format, barre d'actions et cartes) et les sélecteurs modaux existants.
+
+1. Type : deux boutons **JOUEURS / ÉQUIPES**, aucun bot, profil ou autre réglage ici.
+2. Format : si JOUEURS, **DUEL / MULTI** ; si ÉQUIPES, **nombre d'équipes et membres/équipe**. Contraintes maximales imposées par le jeu, pas par le visuel.
+3. Sélection : profils ou équipes enregistrées, bots CPU, création ; barre d'action **Composition manuelle / Équipes enregistrées / Brassage auto / Équipes bots / +** ; cartes d'équipes avec logo, membres, modification et suppression. Les sélecteurs sont des modales centrées, paginées, sans décaler l'écran.
+
+Toute évolution du rendu s'effectue dans le composant commun, et doit être testée à la fois dans KILLER et GOLF avant extension aux autres jeux. Le contrat moteur demeure spécifique au jeu.
+
+## Règle obligatoire — Couleurs des configurations et panneau audio MSS (V100)
+
+- Pour tous les écrans de configuration ARCADE et PARTIE RAPIDE, la couleur des titres, pictogrammes, sélections, bordures actives, navigation et accents de panneaux est toujours celle du `ThemeContext` actif (`const { theme } = useTheme(); const primary = theme.primary`). Ne pas définir d'accent local par mode et ne pas confondre le contexte avec l'objet `theme`.
+- Les seules exceptions sont les couleurs sémantiques obligatoires déjà normalisées (impacts/keypad, identités des équipes, voyants activé/désactivé). Les voyants booléens conservent le rendu de KILLER, sans recoloration arbitraire.
+- Les paramètres audio utilisent le composant commun `MssGuidedAudioPanel` de KILLER : sons Arcade, bruitages, annonces vocales et sélection de voix. Chaque jeu doit transmettre ces choix au moteur ; une option incapable d'agir effectivement doit être signalée ou désactivée, pas simplement décorative.
+- Contrôle obligatoire : tester plusieurs thèmes distincts, les boutons ON/OFF, la persistance des réglages et les sons/annonces au lancement d'une partie.
+
+
+### Configuration ARCADE — étapes compactes, thème et saisie (GOLF V101)
+- Lorsqu’une étape cumule départ, saisie et audio, la séparer en étapes indépendantes : **DÉPART**, **SAISIE / GRILLE**, **AUDIO**, puis **RÉCAPITULATIF**. Conserver les états et le contrat de lancement.
+- Les réglages Parcours et Scoring doivent utiliser la couleur `ThemeContext.theme.primary` pour titres, options, contours et choix actifs. Ne jamais reprendre de couleurs statiques d’un ancien formulaire.
+- Le sélecteur de saisie reprend les cinq icônes KILLER dans une grille responsive de cinq colonnes `minmax(0,1fr)`, sans largeur fixe susceptible de déborder ; conserver l’indisponibilité visible des modes non câblés.
+- Les voyants booléens suivent **sans modification** leur convention activé/désactivé KILLER.
+- Astuce Awena : absente en introduction Arcade, fixe et spécifique au réglage dans chaque autre étape, en bas de l’étape ; jamais de rotation automatique.
+
+
+## Référence de normalisation : LES 5 VIES / CHASE (lot V102)
+
+- Configuration ARCADE : toujours une seule navigation native Guidée / Complète (aucune deuxième barre injectée par App).
+- Le rituel KILLER doit être repris à l'identique pour les trois phases : (1) JOUEURS ou ÉQUIPES uniquement ; (2) DUEL/MULTI ou FORMAT DES ÉQUIPES ; (3) CHOIX JOUEURS / CHOIX ÉQUIPES avec les sélecteurs et fenêtres communs.
+- Séparer ensuite les réglages spécifiques à chaque jeu en écrans courts (5 VIES : variante, vies, ordre de départ, saisie, audio, récapitulatif).
+- MODE DE SAISIE : mêmes cinq pictogrammes KILLER sur une seule ligne responsive, seules les méthodes prises en charge sont actives.
+- PARTIE RAPIDE : progression par étapes, une seule AWENA ASTUCE en bas du récapitulatif ; image fixe, texte tournant toutes les 5 secondes.
+- ARCADE : aucune bulle AWENA ASTUCE à l'introduction, une bulle avec conseil **fixe propre à l'étape** en bas de chaque étape suivante.
+- Couleur du thème actif partout (titres, bordures, boutons) ; conserver les codes de couleurs sémantiques des toggles, des impacts S/D/T/BULL/MISS et des logos d'équipes.
+- Ne jamais annoncer un mode de scoring d'équipes fonctionnel à partir de simples métadonnées : le moteur doit traiter ces équipes explicitement avant validation.
+- Livraison : tester les exports/imports réels, la navigation et l'ouverture des modales ; distinguer transpilation TSX, build Vite et tests Android.
+
+## Application du protocole MSS — GROS 6 (V103)
+
+- **Partie rapide** : navigation compacte, un seul panneau actif, Participants → Vies et règles → Zones et bonus → Départ et saisie → Audio → Fiche et lancement. Une seule image `AWENA ASTUCE` sur le dernier écran, texte renouvelé toutes les 5 secondes ; pas de bulle dans les autres étapes.
+- **Configuration Arcade** : introduction Awena sans bulle ASTUCE ; puis choix JOUEURS/ÉQUIPES, FORMAT conditionnel, sélection des participants, variantes/vies, cibles, zones, bonus, départ, saisie, audio et récapitulatif. Une image ASTUCE fixe en bas de chaque étape à partir de l'étape 2 ; conseil spécifique, sans rotation.
+- Utiliser les composants partagés `MssKillerParticipantMode`, `MssKillerFormat` et **`MssGolfKillerTeamSelector`** (même orchestrateur de sélection des équipes que KILLER/GOLF). Ne pas refaire de fenêtre ou formulaire propre au jeu pour ces fonctions.
+- Vies de départ : cœurs MSS **sans médaille « + »**. Choix de saisie : cinq pictogrammes de KILLER, mais ne permettre que les méthodes réellement utilisables par le moteur GROS 6. Boutons booléens : voyant sémantique KILLER conservé ; autres accents : `theme.primary`.
+- Panneau audio commun `MssGuidedAudioPanel` ; ses trois booléens doivent être transmis à la partie et effectivement respectés. Ne pas présenter une méthode de saisie non opérationnelle comme sélectionnable.
+- **Contrôle avant livraison** : comparer étapes et sélecteurs à KILLER ; vérifier équipe enregistrée/bot, création, composition, absence de doublons, lancement individuel/équipes, paramètres transmis à `Gros6Play`, rotation PR et statisme Arcade, absence de débordement mobile.

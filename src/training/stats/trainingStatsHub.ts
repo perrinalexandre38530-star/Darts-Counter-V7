@@ -444,6 +444,9 @@ export function recordTrainingDetailedSession(input: TrainingDetailedSession) {
     });
   }
 
+  if (record.participantType === "player" && record.participantId && record.darts > 0) {
+    void import("../sync/trainingGoalSync").then(m => m.syncGoalSessions([record])).catch(() => {});
+  }
   return record;
 }
 

@@ -1,4 +1,5 @@
 import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
+import MssGuidedAudioPanel from "../components/config/MssGuidedAudioPanel";
 import { MssGolfInputMethodSelector, MssGolfAwenaTip } from "../components/config/MssGolfInputAndTips";
 import { MssQuickStartOrder, type QuickStartOrderMode } from "../components/config/MssGolfQuickControls";
 import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
@@ -29,6 +30,9 @@ import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import { MssKillerParticipantMode, MssKillerFormat } from "../components/config/MssKillerParticipantProtocol";
+import MssSelectorIconButton from "../components/MssSelectorIconButton";
+import MssGolfKillerTeamSelector from "./MssGolfKillerTeamSelector";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BotPagedSelector from "../components/BotPagedSelector";
 import BackDot from "../components/BackDot";
@@ -73,6 +77,7 @@ type TeamKey = "gold" | "pink" | "blue" | "green";
 export type GolfConfigPayload = {
   players: number;
   selectedIds: string[];
+  quickPlayers?: any[];
   holes: 9 | 18;
 
   teamsEnabled: boolean;
@@ -90,6 +95,7 @@ export type GolfConfigPayload = {
   startOrderMode: StartOrderMode;
   scoreInputMethod?: "keypad" | "dartboard";
   audioEnabled?: boolean;
+  audio?: { arcadeEnabled: boolean; hitEnabled: boolean; voiceEnabled: boolean; voiceId: string };
 
   showHoleGrid: boolean;
 };
@@ -216,9 +222,33 @@ function normalizeTeamCount(n: any): 2 | 3 | 4 {
   return 2;
 }
 
+/** Sélections MSS — même accent que le thème actif, sans panneau gris hérité des anciennes règles. */
+function GolfThemeChoice<T extends string | number>({ label, value, options, onChange, accent, hint, compact = false }: {
+  label: string; value: T; options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void; accent: string; hint?: string; compact?: boolean;
+}) {
+  return <div style={{ display: "grid", gap: 8, marginBottom: 16, minWidth: 0 }}>
+    <div style={{ color: accent, fontWeight: 900, fontSize: 12, letterSpacing: .5 }}>{label}</div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: compact ? "center" : "flex-start" }}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return <button type="button" key={String(option.value)} aria-pressed={selected}
+          onClick={() => onChange(option.value)} style={{ minHeight: 42, minWidth: compact ? 45 : 75,
+            padding: compact ? "8px 11px" : "9px 13px", borderRadius: compact ? 999 : 13,
+            border: `1px solid ${selected ? accent : `${accent}55`}`,
+            background: selected ? `${accent}24` : "rgba(255,255,255,.035)",
+            color: selected ? accent : "#edf0f8", fontWeight: 900, fontSize: 12, cursor: "pointer" }}>
+          {option.label}
+        </button>;
+      })}
+    </div>
+    {hint && <div style={{ color: "#aeb8d0", fontSize: 11 }}>{hint}</div>}
+  </div>;
+}
+
 export default function GolfConfig(props: any) {
   const { t } = useLang();
-  const theme = useTheme();
+  const { theme } = useTheme();
 
   React.useLayoutEffect(() => {
     try {
@@ -232,16 +262,26 @@ export default function GolfConfig(props: any) {
   const storeProfiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
   const humanProfiles = storeProfiles.filter((p) => !isBotLike(p));
 
-  const primary = (theme as any)?.primary ?? "#7dffca";
-  const cardBg = "radial-gradient(120% 160% at 0% 0%, rgba(125,255,202,0.14), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.34))";
+  // Source normative : accent du thème actif, jamais de vert GOLF codé en dur.
+  const primary = theme.primary;
+  const cardBg = `radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, ${primary} 14%, transparent), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.34))`;
+  const golfVoiceChoices = React.useMemo(() => [
+    { id: "default", label: "Défaut" },
+    { id: "female", label: "Voix féminine" },
+    { id: "male", label: "Voix masculine" },
+    { id: "robot", label: "Voix robot" },
+    { id: "awena", label: "Awena · voix officielle" },
+  ], []);
 
   const [golfHelpOpen, setGolfHelpOpen] = React.useState(false);
   const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
   const [configStep, setConfigStep] = React.useState(0);
   const guided = configView === "guided";
-  const classicSteps = ["Awena", "Participants", "Règles", "Récapitulatif"];
+  const classicSteps = ["Awena", "Joueurs ou équipes", "Format", "Sélection", "Parcours", "Scoring", "Départ", "Saisie et grille", "Audio", "Récapitulatif"];
 
   const [teamsEnabled, setTeamsEnabled] = React.useState(false);
+  const [playerFormat, setPlayerFormat] = React.useState<"duel" | "multi">("duel");
+  const [teamSize, setTeamSize] = React.useState<2 | 3 | 4>(2);
   const [teamCount, setTeamCount] = React.useState<2 | 3 | 4>(2);
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamKey>>({});
 
@@ -256,7 +296,11 @@ export default function GolfConfig(props: any) {
   // ✅ ordre de départ (joueurs ou équipes)
   const [startOrderMode, setStartOrderMode] = React.useState<StartOrderMode>("alternate");
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">("keypad");
-  const [audioEnabled, setAudioEnabled] = React.useState(true);
+  // Paramètres audio séparés, même panneau que KILLER.
+  const [arcadeEnabled, setArcadeEnabled] = React.useState(true);
+  const [hitEnabled, setHitEnabled] = React.useState(true);
+  const [voiceEnabled, setVoiceEnabled] = React.useState(true);
+  const [voiceId, setVoiceId] = React.useState("default");
 
   const [userBots, setUserBots] = React.useState<BotLite[]>([]);
   React.useEffect(() => {
@@ -286,6 +330,8 @@ export default function GolfConfig(props: any) {
       const parsed = JSON.parse(raw);
 
       setTeamsEnabled(!!parsed?.teamsEnabled);
+      setPlayerFormat(parsed?.playerFormat === "multi" ? "multi" : "duel");
+      setTeamSize(([2, 3, 4].includes(Number(parsed?.teamSize)) ? Number(parsed.teamSize) : 2) as 2 | 3 | 4);
       setTeamCount(normalizeTeamCount(parsed?.teamCount ?? 2));
       setTeamAssignments((parsed?.teamAssignments && typeof parsed.teamAssignments === "object") ? parsed.teamAssignments : {});
 
@@ -300,7 +346,11 @@ export default function GolfConfig(props: any) {
 
       setStartOrderMode((["random", "alternate", "manual", "bull"].includes(parsed?.startOrderMode) ? parsed.startOrderMode : "alternate") as StartOrderMode);
       setScoreInputMethod(parsed?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
-      setAudioEnabled(parsed?.audioEnabled !== false);
+      const legacyAudioEnabled = parsed?.audioEnabled !== false;
+      setArcadeEnabled(typeof parsed?.audio?.arcadeEnabled === "boolean" ? parsed.audio.arcadeEnabled : legacyAudioEnabled);
+      setHitEnabled(typeof parsed?.audio?.hitEnabled === "boolean" ? parsed.audio.hitEnabled : legacyAudioEnabled);
+      setVoiceEnabled(typeof parsed?.audio?.voiceEnabled === "boolean" ? parsed.audio.voiceEnabled : legacyAudioEnabled);
+      setVoiceId(typeof parsed?.audio?.voiceId === "string" ? parsed.audio.voiceId : "default");
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -314,6 +364,8 @@ export default function GolfConfig(props: any) {
           selectedIds,
 
           teamsEnabled,
+          playerFormat,
+          teamSize,
           teamCount,
           teamAssignments,
 
@@ -327,7 +379,8 @@ export default function GolfConfig(props: any) {
 
           startOrderMode,
           scoreInputMethod,
-          audioEnabled,
+          audioEnabled: arcadeEnabled || hitEnabled || voiceEnabled,
+          audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId },
 
           showHoleGrid,
         })
@@ -336,6 +389,8 @@ export default function GolfConfig(props: any) {
   }, [
     selectedIds,
     teamsEnabled,
+    playerFormat,
+    teamSize,
     teamCount,
     teamAssignments,
     botsEnabled,
@@ -346,7 +401,10 @@ export default function GolfConfig(props: any) {
     missStrokes,
     startOrderMode,
     scoreInputMethod,
-    audioEnabled,
+    arcadeEnabled,
+    hitEnabled,
+    voiceEnabled,
+    voiceId,
     showHoleGrid,
   ]);
 
@@ -375,11 +433,13 @@ export default function GolfConfig(props: any) {
     });
   }, [teamsEnabled, teamCount, selectedIds]);
 
+  const requiredMaxTeamPlayers = teamCount * teamSize;
+
   function togglePlayer(id: string) {
     setSelectedIds((prev) => {
       const has = prev.includes(id);
       if (has) return prev.filter((x) => x !== id);
-      if (prev.length >= 8) return prev;
+      if (prev.length >= (teamsEnabled ? requiredMaxTeamPlayers : playerFormat === "duel" ? 2 : 8)) return prev;
       return [...prev, id];
     });
   }
@@ -393,6 +453,12 @@ export default function GolfConfig(props: any) {
       teamsEnabled,
       teamCount: teamsEnabled ? teamCount : undefined,
       teamAssignments: teamsEnabled ? teamAssignments : undefined,
+      // Le moteur GOLF sait déjà lire quickPlayers : résoudre les bots sans changer ses règles.
+      quickPlayers: selectedIds.map((id) => {
+        const p = humanProfiles.find((p: any) => String(p.id) === id) || userBots.find((b: any) => String(b.id) === id);
+        return p ? { id, name: p.name, avatarDataUrl: (p as any).avatarDataUrl ?? (p as any).avatarUrl ?? (p as any).avatar ?? null,
+          isBot: !!userBots.find((b: any) => String(b.id) === id) } : { id, name: id };
+      }),
 
       botsEnabled,
       botLevel,
@@ -403,7 +469,8 @@ export default function GolfConfig(props: any) {
 
       startOrderMode,
       scoreInputMethod,
-      audioEnabled,
+      audioEnabled: arcadeEnabled || hitEnabled || voiceEnabled,
+      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId },
 
       showHoleGrid,
     };
@@ -434,7 +501,9 @@ export default function GolfConfig(props: any) {
     return Object.values(counts).filter((n) => n > 0).length;
   }, [teamsEnabled, enabledKeys, selectedIds, teamAssignments]);
 
-  const canStart = selectedIds.length >= 2 && (!teamsEnabled || teamNonEmptyCount >= 2);
+  const requiredTeamPlayers = teamCount * teamSize;
+  const teamSizesValid = enabledKeys.every((key) => selectedIds.filter((id) => teamAssignments[id] === key).length === teamSize);
+  const canStart = selectedIds.length >= 2 && (teamsEnabled ? selectedIds.length === requiredTeamPlayers && teamNonEmptyCount === teamCount && teamSizesValid : playerFormat === "multi" || selectedIds.length === 2);
 
   return (
     <div style={{ minHeight: "100dvh" }}>
@@ -460,7 +529,6 @@ export default function GolfConfig(props: any) {
         {guided && configStep === 0 && <MssClassicOverview title="GOLF · AWENA VOUS EXPLIQUE" onHelp={() => setGolfHelpOpen(v => !v)}
           description="Choisis tes joueurs ou équipes, configure les trous et la pénalité, puis vérifie le récapitulatif avant de lancer."
           accent={primary} />}
-        {guided && configStep === 0 && <MssGolfAwenaTip step="intro" />}
         {golfHelpOpen && <div style={{ border: `1px solid ${primary}55`, borderRadius: 14,
           padding: 12, marginBottom: 12, fontSize: 12, color: "#bac4d9" }}>
           Un trou est joué en trois fléchettes maximum. Le score dépend du dernier tir validé :
@@ -497,7 +565,7 @@ export default function GolfConfig(props: any) {
               position: "absolute",
               inset: 0,
               background:
-                "linear-gradient(90deg, rgba(0,0,0,.86) 0%, rgba(0,0,0,.42) 42%, rgba(0,0,0,.84) 100%), radial-gradient(120% 140% at 0% 0%, rgba(125,255,202,.20), transparent 60%)",
+                "linear-gradient(90deg, rgba(0,0,0,.86) 0%, rgba(0,0,0,.42) 42%, rgba(0,0,0,.84) 100%), radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--dc-accent, currentColor) 20%, transparent), transparent 60%)",
             }}
           />
           <div style={{ position: "relative", zIndex: 1, padding: "12px 14px" }}>
@@ -556,8 +624,8 @@ export default function GolfConfig(props: any) {
                   padding: "6px 10px",
                   borderRadius: 999,
                   border: "1px solid rgba(255,255,255,0.14)",
-                  background: teamsEnabled ? "rgba(255,207,87,0.12)" : "rgba(0,0,0,0.26)",
-                  color: teamsEnabled ? "#ffcf57" : "rgba(255,255,255,0.75)",
+                  background: teamsEnabled ? `${primary}1f` : "rgba(0,0,0,0.26)",
+                  color: teamsEnabled ? primary : "rgba(255,255,255,0.75)",
                   fontWeight: 900,
                   fontSize: 12,
                   letterSpacing: 0.6,
@@ -569,8 +637,34 @@ export default function GolfConfig(props: any) {
           </div>
         </div>
 
+        {/* Même conteneur + mêmes contrôles, extraits de KILLER : aucune variante locale. */}
         <div hidden={guided && configStep !== 1}>
-        <Section title={t("players") || "JOUEURS"}>
+          <section data-mss-killer-protocol="participants" style={{ background: cardBg, borderRadius: 18, padding: "14px 12px", marginBottom: 14,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Participants</div>
+            <MssKillerParticipantMode mode={teamsEnabled ? "teams" : "players"} accent={primary} onChange={(mode) => {
+              setTeamsEnabled(mode === "teams");
+              if (mode === "players" && playerFormat === "duel") setSelectedIds(prev => prev.slice(0, 2));
+            }} />
+          </section>
+        </div>
+
+        <div hidden={guided && configStep !== 2}>
+          <section data-mss-killer-protocol="format" style={{ background: cardBg, borderRadius: 18, padding: "14px 12px", marginBottom: 14,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <div style={{ color: primary, fontWeight: 900, fontSize: 13, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>
+              {teamsEnabled ? "FORMAT DES ÉQUIPES" : "FORMAT JOUEURS"}
+            </div>
+            <MssKillerFormat mode={teamsEnabled ? "teams" : "players"} playerFormat={playerFormat}
+              onPlayerFormat={(mode) => { setPlayerFormat(mode); if (mode === "duel") setSelectedIds(prev => prev.slice(0, 2)); }}
+              teamCount={teamCount} onTeamCount={(n) => { setTeamCount(normalizeTeamCount(n)); if (n * teamSize > 8) setTeamSize(2); }}
+              teamSize={teamSize} onTeamSize={setTeamSize} accent={primary} maxPlayers={8} />
+          </section>
+        </div>
+
+        {/* Standard KILLER : étape 3 = sélection des profils et bots. */}
+        <div hidden={guided && configStep !== 3}>
+        <Section title={teamsEnabled ? "CHOIX ÉQUIPES" : "CHOIX JOUEURS"}>
           <div
             style={{
               borderRadius: 18,
@@ -584,304 +678,97 @@ export default function GolfConfig(props: any) {
               Sélection : {selectedIds.length}/8 — min 2
             </div>
 
-            {/* Profils humains : sélection en bloc flottant type avatars */}
-            <PlayerPagedSelector
-                  usageMode="golf"
-              profiles={humanProfiles}
-              selectedIds={selectedIds}
-              onToggle={togglePlayer}
-              accent={primary}
-              pageSize={9}
-              modalTitle="Choisir des joueurs"
-            />
-
-            {/* Toggles */}
-            <OptionRow label="Mode équipes (TEAMS)">
-              <OptionToggle value={teamsEnabled} onChange={setTeamsEnabled} />
-            </OptionRow>
-
-            {teamsEnabled && (
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                <OptionRow label="Nombre d'équipes" hint="2 à 4 (3 possible)">
-                  <select
-                    value={teamCount}
-                    onChange={(e) => setTeamCount(normalizeTeamCount(e.target.value))}
-                    style={{
-                      height: 44,
-                      borderRadius: 14,
-                      padding: "0 14px",
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(0,0,0,0.22)",
-                      color: "rgba(255,255,255,0.92)",
-                      fontWeight: 900,
-                      minWidth: 110,
-                    }}
-                  >
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                  </select>
-                </OptionRow>
-
-                
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 900, opacity: 0.82 }}>Assignation</div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const keys = TEAM_KEYS_ALL.slice(0, teamCount);
-                      const next: Record<string, TeamKey> = {};
-                      selectedIds.forEach((id, idx) => {
-                        next[id] = keys[idx % keys.length] as TeamKey;
-                      });
-                      setTeamAssignments(next);
-                    }}
-                    style={{
-                      height: 34,
-                      padding: "0 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(0,0,0,0.22)",
-                      color: "rgba(255,255,255,0.90)",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Auto
-                  </button>
-                </div>
-
-
-{/* ✅ Assignation type X01Config (avatar + nom dessous, 4 teams sur une ligne) */}
-<div
-  style={{
-    padding: 10,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.18)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  }}
->
-  {selectedIds.map((id, idx) => {
-    const hp = humanProfiles.find((p) => String((p as any).id) === id);
-    const bp = userBots.find((b) => String((b as any).id) === id);
-
-    const name = (hp as any)?.name || (bp as any)?.name || "Joueur";
-    const avatar =
-      (hp as any)?.avatarDataUrl ||
-      (hp as any)?.avatarUrl ||
-      (bp as any)?.avatarDataUrl ||
-      null;
-
-    const availableKeys = TEAM_KEYS_ALL.slice(0, teamCount);
-    const fallbackKey = availableKeys[idx % Math.max(1, availableKeys.length)] || "gold";
-    const current = (teamAssignments[id] ?? fallbackKey) as TeamKey;
-
-    return (
-      <div
-        key={id}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: 10,
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.18))",
-        }}
-      >
-        {/* Col joueur (avatar + nom dessous) */}
-        <div
-          style={{
-            width: 92,
-            flex: "0 0 92px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 6,
-            minWidth: 0,
-          }}
-        >
-          <div
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: "50%",
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(0,0,0,0.28)",
-              boxShadow: "0 0 0 4px rgba(0,0,0,0.28)",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            {avatar ? (
-              <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {teamsEnabled ? (
+              <MssGolfKillerTeamSelector
+                humanProfiles={humanProfiles}
+                bots={userBots}
+                selectedIds={selectedIds}
+                setSelectedIds={setSelectedIds}
+                teamAssignments={teamAssignments}
+                setTeamAssignments={setTeamAssignments}
+                teamCount={teamCount}
+                teamSize={teamSize}
+                accent={primary}
+                onBotsUsed={() => setBotsEnabled(true)}
+                onAddBots={(newBots) => setUserBots(prev => {
+                  const byId = new Map(prev.map(b => [String(b.id), b]));
+                  newBots.forEach((bot: any) => byId.set(String(bot.id), bot));
+                  return Array.from(byId.values());
+                })}
+                onUpdateProfiles={(props as any)?.update}
+                onRefreshBots={() => setUserBots(prev => {
+                  const map = new Map(prev.map(b => [String(b.id), b]));
+                  readUserBotsFromLS().forEach(b => map.set(String(b.id), b));
+                  return Array.from(map.values());
+                })}
+              />
             ) : (
-              <span style={{ fontWeight: 1000, opacity: 0.78 }}>{String(name).slice(0, 1).toUpperCase()}</span>
-            )}
-          </div>
-
-          <div
-            title={name}
-            style={{
-              fontSize: 12,
-              fontWeight: 950,
-              color: "rgba(255,255,255,0.92)",
-              textAlign: "center",
-              lineHeight: 1.1,
-              width: "100%",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {name}
-          </div>
-        </div>
-
-        {/* Col équipes (4 pills, style X01Config) */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
-            {TEAM_KEYS_ALL.map((k) => {
-              const m = TEAM_META[k];
-              const disabled = !availableKeys.includes(k);
-              return (
-                <TeamPillButton
-                  key={k}
-                  label={m.short}
-                  color={m.color}
-                  active={current === k}
-                  disabled={disabled}
-                  onClick={() => {
-                    if (disabled) return;
-                    setTeamAssignments((prev) => ({ ...prev, [id]: k }));
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  })}
-</div>{teamNonEmptyCount < 2 && (
-                  <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginTop: 4 }}>
-                    ⚠️ Il faut au moins 2 équipes non vides pour lancer une partie TEAMS.
-                  </div>
-                )}
-              </div>
-            )}
-
-            <OptionRow label="Bots IA">
-              <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
-            </OptionRow>
-
-            {botsEnabled && (
               <>
-                <OptionRow label="Difficulté IA">
-                  <OptionSelect
-                    value={botLevel}
-                    options={[
-                      { value: "easy", label: "Easy" },
-                      { value: "normal", label: "Normal" },
-                      { value: "hard", label: "Hard" },
-                    ]}
-                    onChange={setBotLevel}
-                  />
-                </OptionRow>
-
-                <div style={{ marginTop: 10 }}>
-                  <BotPagedSelector
-                    bots={userBots}
-                    selectedIds={selectedIds}
-                    onToggle={togglePlayer}
-                    accent={primary}
-                    label="BOTS IA"
-                    modalTitle="Choisir des BOTS IA"
-                    showCheckbox={false}
-                  />
+                <PlayerPagedSelector
+                  usageMode="golf" profiles={humanProfiles} selectedIds={selectedIds}
+                  onToggle={togglePlayer} accent={primary} pageSize={9}
+                  modalTitle="Choisir des joueurs"
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 0" }}>
+                  <strong style={{ color: primary, fontSize: 12, letterSpacing: .6 }}>BOTS IA</strong>
+                  <MssSelectorIconButton icon="bots" label={botsEnabled ? "Masquer les bots IA" : "Activer les bots IA"} accent={primary} active={botsEnabled} onClick={() => setBotsEnabled(v => !v)} />
                 </div>
+                {botsEnabled && <>
+                  <OptionRow label="Difficulté IA">
+                    <OptionSelect value={botLevel} options={[{ value: "easy", label: "Easy" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Hard" }]} onChange={setBotLevel} />
+                  </OptionRow>
+                  <BotPagedSelector bots={userBots} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary}
+                    label="BOTS IA" modalTitle="Choisir des BOTS IA" showCheckbox={false} />
+                </>}
               </>
             )}
           </div>
         </Section>
         </div>
 
-        {(!guided || configStep === 1) && <MssGolfAwenaTip step="participants" />}
-        <div hidden={guided && configStep !== 2}>
-        <Section title="RÈGLES">
+        <div hidden={guided && ![4, 5, 6, 7, 8].includes(configStep)}>
+        <Section title={guided ? classicSteps[configStep].toUpperCase() : "RÈGLES"}>
           <div
             style={{
               borderRadius: 18,
               padding: 12,
-              background: cardBg,
-              border: "1px solid rgba(255,255,255,0.12)",
-              boxShadow: "0 14px 34px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06)",
+              background: `linear-gradient(160deg, color-mix(in srgb, ${primary} 9%, #0c101d), #090c18 75%)`,
+              border: `1px solid ${primary}45`,
+              boxShadow: "0 14px 34px rgba(0,0,0,0.32)",
             }}
           >
-            <OptionRow label="Nombre de trous">
-              <OptionSelect
-                value={holes}
-                options={[
-                  { value: 9, label: "9" },
-                  { value: 18, label: "18" },
-                ]}
-                onChange={(v: any) => setHoles(Number(v) === 18 ? 18 : 9)}
-              />
-            </OptionRow>
+            <div hidden={guided && configStep !== 4}>
+            <GolfThemeChoice label="NOMBRE DE TROUS" value={holes} options={[{ value: 9, label: "9" }, { value: 18, label: "18" }]}
+              accent={primary} onChange={(v) => setHoles(v === 18 ? 18 : 9)} />
+            <GolfThemeChoice label="ORDRE DES TROUS" value={holeOrderMode} options={[{ value: "chronological", label: "CHRONOLOGIQUE" }, { value: "random", label: "ALÉATOIRE" }]}
+              accent={primary} onChange={setHoleOrderMode} />
 
-            <OptionRow label="Ordre des trous">
-              <OptionSelect
-                value={holeOrderMode}
-                options={[
-                  { value: "chronological", label: "Chronologique" },
-                  { value: "random", label: "Aléatoire" },
-                ]}
-                onChange={(v: any) => setHoleOrderMode(v === "random" ? "random" : "chronological")}
-              />
-            </OptionRow>
+            </div>
+            <div hidden={guided && configStep !== 5}>
+            <GolfThemeChoice label="MODE DE SCORING" value={scoringMode} options={[{ value: "strokes", label: "STROKES" }, { value: "points", label: "POINTS" }]}
+              accent={primary} onChange={setScoringMode} hint={scoringMode === "strokes" ? "Le total le plus bas gagne" : "Le total le plus haut gagne"} />
+            <GolfThemeChoice label="PÉNALITÉ MISS" value={missStrokes} options={[4, 5, 6, 7, 8].map(v => ({value: v, label: String(v)}))}
+              accent={primary} onChange={(v) => setMissStrokes(v as any)} compact />
 
-            <MssQuickStartOrder value={startOrderMode} onChange={setStartOrderMode} />
-
-            <OptionRow label="Mode de scoring" hint={scoringMode === "strokes" ? "Score bas gagne" : "Score haut gagne"}>
-              <OptionSelect
-                value={scoringMode}
-                options={[
-                  { value: "strokes", label: "Strokes" },
-                  { value: "points", label: "Points" },
-                ]}
-                onChange={(v: any) => setScoringMode(v === "points" ? "points" : "strokes")}
-              />
-            </OptionRow>
-
-            <OptionRow label="Pénalité (miss)">
-              <OptionSelect
-                value={missStrokes}
-                options={[4, 5, 6, 7, 8].map((v) => ({ value: v, label: String(v) }))}
-                onChange={(v: any) => setMissStrokes(((Number(v) as any) || 5) as any)}
-              />
-            </OptionRow>
-
-            <MssKillerBooleanToggle label="Grille des trous" checked={showHoleGrid} onChange={setShowHoleGrid} accent={primary} />
-            <MssGolfInputMethodSelector value={scoreInputMethod} onChange={setScoreInputMethod} accent={primary} />
-            <MssKillerBooleanToggle label="Options audio" checked={audioEnabled} onChange={setAudioEnabled} accent={primary} />
+            </div>
+            <div hidden={guided && configStep !== 6}>
+              <MssQuickStartOrder value={startOrderMode} onChange={setStartOrderMode} />
+            </div>
+            <div hidden={guided && configStep !== 7}>
+              <MssKillerBooleanToggle label="Grille des trous" checked={showHoleGrid} onChange={setShowHoleGrid} accent={primary} />
+              <MssGolfInputMethodSelector value={scoreInputMethod} onChange={setScoreInputMethod} accent={primary} />
+            </div>
+            <div hidden={guided && configStep !== 8}>
+              <MssGuidedAudioPanel accent={primary}
+                arcade={arcadeEnabled} hits={hitEnabled} voice={voiceEnabled}
+                onArcadeChange={setArcadeEnabled} onHitsChange={setHitEnabled} onVoiceChange={setVoiceEnabled}
+                voiceId={voiceId} voices={golfVoiceChoices} onVoiceIdChange={setVoiceId} />
+            </div>
           </div>
         </Section>
         </div>
 
-        {(!guided || configStep === 2) && <MssGolfAwenaTip step="rules" />}
-        {guided && configStep === 3 && <MssClassicRecap accent={primary} ready={canStart} entries={[
+        {guided && configStep === 9 && <MssClassicRecap accent={primary} ready={canStart} entries={[
           ["Participants", `${selectedIds.length} joueurs / bots`],
           ["Équipes", teamsEnabled ? `${teamCount} équipes · ${teamNonEmptyCount} composées` : "Partie individuelle"],
           ["Parcours", `${holes} trous · ${holeOrderMode === "random" ? "Aléatoire" : "Chronologique"}`],
@@ -889,13 +776,15 @@ export default function GolfConfig(props: any) {
           ["Pénalité MISS", `${missStrokes} coups`],
           ["Départ", ({random:"Aléatoire",alternate:"Alterné",manual:"Manuel",bull:"Bull"} as const)[startOrderMode]],
           ["Saisie", scoreInputMethod === "dartboard" ? "Cible" : "Keypad"],
-          ["Audio", audioEnabled ? "Activé" : "Silencieux"],
+          ["Audio", `${arcadeEnabled ? "Arcade" : "Sans arcade"} · ${hitEnabled ? "Bruitages" : "Sans bruitages"} · ${voiceEnabled ? golfVoiceChoices.find(v => v.id === voiceId)?.label || "Voix" : "Voix OFF"}`],
         ]} />}
 
-        {guided && configStep === 3 && <MssGolfAwenaTip step="recap" />}
+        {/* AR : une seule astuce en bas de l’étape active, sans rotation. */}
+        {(!guided || configStep > 0) && <MssGolfAwenaTip mode="arcade" step={guided ? (["intro", "participants", "participants", "participants", "rules", "rules", "rules", "rules", "rules", "recap"] as const)[configStep] || "intro" : "recap"} tipOverride={guided ? ({ 4: "Neuf trous pour une manche courte, dix-huit pour un parcours complet. L'ordre aléatoire varie les cibles.", 5: "En STROKES, le total le plus bas gagne. Chaque MISS ajoute la pénalité choisie.", 6: "En mode BULL, départage les joueurs par un vrai lancer au centre de la cible.", 7: "La cible et le keypad saisissent les mêmes impacts ; la grille des trous peut être masquée.", 8: "Ajuste séparément les sons Arcade, les impacts et les annonces vocales avant de jouer.", 9: "Vérifie les équipes, le parcours et toutes les options avant de lancer." } as Record<number, string>)[configStep] : undefined} />}
+
         {/* CTA collée au-dessus de la barre de nav (même design que X01/Killer) */}
         <div style={{ height: 96 }} />
-        <div hidden={guided && configStep !== 3} style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
+        <div hidden={guided && configStep !== 9} style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
           <div style={{ pointerEvents: "auto" }}>
             <button
               type="button"
@@ -910,7 +799,7 @@ export default function GolfConfig(props: any) {
                 fontSize: 14,
                 letterSpacing: 1,
                 textTransform: "uppercase",
-                background: canStart ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(120,120,120,0.5)",
+                background: canStart ? primary : "rgba(120,120,120,0.5)",
                 color: canStart ? "#151515" : "#2b2b52",
                 boxShadow: canStart ? "0 0 18px rgba(255, 207, 120, 0.65)" : "none",
                 opacity: canStart ? 1 : 0.6,

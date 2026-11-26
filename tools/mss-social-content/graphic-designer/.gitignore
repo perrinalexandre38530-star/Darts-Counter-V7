@@ -4,3 +4,6 @@ output/approvals.json
 output/*.tmp
 /output/publication-plan.json
 /overrides/
+
+/output/publisher-history.json
+/output/.publisher-lock/

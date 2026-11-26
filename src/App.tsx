@@ -8210,6 +8210,7 @@ case "babyfoot_team_edit":
   const needsUniversalDartsConfigGuide =
     !isDartsEntryChoice &&
     gameRouteName !== "golf_config" && // Golf possède sa navigation guidée/complète native : aucun second bandeau.
+    gameRouteName !== "five_lives_config" && // 5 VIES possède désormais un parcours natif : éviter le double guide.
     routeParams?.launchMode !== "quick" &&
     DARTS_CONFIG_TABS.has(gameRouteName) &&
     !NATIVE_GUIDED_DARTS_CONFIG_TABS.has(gameRouteName) &&

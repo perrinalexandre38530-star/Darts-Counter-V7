@@ -187,6 +187,12 @@ export default function DartsConfigGuideBoundary({ route, children }: Props) {
       container.dataset.mssGuidePrevDisplay = container.style.display;
     });
 
+    // Contrat MSS pour les astuces guidées : identifiant de l'étape active,
+    // indépendant du scroll et de la visibilité partielle à l'écran.
+    host.dataset.mssGuideActiveSection = mode === "guided"
+      ? (nodes[Math.min(step, nodes.length - 1)]?.dataset.mssGuideSection || "")
+      : "";
+
     nodes.forEach((node, index) => {
       const previous = node.style.display;
       node.dataset.mssGuidePrevDisplay = previous;

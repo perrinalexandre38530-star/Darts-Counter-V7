@@ -674,7 +674,10 @@ export default function PlayerPagedSelector({
       </div> : null}
 
       {listOpen ? (
-        <div className="dc-scroll-thin" style={{ maxHeight: 220, overflowY: "auto", borderRadius: 16, border: `1px solid ${accent}44`, background: "rgba(0,0,0,.24)", padding: 8 }}>
+        <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setListOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,.78)", padding: 12, display: "grid", placeItems: "center" }}>
+          <div role="dialog" aria-modal="true" aria-label="Liste des profils" style={{ width: "min(480px, 96vw)", maxHeight: "min(82dvh, 680px)", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "#090d1b", borderRadius: 18, border: `1px solid ${accent}88`, boxShadow: "0 20px 55px rgba(0,0,0,.65)" }}>
+            <div style={{ padding: "11px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, borderBottom: `1px solid ${accent}44` }}><strong style={{ color: accent, fontSize: 13 }}>LISTE DES JOUEURS</strong><button type="button" onClick={() => setListOpen(false)} aria-label="Fermer la liste" style={{ color: accent, background: "transparent", border: 0, fontSize: 23, cursor: "pointer" }}>×</button></div>
+            <div className="dc-scroll-thin" style={{ overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", minHeight: 0, flex: "1 1 auto", padding: 9 }}>
           {ordered.map((p: any) => {
             const active = selectedIdSet.has(String(p.id));
             return (
@@ -685,6 +688,8 @@ export default function PlayerPagedSelector({
               </button>
             );
           })}
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -700,7 +705,7 @@ export default function PlayerPagedSelector({
 
       {open ? (
         <div role="dialog" aria-modal="true" onClick={closePicker} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 96vw)", maxHeight: "90vh", borderRadius: 18, border: `1px solid ${accent}88`, background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))", boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${accent}44`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 96vw)", maxHeight: "min(84dvh, 760px)", borderRadius: 18, border: `1px solid ${accent}88`, background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))", boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${accent}44`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "12px 12px 10px", borderBottom: `1px solid ${accent}44`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 950, color: accent, textTransform: "uppercase", letterSpacing: 1.2, fontSize: 13 }}>{modalTitle}</div>
@@ -711,7 +716,7 @@ export default function PlayerPagedSelector({
                 <button className="btn sm" type="button" onClick={closePicker}>✕</button>
               </div>
             </div>
-            <div style={{ padding: 14, overflowY: "auto" }} className="dc-scroll-thin">
+            <div style={{ padding: 12, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", minHeight: 0, flex: "1 1 auto" }} className="dc-scroll-thin">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {pageItems.map((p: any) => {
                   const active = selectedIdSet.has(String(p.id));

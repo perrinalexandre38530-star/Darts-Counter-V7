@@ -93,8 +93,8 @@ function MiniIcon({ label, active, value, onClick, accent }: { label: string; ac
     style={{ minWidth: 52, height: 47, borderRadius: 13, border: `1px solid ${active ? accent : `${accent}60`}`, background: active ? `${accent}20` : "rgba(255,255,255,.025)", color: accent, fontSize: 19, fontWeight: 950, cursor: "pointer", boxShadow: active ? `0 0 12px ${accent}33` : "none" }}>{value}</button>;
 }
 
-export default function MssKillerQuickSettings({ rules, setRules, accent, progressive = false }: {
-  rules: KillerQuickRules; setRules: React.Dispatch<React.SetStateAction<KillerQuickRules>>; accent: string; progressive?: boolean;
+export default function MssKillerQuickSettings({ rules, setRules, accent, progressive = false, section = "all" }: {
+  rules: KillerQuickRules; setRules: React.Dispatch<React.SetStateAction<KillerQuickRules>>; accent: string; progressive?: boolean; section?: "all" | "rules" | "options" | "advanced";
 }) {
   const [advanced, setAdvanced] = React.useState(false);
   const [bullPanel, setBullPanel] = React.useState(false);
@@ -125,7 +125,7 @@ export default function MssKillerQuickSettings({ rules, setRules, accent, progre
     ["camera", "CAMÉRA", cameraReady], ["autodarts", "AUTODARTS", autodartsReady],
   ] as const;
   return <div style={{ display: "grid", gap: 11 }}>
-    <InfoPanel title="RÈGLES DE BASE" accent={accent}>
+    {(section === "all" || section === "rules") && <InfoPanel title="RÈGLES DE BASE" accent={accent}>
       <div style={{ ...head, fontSize: 11, color: "#c3c7df" }}>NOMBRE DE VIES</div>
       <div role="group" aria-label="Nombre de vies" style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 2, width: "100%", maxWidth: 380, margin: "0 auto" }}>
         {[1,2,3,4,5,6].map(n => <HeartChoice key={n} n={n} active={progressive ? n === 5 : rules.lives === n} accent={accent} onClick={() => !progressive && update({ lives: n })} />)}
@@ -145,8 +145,8 @@ export default function MssKillerQuickSettings({ rules, setRules, accent, progre
         <div>{progressive || rules.damageRule === "multiplier" ? "Simple −1, double −2, triple −3 vies." : "Un impact valide retire toujours une vie."}</div>
       </div>
       {progressive && <p style={{ ...help, margin: 0 }}>KILLER Progressif conserve ses règles fixes : 5 vies-cibles, progression S/D/T et numéro déterminé au lancer.</p>}
-    </InfoPanel>
-    <InfoPanel title="DÉPART ET SAISIE" accent={accent}>
+    </InfoPanel>}
+    {(section === "all" || section === "options") && <InfoPanel title="DÉPART ET SAISIE" accent={accent}>
       <MssStartOrderSection accent={accent} value={rules.startOrderMode} onChange={n => update({ startOrderMode: n })} />
       <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 10 }}>
         <div style={{ ...head, fontSize: 11, color: "#c3c7df", marginBottom: 8 }}>ATTRIBUTION DES SECTEURS</div>
@@ -164,8 +164,8 @@ export default function MssKillerQuickSettings({ rules, setRules, accent, progre
         <div style={{ ...help, marginTop: 7 }}><strong style={{ color: accent }}>{inputOptions.find(v => v[0] === rules.inputMode)?.[1]}</strong> · {({ keypad: "Clavier S/D/T comme dans X01.", dartboard: "Saisie en touchant la cible interactive.", voice: "Annonce les fléchettes au micro.", camera: "Caméra calibrée.", autodarts: "Appareil connecté." } as const)[rules.inputMode]}</div>
         {(!voiceReady || !cameraReady || !autodartsReady) && <div style={{ ...help, opacity: .75 }}>Les modes non configurés sont grisés. Tu peux les préparer depuis la configuration Arcade.</div>}
       </div>
-    </InfoPanel>
-    <section style={{ border: `1px solid ${accent}5a`, borderRadius: 17, overflow: "hidden", background: "rgba(9,10,23,.88)" }}>
+    </InfoPanel>}
+    {(section === "all" || section === "advanced") && <section style={{ border: `1px solid ${accent}5a`, borderRadius: 17, overflow: "hidden", background: "rgba(9,10,23,.88)" }}>
       <button type="button" aria-expanded={advanced} onClick={() => setAdvanced(v => !v)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "transparent", border: "none", color: accent, fontWeight: 950, fontSize: 13, textAlign: "left", cursor: "pointer" }}>
         <span>VARIANTES AVANCÉES <span style={{ fontWeight: 650, fontSize: 10, color: "#b8becf" }}>· réglages rapides</span></span><span>{advanced ? "−" : "+"}</span>
       </button>
@@ -218,14 +218,14 @@ export default function MssKillerQuickSettings({ rules, setRules, accent, progre
           </div>}
         </div>
       </div>}
-    </section>
-    <section style={{ border: `1px solid ${accent}4d`, background: "rgba(10,12,23,.85)", borderRadius: 16, overflow: "hidden" }}>
+    </section>}
+    {(section === "all" || section === "advanced") && <section style={{ border: `1px solid ${accent}4d`, background: "rgba(10,12,23,.85)", borderRadius: 16, overflow: "hidden" }}>
       <button type="button" aria-expanded={audioPanel} onClick={() => setAudioPanel(v=>!v)} style={{ width: "100%", padding: "12px 14px", display: "flex", justifyContent: "space-between", background: "none", border: "none", color: accent, fontSize: 12, fontWeight: 950, letterSpacing: .6, cursor: "pointer" }}><span>MODE AUDIO</span><span>{audioPanel ? "−" : "+"}</span></button>
       {audioPanel && <div style={{ display: "grid", gap: 6, padding: "0 13px 13px" }}>
         <Variant title="SONS ARCADE" info="Ambiances et annonces de victoire." accent={accent} value={rules.arcadeEnabled} onClick={() => update({ arcadeEnabled: !rules.arcadeEnabled })} />
         <Variant title="BRUITAGES" info="Sons des impacts de fléchettes." accent={accent} value={rules.hitEnabled} onClick={() => update({ hitEnabled: !rules.hitEnabled })} />
         <Variant title="ANNONCES VOCALES" info="Voix de synthèse pendant la partie." accent={accent} value={rules.voiceEnabled} onClick={() => update({ voiceEnabled: !rules.voiceEnabled })} />
       </div>}
-    </section>
+    </section>}
   </div>;
 }

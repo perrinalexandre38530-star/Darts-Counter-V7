@@ -12,7 +12,15 @@
 // =============================================================
 
 import React from "react";
-import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
+import { HeartLivesChoice, VariantIconChoice } from "../components/config/MssFiveLivesChoices";
+import { MssKillerParticipantMode, MssKillerFormat } from "../components/config/MssKillerParticipantProtocol";
+import MssGolfKillerTeamSelector from "./MssGolfKillerTeamSelector";
+import MssSelectorIconButton from "../components/MssSelectorIconButton";
+import MssClassicInputMethodSelector from "../components/config/MssClassicInputMethodSelector";
+import MssGuidedAudioPanel from "../components/config/MssGuidedAudioPanel";
+import awenaConseils from "../assets/president/awena_conseils.webp";
+
+import { MssClassicConfigFlow, MssClassicOverview, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 import type { Store, Profile } from "../lib/types";
@@ -354,563 +362,228 @@ function BotMedallion({
 }
 
 
+// 5 VIES / CHASE — paramètres historiques conservés, nouveau rituel UI MSS KILLER.
+const FIVE_STEPS = ["Awena", "Joueurs ou équipes", "Format", "Sélection", "Variante", "Vies", "Départ", "Saisie", "Audio", "Récapitulatif"];
+const FIVE_TIPS = [
+  "", 
+  "Commence par choisir JOUEURS ou ÉQUIPES. Le format se définit ensuite.",
+  "En duel, deux adversaires s'affrontent ; en multi, le défi devient plus imprévisible.",
+  "Vérifie les avatars et les bots choisis avant de lancer la partie.",
+  "En classique, il faut dépasser le score précédent. En relais, l'égalité suffit.",
+  "Plus de vies rallonge la partie. Cinq vies offrent un bon équilibre.",
+  "Le BULL peut servir à départager les joueurs avant le premier tour.",
+  "Le keypad et la cible saisissent les mêmes fléchettes : choisis ton confort.",
+  "Ajuste les sons, les impacts et l'annonceur avant la première volée.",
+  "Vérifie les vies, la variante, les participants et l'ordre de départ.",
+];
+const TEAM_KEYS = ["gold", "pink", "blue", "green"] as const;
+type FiveTeamKey = typeof TEAM_KEYS[number];
+
+function FiveAwenaTip({ text }: { text: string }) {
+  return <div role="note" aria-label="Astuce Awena" style={{ width:"100%", maxWidth:260, margin:"14px auto", position:"relative", containerType:"inline-size", pointerEvents:"none" }}>
+    <img src={awenaConseils} alt="Awena te donne une astuce" style={{ display:"block",width:"100%",height:"auto" }} />
+    <div style={{ position:"absolute",top:"16%",left:"39%",width:"56%",height:"68%",display:"grid",alignContent:"center",textAlign:"center",color:"#241b26",overflow:"hidden",padding:"0 1%",boxSizing:"border-box" }}>
+      <b style={{fontSize:"clamp(8px,4.2cqw,10px)",color:"#d81e2b",fontWeight:1000}}>ASTUCE</b>
+      <span style={{fontSize:"clamp(7px,3.1cqw,8.5px)",fontWeight:900,lineHeight:1.13,overflowWrap:"break-word"}}>{text}</span>
+    </div>
+  </div>;
+}
+
+/** Fiche récapitulative alignée sur les sections, cartes de participants et le statut KILLER. */
+function FiveLivesKillerRecap({
+  accent, ready, players, mode, teamCount, teamSize, teamAssignments,
+  variant, lives, startOrder, inputMethod, arcade, hits, voice, voiceLabel,
+}: {
+  accent: string;
+  ready: boolean;
+  players: FiveLivesConfigPlayer[];
+  mode: "players" | "teams";
+  teamCount: number;
+  teamSize: number;
+  teamAssignments: Record<string, FiveTeamKey>;
+  variant: string;
+  lives: number;
+  startOrder: string;
+  inputMethod: string;
+  arcade: boolean;
+  hits: boolean;
+  voice: boolean;
+  voiceLabel: string;
+}) {
+  const divider = `1px solid rgba(255,255,255,.09)`;
+  const sectionTitle: React.CSSProperties = { fontSize: 11, fontWeight: 950, letterSpacing: .7, color: accent, marginBottom: 8, textTransform: "uppercase" };
+  const teamNames = ["Team Gold", "Team Pink", "Team Blue", "Team Green"];
+  const teamColors = ["#f7c85c", "#f452a8", "#42baf7", "#69c98d"];
+  const rows: Array<[string, string]> = [
+    ["Variante", variant], ["Vies", `${lives} / joueur`],
+    ["Départ", startOrder], ["Saisie", inputMethod],
+    ["Arcade", arcade ? "Activés" : "Désactivés"],
+    ["Bruitages", hits ? "Activés" : "Désactivés"],
+    ["Annonces", voice ? voiceLabel : "Désactivées"],
+  ];
+  const avatar = (player: FiveLivesConfigPlayer, size = 32) => <span key={player.id} style={{ width: size, height: size, flexShrink: 0, display: "inline-grid", placeItems: "center", overflow: "hidden", borderRadius: "50%", background: `${accent}21`, border: `1px solid ${accent}88` }}>
+    {player.avatarDataUrl ? <img src={player.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <strong style={{ fontSize: 10, color: accent }}>{player.name.slice(0, 2).toUpperCase()}</strong>}
+  </span>;
+  return <section aria-label="Fiche de partie LES 5 VIES" style={{ border: `1px solid ${accent}55`, borderRadius: 16, background: "linear-gradient(155deg,rgba(25,26,37,.9),rgba(9,11,21,.94))", padding: "12px 12px 10px", display: "grid", gap: 12, minWidth: 0, marginBottom: 14 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+        <strong style={{ fontSize: 14, fontWeight: 1000, letterSpacing: .65, color: accent }}>FICHE DE PARTIE</strong>
+        <span style={{ fontSize: 11, color: "#afb8cb" }}>{mode === "teams" ? `${teamCount} équipes · ${teamSize} membres / équipe` : `${players.length} joueur${players.length > 1 ? "s" : ""}`}</span>
+      </div>
+      <span role="status" style={{ border: `1px solid ${ready ? accent : "#fb7185"}55`, color: ready ? accent : "#fb7185", borderRadius: 20, padding: "5px 9px", fontWeight: 950, fontSize: 10, whiteSpace: "nowrap" }}>{ready ? "✓ PRÊT" : "À COMPLÉTER"}</span>
+    </div>
+    <div style={{ borderTop: divider, paddingTop: 9 }}>
+      <div style={sectionTitle}>{mode === "teams" ? "ÉQUIPES EN JEU" : "JOUEURS EN JEU"}</div>
+      {mode === "teams" ? <div style={{ display: "grid", gap: 6 }}>
+        {Array.from({ length: teamCount }, (_, index) => {
+          const key = TEAM_KEYS[index];
+          const members = players.filter(player => teamAssignments[player.id] === key);
+          return <div key={key} style={{ display: "flex", gap: 9, alignItems: "center", minWidth: 0, background: "rgba(255,255,255,.025)", borderRadius: 10, borderLeft: `2px solid ${teamColors[index]}`, padding: "7px 8px" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong style={{ fontSize: 12, color: teamColors[index] }}>{teamNames[index]}</strong>
+              <div style={{ fontSize: 10, color: "#bbc2d3", overflowWrap: "anywhere" }}>{members.length ? members.map(member => member.name).join(" · ") : "Aucun membre sélectionné"}</div>
+            </div>
+            <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>{members.slice(0, 5).map(member => avatar(member, 25))}</div>
+            <span style={{ fontSize: 10, color: "#aeb5c9", whiteSpace: "nowrap" }}>{members.length}/{teamSize}</span>
+          </div>;
+        })}
+      </div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+        {players.length ? players.map(player => <div key={player.id} style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, padding: 5 }}>{avatar(player)}<span style={{ minWidth: 0, overflowWrap: "anywhere", fontSize: 11, fontWeight: 850 }}>{player.name}</span></div>) : <span style={{ color: "#adb6c8", fontSize: 11, gridColumn: "1 / -1" }}>Aucun participant sélectionné</span>}
+      </div>}
+    </div>
+    <div style={{ borderTop: divider, paddingTop: 9 }}>
+      <div style={sectionTitle}>RÈGLES ESSENTIELLES</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", columnGap: 14 }}>
+        {rows.slice(0, 4).map(([label, value]) => <div key={label} style={{ padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,.055)", minWidth: 0 }}><div style={{ color: "#a9afc4", fontSize: 10, fontWeight: 850, textTransform: "uppercase" }}>{label}</div><div style={{ fontSize: 12, fontWeight: 850, marginTop: 3, color: "#f9f8ff", overflowWrap: "anywhere" }}>{value}</div></div>)}
+      </div>
+    </div>
+    <div style={{ borderTop: divider, paddingTop: 9 }}>
+      <div style={sectionTitle}>AUDIO</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", columnGap: 14 }}>
+        {rows.slice(4).map(([label, value]) => <div key={label} style={{ padding: "7px 0", minWidth: 0 }}><div style={{ color: "#a9afc4", fontSize: 10, fontWeight: 850, textTransform: "uppercase" }}>{label}</div><div style={{ color: "#f9f8ff", fontSize: 11, fontWeight: 850, marginTop: 3, overflowWrap: "anywhere" }}>{value}</div></div>)}
+      </div>
+    </div>
+    {!ready && <p style={{ fontSize: 10.5, color: "#fca5a5", margin: 0 }}>Complète la sélection des participants avant le lancement.</p>}
+  </section>;
+}
+
 export default function FiveLivesConfig({ store, go, presetVariantId, onBack, onStart, onStartGame, onPlay }: Props) {
   const { theme } = useTheme();
-  const { t, lang } = useLang();
+  const { lang, t } = useLang();
+  const primary = theme?.primary || "#f7c85c";
+  const cardBg = "rgba(9,12,24,.95)";
   const chasePreset = presetVariantId === "chase";
-
-  React.useLayoutEffect(() => {
-    try {
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    } catch {}
-  }, []);
-
-  const primary = theme?.primary ?? "#f7c85c";
-  const primarySoft = theme?.primarySoft ?? "rgba(247,200,92,0.14)";
-  const cardBg = theme?.card ?? "rgba(10,12,24,0.72)";
-  const textMain = theme?.text ?? "#ffffff";
-
-  const profiles: Profile[] = store?.profiles ?? [];
-  const humanProfiles = React.useMemo(() => profiles.filter((p: any) => !(p as any)?.isBot), [profiles]);
-
-  const [startingLives, setStartingLives] = React.useState<number>(5);
-  const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(true);
-  const [bullOrder, setBullOrder] = React.useState<boolean>(false);
-  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">("random");
-  // CHASE depuis Games > Variantes est toujours le preset « égal ou supérieur ».
-  // Le mode historique RELAIS des Cinq Vies est conservé séparément de CHASE.
-  const [allowEqualScore, setAllowEqualScore] = React.useState<boolean>(chasePreset);
-  const chaseActive = chasePreset;
-  const tickerSrc = chaseActive ? (String(lang).toLowerCase() === "fr" ? tickerChaseFr : tickerChaseEn) : tickerFiveLives;
-  const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
-    try {
-      return sanitizeFiveLivesScoreInput(localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad");
-    } catch {
-      return "keypad";
-    }
+  const tickerSrc = chasePreset ? (String(lang).toLowerCase()==="fr" ? tickerChaseFr : tickerChaseEn) : tickerFiveLives;
+  const [view,setView] = React.useState<ClassicConfigView>("guided");
+  const [step,setStep] = React.useState(0);
+  const guided = view==="guided";
+  const [infoOpen,setInfoOpen] = React.useState(false);
+  const [participantsMode,setParticipantsMode] = React.useState<"players"|"teams">("players");
+  const [playerFormat,setPlayerFormat] = React.useState<"duel"|"multi">("duel");
+  const [teamCount,setTeamCount] = React.useState(2);
+  const [teamSize,setTeamSize] = React.useState(2);
+  const [teamAssignments,setTeamAssignments] = React.useState<Record<string,FiveTeamKey>>({});
+  const [startingLives,setStartingLives] = React.useState(5);
+  const [allowEqualScore,setAllowEqualScore] = React.useState(chasePreset);
+  const [startOrderMode,setStartOrderMode] = React.useState<"random"|"alternate"|"manual"|"bull">("random");
+  const [scoreInputMethod,setScoreInputMethod] = React.useState<ScoreInputMethod>(()=>{
+    try { return sanitizeFiveLivesScoreInput(localStorage.getItem(SCORE_INPUT_LS_KEY)||"keypad"); } catch { return "keypad"; }
   });
-  const [infoOpen, setInfoOpen] = React.useState(false);
-  const [configView, setConfigView] = React.useState<ClassicConfigView>("guided");
-  const [configStep, setConfigStep] = React.useState(0);
-  const guided = configView === "guided";
-  const classicSteps = ["Awena", "Joueurs", "Règles", "Récapitulatif"];
-  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(false);
-
-  const userBots = React.useMemo(() => loadUserBots(), []);
-  const botProfiles: BotLite[] = React.useMemo(() => {
-    const pro = PRO_BOTS.map((b) => ({ ...b, avatarDataUrl: normalizeImgSrc(b.avatarDataUrl) ?? null }));
-    const u = (userBots || []).map((b) => ({
-      ...b,
-      avatarDataUrl: normalizeImgSrc(b.avatarDataUrl) ?? b.avatarDataUrl ?? null,
-    }));
-    const byId = new Map<string, BotLite>();
-    [...pro, ...u].forEach((b) => b?.id && !byId.has(b.id) && byId.set(b.id, b));
-    return Array.from(byId.values());
-  }, [userBots]);
-
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
-    // init : 2 humains si possible
-    if (profiles?.length) {
-      const hp = (profiles as any[]).filter((p) => !(p as any)?.isBot);
-      if (hp.length >= 2) return [hp[0].id, hp[1].id];
-      if (hp.length === 1) return [hp[0].id];
-    }
-    return [];
+  const [arcadeEnabled,setArcadeEnabled] = React.useState(true);
+  const [hitEnabled,setHitEnabled] = React.useState(true);
+  const [voiceEnabled,setVoiceEnabled] = React.useState(true);
+  const [voiceId,setVoiceId] = React.useState("awena");
+  const [botRevision,setBotRevision] = React.useState(0);
+  const [extraBots,setExtraBots] = React.useState<any[]>([]);
+  const [localProfiles,setLocalProfiles] = React.useState<any[]>([]);
+  const [showBots,setShowBots] = React.useState(false);
+  const humanProfiles = React.useMemo(()=>[...(store?.profiles||[]).filter((x:any)=>!x.isBot),...localProfiles], [store?.profiles,localProfiles]);
+  const botProfiles = React.useMemo(()=>{
+    const items=[...PRO_BOTS,...loadUserBots(),...extraBots];
+    return Array.from(new Map(items.map((b:any)=>[String(b.id),b])).values()) as BotLite[];
+  },[botRevision,extraBots]);
+  const [selectedIds,setSelectedIds] = React.useState<string[]>(()=>{
+    const ps=(store?.profiles||[]).filter((x:any)=>!x.isBot);
+    return ps.slice(0,2).map((x:any)=>String(x.id));
   });
-
-  function togglePlayer(id: string) {
-    setSelectedIds((prev) => {
-      const exists = prev.includes(id);
-      return exists ? prev.filter((x) => x !== id) : [...prev, id];
-    });
+  const togglePlayer=(id:string)=>setSelectedIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
+  const resolvePlayer=(id:string):FiveLivesConfigPlayer|null=>{
+    const p=[...humanProfiles,...botProfiles].find((x:any)=>String(x.id)===String(id));
+    if(!p)return null;
+    return {id:String(p.id),name:String(p.name||"Joueur"),avatarDataUrl:pickAvatar(p) || normalizeImgSrc((p as any).avatarDataUrl),isBot:!!(p as any).isBot || botProfiles.some(b=>String(b.id)===id),botLevel:(p as any).botLevel};
+  };
+  const teamMode=participantsMode==="teams";
+  const required=teamCount*teamSize;
+  const maxSelection=teamMode?required:playerFormat==="duel"?2:20;
+  const validTeams=TEAM_KEYS.slice(0,teamCount).every(key=>selectedIds.filter(id=>teamAssignments[id]===key).length===teamSize);
+  const canStart=teamMode?selectedIds.length===required && validTeams:playerFormat==="duel"?selectedIds.length===2:selectedIds.length>=2;
+  const onModeChange=(mode:"players"|"teams")=>{setParticipantsMode(mode);setSelectedIds([]);setTeamAssignments({});};
+  const sectionStyle:React.CSSProperties={background:cardBg,border:`1px solid ${primary}40`,borderRadius:18,padding:"15px 13px",marginBottom:14,minWidth:0};
+  const titleStyle:React.CSSProperties={fontSize:14,fontWeight:950,color:primary,letterSpacing:.65,textTransform:"uppercase",marginBottom:12};
+  const show=(i:number)=>!guided || step===i;
+  const option=(value:string,active:boolean,click:()=>void)=> <button key={value} type="button" onClick={click} aria-pressed={active} style={{borderRadius:12,padding:"10px 12px",fontSize:12,fontWeight:950,cursor:"pointer",minWidth:0,border:`1px solid ${active?primary:`${primary}65`}`,background:active?`${primary}21`:"rgba(255,255,255,.03)",color:active?primary:"#fff"}}>{value}</button>;
+  function launch(){
+    if(!canStart)return;
+    const players=selectedIds.map(resolvePlayer).filter(Boolean) as FiveLivesConfigPlayer[];
+    const finalPlayers=startOrderMode==="random"?shuffleArray(players):players;
+    const cfg:FiveLivesConfig={id:`fiveLives-${Date.now()}`,mode:"five_lives",createdAt:Date.now(),...(chasePreset?{variantId:"chase" as const}:{}),startingLives,randomStartOrder:startOrderMode==="random",startOrderSource:startOrderMode==="bull"?"bull":startOrderMode==="random"?"random":"selection",startOrderMode,allowEqualScore:chasePreset||allowEqualScore,scoreInputMethod,players:finalPlayers};
+    // Métadonnées de configuration : FiveLivesPlay reste un moteur individuel.
+    (cfg as any).participantMode=participantsMode;
+    (cfg as any).teamCount=teamMode?teamCount:undefined;
+    (cfg as any).teamAssignments=teamMode?teamAssignments:undefined;
+    (cfg as any).arcadeEnabled=arcadeEnabled;
+    (cfg as any).hitEnabled=hitEnabled;
+    (cfg as any).voiceEnabled=voiceEnabled;
+    (cfg as any).voiceId=voiceId;
+    clearDartsMatchDraft(chasePreset?"chase":"five_lives",getStorageUser());
+    try{localStorage.setItem(SCORE_INPUT_LS_KEY,scoreInputMethod);}catch{}
+    try{recordProfileUsageForMode("five_lives",finalPlayers.map(x=>x.id));}catch{}
+    const startCb=onStart||onStartGame||onPlay;
+    if(startCb)return startCb(cfg);
+    go?.("five_lives_play",{config:cfg});
   }
-
-  function moveSelectedPlayer(index: number, direction: -1 | 1) {
-    setSelectedIds((prev) => {
-      const swap = index + direction;
-      if (index < 0 || swap < 0 || index >= prev.length || swap >= prev.length) return prev;
-      const next = [...prev];
-      [next[index], next[swap]] = [next[swap], next[index]];
-      return next;
-    });
-  }
-
-  const canStart = selectedIds.length >= 2;
-
-  function resolvePlayer(id: string) {
-    const human = profiles.find((p) => p.id === id);
-    if (human) {
-      return {
-        id: human.id,
-        name: human.name,
-        avatarDataUrl: pickAvatar(human),
-        isBot: !!(human as any).isBot,
-        botLevel: (human as any).botLevel ?? undefined,
-      };
-    }
-    const bot = botProfiles.find((b) => b.id === id);
-    if (bot) {
-      return {
-        id: bot.id,
-        name: bot.name,
-        avatarDataUrl: normalizeImgSrc(bot.avatarDataUrl) ?? (bot.avatarDataUrl ?? null),
-        isBot: true,
-        botLevel: bot.botLevel ?? undefined,
-      };
-    }
-    return null;
-  }
-
-  function handleStart() {
-    if (!canStart) {
-      alert("Ajoute au moins 2 joueurs (profils locaux ou bots).");
-      return;
-    }
-
-    const players: FiveLivesConfigPlayer[] = selectedIds
-      .map((id) => {
-        const base = resolvePlayer(id);
-        if (!base) return null;
-        return {
-          id: base.id,
-          name: base.name,
-          avatarDataUrl: base.avatarDataUrl ?? null,
-          isBot: !!base.isBot,
-          botLevel: base.botLevel,
-        };
-      })
-      .filter(Boolean) as any[];
-
-    const finalPlayers = randomStartOrder ? shuffleArray(players) : players;
-
-    const cfg: FiveLivesConfig = {
-      id: `fiveLives-${Date.now()}`,
-      ...(chaseActive ? { variantId: "chase" as const } : {}),
-      mode: "five_lives",
-      createdAt: Date.now(),
-      startingLives: clampInt(startingLives, 1, 20, 5),
-      randomStartOrder: !!randomStartOrder,
-      startOrderSource: startOrderMode === "bull" ? "bull" : startOrderMode === "random" ? "random" : "selection",
-      startOrderMode,
-      allowEqualScore: chasePreset || allowEqualScore,
-      scoreInputMethod,
-      players: finalPlayers,
-    };
-
-    clearDartsMatchDraft(chaseActive ? "chase" : "five_lives", getStorageUser());
-    try { localStorage.setItem(SCORE_INPUT_LS_KEY, scoreInputMethod); } catch {}
-
-    try { recordProfileUsageForMode("five_lives", finalPlayers.map((p: any) => p.id)); } catch {}
-
-    const startCb = onStart || onStartGame || onPlay;
-    if (startCb) return startCb(cfg);
-    if (typeof go === "function") return go("five_lives_play", { config: cfg });
-
-    console.error("[FiveLivesConfig] Aucun callback de start fourni (onStart/onStartGame/onPlay/go).");
-    alert("Impossible de lancer : callback manquant (voir console).");
-  }
-
-  // ✅ mêmes paramètres pour BackDot et InfoDot
-  const DOT_SIZE = 36;
-  const DOT_GLOW = `${primary}88`;
-
-  return (
-    <div
-      className="screen five-lives-config msc-mode-config msc-mode-config--split"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        minHeight: "100vh",
-        padding: "12px 12px 76px",
-        background: "radial-gradient(circle at top, #15192c 0, #05060c 50%, #020308 100%)",
-        color: textMain,
-      }}
-    >
-      
-{/* HEADER TICKER */}
-<div
-  style={{
-    position: "sticky",
-    top: 0,
-    zIndex: 60,
-    paddingTop: "env(safe-area-inset-top)",
-    marginBottom: 10,
-  }}
->
-  <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
-    <img
-      src={tickerSrc as any}
-      alt={chaseActive ? "CHASE" : "Five Lives"}
-      draggable={false}
-      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
-    />
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 12px",
-        pointerEvents: "none",
-      }}
-    >
-      <div style={{ pointerEvents: "auto" }}>
-        <BackDot
-          onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
-          title={t?.("common.back") || "Retour"}
-          size={42}
-          color={primary}
-          glow={`${primary}AA`}
-        />
-      </div>
-      <div style={{ pointerEvents: "auto" }}>
-        <InfoDot onClick={() => setInfoOpen(true)} title="Règles" size={42} color={primary} glow={`${primary}AA`} />
+  const audioVoices=[{id:"awena",label:"Awena · voix officielle"},{id:"default",label:"Défaut"},{id:"female",label:"Voix féminine"},{id:"male",label:"Voix masculine"}];
+  const startModes=[{id:"random",icon:"random-order",label:"Aléatoire",description:"L'ordre est mélangé au lancement."},{id:"alternate",icon:"alternate-order",label:"Alterné",description:"Conserve l'ordre de sélection."},{id:"manual",icon:"manual-pick",label:"Manuel",description:"Défini par les participants sélectionnés."},{id:"bull",icon:"bull-order",label:"Bull",description:"Départagez-vous par lancer physique au bull."}] as const;
+  const methodLabel=scoreInputMethod==="dartboard"?"CIBLE":"KEYPAD";
+  return <div className="screen five-lives-config msc-mode-config msc-mode-config--split" style={{display:"flex",flexDirection:"column",minHeight:"100dvh",padding:"12px 12px 100px",background:"#050710",color:"#fff"}}>
+    <div style={{position:"sticky",top:0,zIndex:60,margin:"0 -12px 12px",background:"#050710"}}>
+      <img src={tickerSrc as any} alt={chasePreset?"CHASE":"Five Lives"} style={{width:"100%",height:100,objectFit:"cover",display:"block"}} />
+      <div style={{position:"absolute",inset:0,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 12px",pointerEvents:"none"}}>
+        <div style={{pointerEvents:"auto"}}><BackDot onClick={()=>onBack?onBack():go?.("games")} size={42} color={primary} glow={`${primary}AA`} /></div>
+        <div style={{pointerEvents:"auto"}}><InfoDot onClick={()=>setInfoOpen(true)} size={42} color={primary} glow={`${primary}AA`} title="Règles" /></div>
       </div>
     </div>
-  </div>
-</div>
-
-      <DartsRelatedModesPanel gameId={chaseActive ? "chase" : "five_lives"} accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
-
-      <MssClassicConfigFlow title={chaseActive ? "Chase" : "Les 5 vies"} steps={classicSteps}
-        step={configStep} view={configView} accent={primary} summary={`${selectedIds.length} participants`}
-        onStep={setConfigStep} onView={setConfigView} onHelp={() => setInfoOpen(true)} />
-      {/* CONTENT */}
-      <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
-        <DartsPendingFinalCard mode={chaseActive ? "chase" : "five_lives"} accent={primary}
-          onRecovered={() => go?.("statsHub", { tab: "history" })} />
-        <DartsResumeDraftCard mode={chaseActive ? "chase" : "five_lives"} accent={primary}
-          onResume={(savedConfig) => go?.("five_lives_play", { config: savedConfig, resumeDraft: true })} />
-        {guided && configStep === 0 && <MssClassicOverview accent={primary}
-          title={(chaseActive ? "CHASE" : "LES 5 VIES") + " · AWENA VOUS EXPLIQUE"} onHelp={() => setInfoOpen(true)}
-          description="Chaque tireur vise à atteindre ou dépasser le score à battre selon la variante. Règle les vies, l'ordre et le mode de saisie avant de jouer." />}
-        {/* JOUEURS */}
-        <section hidden={guided && configStep !== 1}
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: "18px 12px 14px",
-            marginBottom: 14,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.05)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>
-              Joueurs
-            </div>
-            <div style={{ fontSize: 11, color: "#7c80a0" }}>{selectedIds.length}/∞</div>
-          </div>
-
-          {humanProfiles.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
-              Aucun profil local. Crée des joueurs (et des bots) dans <b>Profils</b>.
-            </p>
-          ) : (
-            <>
-              <PlayerPagedSelector
-                  usageMode="five_lives"
-                profiles={humanProfiles}
-                selectedIds={selectedIds}
-                onToggle={togglePlayer}
-                accent={primary}
-                pageSize={9}
-                modalTitle="Choisir des joueurs"
-              />
-              <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
-                Il faut au moins <b>2 joueurs</b> pour démarrer.
-              </p>
-            </>
-          )}
-        </section>
-
-        {/* BOTS */}
-        <section hidden={guided && configStep !== 1}
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 14,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.04)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>
-              Bots IA
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                aria-pressed={botsPanelEnabled}
-                onClick={() => setBotsPanelEnabled((v) => !v)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${primary}`,
-                  background: botsPanelEnabled ? `${primary}22` : "rgba(255,255,255,0.04)",
-                  color: primary,
-                  fontWeight: 900,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.7,
-                  boxShadow: botsPanelEnabled ? `0 0 14px ${primary}44` : "none",
-                }}
-              >
-                {botsPanelEnabled ? "☑ ON" : "☐ OFF"}
-              </button>
-              <button
-                type="button"
-                onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${primary}`,
-                  background: "rgba(255,255,255,0.04)",
-                  color: primary,
-                  fontWeight: 800,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.7,
-                }}
-              >
-                Gérer mes bots
-              </button>
-            </div>
-          </div>
-
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
-          </p>
-
-          {botsPanelEnabled ? (
-            <BotPagedSelector
-              bots={botProfiles}
-              selectedIds={selectedIds}
-              onToggle={togglePlayer}
-              accent={primary}
-              label="BOTS IA"
-              showCheckbox={false}
-            />
-          ) : null}
-        </section>
-
-        {/* OPTIONS */}
-        <section hidden={guided && configStep !== 2}
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 14,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.04)",
-          }}
-        >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Options
-          </div>
-
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Variante des 5 vies</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {!chasePreset && <PillButton label="CLASSIQUE · >" active={!allowEqualScore} onClick={() => setAllowEqualScore(false)} primary={primary} primarySoft={primarySoft} />}
-              {chasePreset
-                ? <PillButton label="CHASE · ≥" active onClick={() => setAllowEqualScore(true)} primary={primary} primarySoft={primarySoft} />
-                : <PillButton label="RELAIS · ≥" active={allowEqualScore} onClick={() => setAllowEqualScore(true)} primary={primary} primarySoft={primarySoft} /> }
-            </div>
-            <div style={{ fontSize: 11, color: "#c8cbe4", marginTop: 6 }}>
-              {chasePreset ? "CHASE : égaler ou dépasser le score précédent. La dernière volée devient la nouvelle référence ; les survivants changent d'ordre après chaque cycle." : allowEqualScore ? "RELAIS : score égal ou supérieur accepté, sans modifier l'ordre des joueurs." : "CLASSIQUE : il faut strictement dépasser la volée précédente."}
-            </div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Vies de départ</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                <PillButton
-                  key={n}
-                  label={String(n)}
-                  active={startingLives === n}
-                  onClick={() => setStartingLives(n)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  compact
-                />
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>Vies identiques pour tous les joueurs.</div>
-          </div>
-
-          <div style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Ordre de départ</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {([['random','ALÉATOIRE'],['alternate','ALTERNÉ'],['manual','MANUEL'],['bull','BULL']] as const).map(([mode,label]) => (
-                <PillButton key={mode} label={label} active={startOrderMode === mode}
-                  onClick={() => { setStartOrderMode(mode); setRandomStartOrder(mode === "random"); setBullOrder(false); }}
-                  primary={primary} primarySoft={primarySoft} />
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: "#9da5b9", marginTop: 6 }}>
-              {startOrderMode === "bull" ? "Classe les joueurs après le lancer à la bull, au lancement." : startOrderMode === "manual" ? "Choisis l'ordre au lancement." : startOrderMode === "random" ? "L'ordre sera mélangé au lancement." : "L'ordre de sélection sera conservé."}
-            </div>
-            {bullOrder && <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-              {selectedIds.map((playerId, index) => <div key={playerId} style={{ display: "flex", alignItems: "center", gap: 9, border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "7px 10px" }}>
-                <b style={{ color: primary }}>#{index + 1}</b>
-                <span style={{ flex: 1, fontSize: 12, color: "#fff" }}>{resolvePlayer(playerId)?.name || `Joueur ${index + 1}`}</span>
-                <button type="button" aria-label="Monter" disabled={index === 0} onClick={() => moveSelectedPlayer(index, -1)}>↑</button>
-                <button type="button" aria-label="Descendre" disabled={index === selectedIds.length - 1} onClick={() => moveSelectedPlayer(index, 1)}>↓</button>
-              </div>)}
-            </div>}
-          </div>
-
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Mode de saisie</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => setScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} />
-              <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => setScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} />
-            </div>
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6, lineHeight: 1.35 }}>
-              {scoreInputMethod === "dartboard"
-                ? "CIBLE : touche directement la zone atteinte sur la cible, comme en X01."
-                : "KEYPAD : saisis chaque fléchette avec SIMPLE, DOUBLE ou TRIPLE."}
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {guided && configStep === 3 && <MssClassicRecap accent={primary} ready={canStart} entries={[
-        ["Participants", `${selectedIds.length} joueurs / bots`],
-        ["Variante", chasePreset ? "CHASE" : allowEqualScore ? "RELAIS" : "CLASSIQUE"],
-        ["Vies", String(startingLives)],
-        ["Ordre de départ", startOrderMode.toUpperCase()],
-        ["Saisie", scoreInputMethod.toUpperCase()],
-      ]} />}
-      {/* CTA */}
-      <div hidden={guided && configStep !== 3} style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
-        <div style={{ pointerEvents: "auto" }}>
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={!canStart}
-            style={{
-              width: "100%",
-              height: 46,
-              borderRadius: 999,
-              border: "none",
-              fontWeight: 900,
-              fontSize: 14,
-              letterSpacing: 1,
-              textTransform: "uppercase",
-              background: canStart ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(120,120,120,0.5)",
-              color: canStart ? "#151515" : "#2b2bb2",
-              boxShadow: canStart ? `0 0 18px ${primary}66` : "none",
-              opacity: canStart ? 1 : 0.6,
-              cursor: canStart ? "pointer" : "default",
-            }}
-            title={canStart ? "Démarrer la partie" : "Ajoute au moins 2 joueurs"}
-          >
-            Lancer la partie
-          </button>
-
-          {!canStart && (
-            <div style={{ marginTop: 6, textAlign: "center", fontSize: 11, color: "#ff6b6b", fontWeight: 800 }}>
-              Ajoute au moins 2 joueurs pour démarrer
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* OVERLAY règles */}
-      {infoOpen && (
-        <div
-          onClick={() => setInfoOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.72)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 60,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 460,
-              margin: 16,
-              padding: 18,
-              borderRadius: 18,
-              background: theme.card,
-              border: `1px solid ${theme.primary}55`,
-              boxShadow: `0 18px 40px rgba(0,0,0,.7)`,
-              color: theme.text,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 950,
-                marginBottom: 10,
-                color: theme.primary,
-                textTransform: "uppercase",
-                textShadow: `0 0 10px ${theme.primary}55`,
-              }}
-            >
-              Règles — {chaseActive ? "CHASE" : "Les 5 vies"}
-            </div>
-
-            <div style={{ fontSize: 13, lineHeight: 1.45, color: theme.textSoft }}>
-              <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>But :</b> rester le dernier joueur avec des vies.
-              </div>
-
-              <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>Principe :</b> chaque joueur commence avec <b>{startingLives}</b> vies.
-                Une manche = <b>3 fléchettes</b>. Tu dois faire un score <b>{(chasePreset || allowEqualScore) ? "ÉGAL OU SUPÉRIEUR" : "STRICTEMENT supérieur"}</b> au score du joueur
-                précédent.
-              </div>
-
-              <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>Échec :</b> si ton score est <b>{(chasePreset || allowEqualScore) ? "<" : "≤"}</b> au score à battre, tu perds <b>1 vie</b>.
-              </div>
-
-              <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>Élimination :</b> à <b>0 vie</b>, tu es éliminé.
-              </div>
-
-              <div style={{ marginBottom: 2 }}>
-                <b style={{ color: theme.text }}>Victoire :</b> le <b>dernier joueur</b> encore en vie gagne.
-              </div>
-
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>
-                {chasePreset ? "✅ CHASE : score égal accepté, ordre remélangé après chaque cycle complet." : allowEqualScore ? "✅ RELAIS : égalité acceptée, ordre conservé." : "⚠️ Score égal = échec (classique)."}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setInfoOpen(false)}
-              style={{
-                display: "block",
-                marginLeft: "auto",
-                marginTop: 14,
-                padding: "6px 14px",
-                borderRadius: 999,
-                border: "none",
-                background: `linear-gradient(180deg, ${theme.primary}, ${theme.primarySoft || theme.primary})`,
-                color: "#1b1508",
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    {step===0 && <DartsRelatedModesPanel gameId={chasePreset?"chase":"five_lives"} accent={primary} compact onOpenGame={id=>{const target=dartsFamilyGameNavigation(id);if(target)go?.(target.tab,target.params);}} />}
+    <MssClassicConfigFlow title={chasePreset?"Chase":"Les 5 vies"} steps={FIVE_STEPS} step={step} view={view} accent={primary} summary={`${selectedIds.length} participants${teamMode?` · ${teamCount} équipes`:""}`} onStep={setStep} onView={setView} onHelp={()=>setInfoOpen(true)} />
+    <main className="msc-mode-config-body" style={{flex:1,overflowY:"auto",paddingBottom:24}}>
+      <DartsPendingFinalCard mode={chasePreset?"chase":"five_lives"} accent={primary} onRecovered={()=>go?.("statsHub",{tab:"history"})}/>
+      <DartsResumeDraftCard mode={chasePreset?"chase":"five_lives"} accent={primary} onResume={savedConfig=>go?.("five_lives_play",{config:savedConfig,resumeDraft:true})}/>
+      {show(0) && <MssClassicOverview title={`${chasePreset?"CHASE":"LES 5 VIES"} · AWENA VOUS EXPLIQUE`} accent={primary} onHelp={()=>setInfoOpen(true)} description="Sur chaque volée, dépasse le score précédent en classique, ou égale-le en relais. Choisis les participants puis les vies et les options avant de jouer." />}
+      {show(1) && <section style={sectionStyle}><div style={titleStyle}>PARTICIPANTS</div><MssKillerParticipantMode mode={participantsMode} onChange={onModeChange} accent={primary} /></section>}
+      {show(2) && <section style={sectionStyle}><div style={titleStyle}>{teamMode?"FORMAT DES ÉQUIPES":"FORMAT JOUEURS"}</div><MssKillerFormat mode={participantsMode} playerFormat={playerFormat} onPlayerFormat={value=>{setPlayerFormat(value);if(value==="duel")setSelectedIds(ids=>ids.slice(0,2));}} teamCount={teamCount} onTeamCount={count=>{setTeamCount(count);setSelectedIds([]);setTeamAssignments({});}} teamSize={teamSize} onTeamSize={size=>{setTeamSize(size);setSelectedIds([]);setTeamAssignments({});}} accent={primary} maxPlayers={20}/></section>}
+      {show(3) && <section style={sectionStyle}><div style={titleStyle}>{teamMode?"CHOIX ÉQUIPES":"CHOIX JOUEURS"}</div>
+        {teamMode ? <MssGolfKillerTeamSelector humanProfiles={humanProfiles} bots={botProfiles} selectedIds={selectedIds} setSelectedIds={setSelectedIds} teamAssignments={teamAssignments as any} setTeamAssignments={setTeamAssignments as any} teamCount={teamCount} teamSize={teamSize} accent={primary} onRefreshBots={()=>setBotRevision(v=>v+1)} onAddBots={bots=>setExtraBots(prev=>[...prev,...bots])} onUpdateProfiles={update=>setLocalProfiles(prev=>{const result=update({profiles:[...(store?.profiles||[]),...prev]});return (result?.profiles||[]).filter((x:any)=>!(store?.profiles||[]).some((p:any)=>p.id===x.id));})} /> : <>
+          <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:10}}><MssSelectorIconButton icon="players" label="Sélectionner des joueurs" accent={primary} onClick={()=>setShowBots(false)} active={!showBots}/><MssSelectorIconButton icon="bots" label="Choisir des bots" accent={primary} onClick={()=>setShowBots(true)} active={showBots}/><MssSelectorIconButton icon="plus" label="Créer un profil dans Profils" accent={primary} onClick={()=>go?.("profiles")} /></div>
+          {!showBots?<PlayerPagedSelector usageMode="five_lives" profiles={humanProfiles} selectedIds={selectedIds} onToggle={id=>{if(!selectedIds.includes(id)&&selectedIds.length>=maxSelection)return;togglePlayer(id);}} accent={primary} pageSize={9} modalTitle="Choisir des joueurs"/>:<BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={id=>{if(!selectedIds.includes(id)&&selectedIds.length>=maxSelection)return;togglePlayer(id);}} accent={primary} label="BOTS IA" showCheckbox={false} pageSize={4} />}
+          <div style={{marginTop:12,display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>{selectedIds.map(id=>{const p=resolvePlayer(id);return p?<div key={id} style={{display:"flex",alignItems:"center",gap:8,padding:8,border:`1px solid ${primary}55`,borderRadius:13,minWidth:0}}><ProfileAvatar profile={p as any} size={36}/><b style={{flex:1,fontSize:12,overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</b><button type="button" onClick={()=>togglePlayer(id)} style={{border:0,color:primary,background:"transparent",fontSize:18}}>×</button></div>:null;})}</div>
+        </>}
+        {teamMode&&<p style={{fontSize:11,color:"#c1c8d5",marginTop:12}}>Les compositions sont enregistrées ; le moteur actuel des 5 Vies conserve un classement individuel par joueur.</p>}<div style={{fontSize:11,color:canStart?primary:"#ffb3a9",marginTop:12}}>{teamMode?`${selectedIds.length}/${required} membres · ${teamCount} équipes`:`${selectedIds.length} joueurs · ${playerFormat.toUpperCase()}`}</div>
+      </section>}
+      {show(4) && <section style={sectionStyle}><div style={titleStyle}>VARIANTE DE JEU</div><div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:14,flexWrap:"wrap",marginBottom:12}}>{!chasePreset&&<VariantIconChoice accent={primary} active={!allowEqualScore} title="Classique" subtitle="Classique" mode="classic" onClick={()=>setAllowEqualScore(false)} />}{<VariantIconChoice accent={primary} active={chasePreset||allowEqualScore} title={chasePreset?"Chase":"Relais"} subtitle={chasePreset?"Chase":"Relais"} mode={chasePreset?"chase":"relay"} onClick={()=>setAllowEqualScore(true)} />}</div><div style={{textAlign:"center",display:"grid",gap:6}}><strong style={{fontSize:15,fontWeight:1000,color:primary,letterSpacing:.55}}>{chasePreset?"CHASE":allowEqualScore?"RELAIS":"CLASSIQUE"}</strong><p style={{fontSize:12,color:"#b0bbcf",lineHeight:1.52,maxWidth:360,margin:"0 auto"}}>{chasePreset?"CHASE : une égalité suffit ; les survivants changent d'ordre après chaque cycle et le rythme de survie reste tendu du début à la fin.":allowEqualScore?"RELAIS : l'égalité est acceptée pour valider la volée. Le rythme est plus souple et convient mieux aux parties coopératives ou accessibles.":"CLASSIQUE : la nouvelle volée doit être strictement supérieure à la précédente. Cette version récompense la régularité et met davantage de pression sur chaque passage."}</p></div></section>}
+      {show(5) && <section style={sectionStyle}><div style={titleStyle}>VIES DE DÉPART</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",justifyItems:"center",gap:6}}>{[3,4,5,6,7,8,9,10].map(n=><HeartLivesChoice key={n} value={n} active={startingLives===n} onClick={()=>setStartingLives(n)} primary={primary} />)}</div><p style={{fontSize:11,color:"#adb5c7",textAlign:"center",margin:"6px auto 0",maxWidth:320}}>Chaque joueur commence avec le même nombre de vies. Choisis le cœur qui définit la réserve de départ.</p></section>}
+      {show(6) && <section style={sectionStyle}><div style={titleStyle}>ORDRE DE DÉPART</div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>{startModes.map(m=><MssSelectorIconButton key={m.id} icon={m.icon} label={m.label} accent={primary} active={startOrderMode===m.id} onClick={()=>setStartOrderMode(m.id)}/>)}</div><div style={{textAlign:"center",marginTop:12}}><b style={{fontSize:13,color:primary}}>{startModes.find(x=>x.id===startOrderMode)?.label.toUpperCase()}</b><p style={{fontSize:11,color:"#aeb7ca"}}>{startModes.find(x=>x.id===startOrderMode)?.description}</p></div></section>}
+      {show(7) && <section style={sectionStyle}><MssClassicInputMethodSelector value={scoreInputMethod} onChange={setScoreInputMethod} accent={primary} /></section>}
+      {show(8) && <section style={sectionStyle}><div style={titleStyle}>MODE AUDIO</div><MssGuidedAudioPanel accent={primary} arcade={arcadeEnabled} hits={hitEnabled} voice={voiceEnabled} onArcadeChange={setArcadeEnabled} onHitsChange={setHitEnabled} onVoiceChange={setVoiceEnabled} voiceId={voiceId} voices={audioVoices} onVoiceIdChange={setVoiceId}/></section>}
+      {show(9) && <FiveLivesKillerRecap accent={primary} ready={canStart}
+        players={selectedIds.map(resolvePlayer).filter(Boolean) as FiveLivesConfigPlayer[]}
+        mode={participantsMode} teamCount={teamCount} teamSize={teamSize} teamAssignments={teamAssignments}
+        variant={chasePreset ? "CHASE" : allowEqualScore ? "RELAIS" : "CLASSIQUE"}
+        lives={startingLives} startOrder={startModes.find(m => m.id === startOrderMode)?.label || "Aléatoire"}
+        inputMethod={methodLabel} arcade={arcadeEnabled} hits={hitEnabled} voice={voiceEnabled}
+        voiceLabel={audioVoices.find(v => v.id === voiceId)?.label || "Voix"} />}
+      {(!guided || step>0)&&<FiveAwenaTip text={guided?FIVE_TIPS[step]:FIVE_TIPS[9]}/>}
+      {show(9) && <div style={{padding:"0 0 35px"}}><button type="button" disabled={!canStart} onClick={launch} style={{width:"100%",height:52,borderRadius:999,border:0,background:canStart?primary:"#555",color:"#161616",fontSize:16,fontWeight:1000,opacity:canStart?1:.6}}>LANCER LA PARTIE</button>{!canStart&&<p style={{fontSize:11,color:"#ffada4",textAlign:"center"}}>Sélectionne tous les participants requis.</p>}</div>}
+    </main>
+    {infoOpen&&<div onClick={()=>setInfoOpen(false)} role="presentation" style={{position:"fixed",inset:0,zIndex:10000,background:"#000d",display:"grid",placeItems:"center",padding:15}}><div role="dialog" onClick={e=>e.stopPropagation()} style={{maxWidth:450,padding:20,background:"#101421",border:`1px solid ${primary}`,borderRadius:18}}><b style={{color:primary}}>RÈGLES · {chasePreset?"CHASE":"LES 5 VIES"}</b><p style={{fontSize:13,lineHeight:1.5}}>Chacun commence avec {startingLives} vies. Chaque volée doit {chasePreset||allowEqualScore?"égaler ou dépasser":"dépasser"} le score précédent, sinon une vie est perdue. Le dernier survivant gagne.</p><button type="button" onClick={()=>setInfoOpen(false)} style={{background:primary,padding:"10px 22px",border:0,borderRadius:12,fontWeight:900}}>FERMER</button></div></div>}
+  </div>;
 }

@@ -45,6 +45,7 @@ import SelectionStickyBanner from "../components/SelectionStickyBanner";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
+import MssArcadeAwenaTip from "../components/config/MssArcadeAwenaTip";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
 import GameDifficultyStars from "../components/GameDifficultyStars";
 import x01AwenaRulesPoster from "../assets/videos/x01_awena_rules_poster.webp";
@@ -4223,7 +4224,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     ] as const;
     const botTeamCount = Math.max(1, Math.ceil(botDartsTeams.length / 9));
     const availableBotMembers = (botProfiles || []).filter((bot: any) => !!bot?.id);
-    const botMemberCount = Math.max(1, Math.ceil(availableBotMembers.length / 9));
+    const botMemberCount = Math.max(1, Math.ceil(availableBotMembers.length / 4));
     const isCreatingTeam = premiumCreateKind === "team" || premiumCreateKind === "bot-team";
     const eligibleCreateMembers = premiumCreateKind === "bot-team" ? botProfiles : humanProfiles;
     const createMemberPages = Math.max(1, Math.ceil(eligibleCreateMembers.length / 9));
@@ -4261,7 +4262,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null} />}
             onClose={() => setAutoDartSetPicker(null)} />
           <div style={{ width: 45, flex: "0 0 45px" }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer}
-            accent={primary} pageSize={9} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} hideCompactSelectedSummary/></div>
+            accent={primary} pageSize={4} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} hideCompactSelectedSummary/></div>
         </>}
         <MssSelectorIconButton icon="plus" label={group ? "Créer joueur, bot ou équipe" : "Créer joueur ou bot"} accent={primary} onClick={() => setPremiumCreateMenu(true)}/>
       </div>
@@ -4302,7 +4303,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             <button type="button" onClick={() => { setPremiumBotDraftTeam(null); setPremiumBotDraftIds([]); setPremiumBotEditInstance(null); }} style={{ ...pickerNavStyle, marginBottom: 12 }}>← ÉQUIPES BOTS</button>
             <div style={{ color: primary, textAlign: "center", fontWeight: 950, marginBottom: 12 }}>{premiumBotDraftTeam.name} · {premiumBotDraftIds.length}/{teamFormatSize}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
-              {availableBotMembers.slice(premiumBotMembersPage * 9, premiumBotMembersPage * 9 + 9).map((bot: any) => {
+              {availableBotMembers.slice(premiumBotMembersPage * 4, premiumBotMembersPage * 4 + 4).map((bot: any) => {
                 const active = premiumBotDraftIds.includes(String(bot.id));
                 const occupied = premiumSelectedTeamCards.some((item: any) => item.id !== premiumBotEditInstance && item.ids.includes(String(bot.id)));
                 return <button type="button" key={bot.id} disabled={occupied} aria-pressed={active} onClick={() => premiumSelectBotMember(String(bot.id))} style={{ border: `1px solid ${active ? primary : `${primary}55`}`, borderRadius: 13, padding: "9px 4px", background: active ? `${primary}20` : "rgba(255,255,255,.03)", color: "white", display: "grid", justifyItems: "center", gap: 6, minWidth: 0, opacity: occupied ? .32 : 1 }}>
@@ -5063,6 +5064,18 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </section>
             )}
 
+            {guidedStep > 0 && <MssArcadeAwenaTip tip={[
+              "",
+              "Choisis d'abord Joueurs ou Équipes : chacun possède son propre parcours.",
+              "En DUEL, deux participants suffisent ; MULTI permet de varier les adversaires.",
+              "Vérifie les membres avant de valider les équipes : les avatars suivront la partie.",
+              "L'ordre BULL se décide par un lancer physique avant de commencer.",
+              "En 501, viser régulièrement les triples prépare des fins de legs efficaces.",
+              "Best Of et First To donnent des durées de match différentes : adapte le format.",
+              "La cible facilite la saisie visuelle ; le keypad reste une méthode précise.",
+              "Vérifie les bruitages et la voix avant la première volée.",
+              "Relis les scores, participants et paramètres avant le lancement.",
+            ][guidedStep]} />}
           </>
         ) : (
           <>

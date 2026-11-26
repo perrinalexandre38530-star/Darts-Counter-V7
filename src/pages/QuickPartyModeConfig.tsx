@@ -1,6 +1,8 @@
 // @ts-nocheck
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import React from "react";
+import MssSelectorIconButton from "../components/MssSelectorIconButton";
+import { HeartLivesChoice, VariantIconChoice } from "../components/config/MssFiveLivesChoices";
 import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import teamGoldLogo from "../ui_assets/teams/team_gold.png";
 import teamPinkLogo from "../ui_assets/teams/team_pink.png";
@@ -8,6 +10,8 @@ import MssParticipantModeIcon from "../components/config/MssParticipantModeIcon"
 import { MssQuickPanel, MssQuickChoices, MssQuickRecap, MssQuickStart } from "../components/config/MssQuickClassicControls";
 import { useTheme } from "../contexts/ThemeContext";
 import MssKillerQuickSettings, { DEFAULT_KILLER_QUICK_RULES } from "../components/config/MssKillerQuickSettings";
+import MssKillerQuickAwenaTip from "../components/config/MssKillerQuickAwenaTip";
+import MssFiveLivesQuickAwenaTip from "../components/config/MssFiveLivesQuickAwenaTip";
 
 type ModeId = "cricket" | "killer" | "five_lives" | "shanghai" | "halve_it" | "shooter" | "bowling" | "baseball" | "president";
 type LayoutMode = "solo" | "duel" | "teams" | "multi";
@@ -33,7 +37,7 @@ type ModeSpec = {
 const SPECS: Record<ModeId, ModeSpec> = {
   cricket: { title: "CRICKET", minPlayers: 2, maxPlayers: 4, defaultPlayers: 2, allowTeams: true, maxQuickPlayers: 4 },
   killer: { title: "KILLER", minPlayers: 2, maxPlayers: 20, defaultPlayers: 2, allowTeams: true, maxQuickPlayers: 20 },
-  five_lives: { title: "5 VIES", minPlayers: 2, maxPlayers: 10, defaultPlayers: 2, maxQuickPlayers: 10 },
+  five_lives: { title: "5 VIES", minPlayers: 2, maxPlayers: 10, defaultPlayers: 2, allowTeams: true, maxQuickPlayers: 10 },
   shanghai: { title: "SHANGHAI", minPlayers: 2, maxPlayers: 10, defaultPlayers: 2, maxQuickPlayers: 10 },
   halve_it: { title: "HALVE-IT", minPlayers: 1, maxPlayers: 12, defaultPlayers: 2, allowSolo: true, allowTeams: true, maxQuickPlayers: 12 },
   shooter: { title: "SHOOTER", minPlayers: 1, maxPlayers: 12, defaultPlayers: 2, allowSolo: true, allowTeams: true, maxQuickPlayers: 12 },
@@ -85,7 +89,23 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
   const [names, setNames] = React.useState<string[]>(() => Array.from({ length: 20 }, (_, i) => `J${i + 1}`));
   const [quickSessionId] = React.useState(() => `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
   const [killerRules, setKillerRules] = React.useState(DEFAULT_KILLER_QUICK_RULES);
+  const [killerQuickStep, setKillerQuickStep] = React.useState(0);
+  const isKillerQuick = modeId === "killer";
+  const isFiveLivesQuick = modeId === "five_lives";
+  const [fiveQuickStep,setFiveQuickStep] = React.useState(0);
+  const fiveStepNames = ["Participants", "Variante", "Vies de départ", "Ordre de départ", "Récapitulatif"];
+  const changeFiveQuickStep = (next:number) => {
+    setFiveQuickStep(Math.max(0,Math.min(fiveStepNames.length-1,next)));
+    try { window.scrollTo({top:0,behavior:"auto"}); } catch {}
+  };
+  const killerStepNames = ["Participants", "Règles", "Départ et saisie", "Variantes et audio", "Récapitulatif"];
+  const changeKillerQuickStep = (next: number) => {
+    setKillerQuickStep(Math.max(0, Math.min(killerStepNames.length - 1, next)));
+    try { window.scrollTo({ top: 0, behavior: "auto" }); } catch {}
+  };
   const [fiveLives, setFiveLives] = React.useState(5);
+  const [fiveAllowEqualScore, setFiveAllowEqualScore] = React.useState(false);
+  const [fiveStartOrder, setFiveStartOrder] = React.useState<"random" | "alternate" | "manual" | "bull">("random");
   const [shanghaiRounds, setShanghaiRounds] = React.useState(20);
   const [cricketPoints, setCricketPoints] = React.useState(true);
   const [cricketRounds, setCricketRounds] = React.useState(20);
@@ -196,7 +216,27 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     }
 
     if (modeId === "five_lives") {
-      const config: any = { id: `fiveLives-quick-${Date.now()}`, mode: "five_lives", createdAt: Date.now(), startingLives: fiveLives, randomStartOrder: true, scoreInputMethod: "visit_score", players, ...meta };
+      const config: any = {
+        id: `fiveLives-quick-${Date.now()}`,
+        mode: "five_lives",
+        createdAt: Date.now(),
+        startingLives: fiveLives,
+        randomStartOrder: fiveStartOrder === "random",
+        startOrderSource: fiveStartOrder === "bull" ? "bull" : fiveStartOrder === "random" ? "random" : "selection",
+        startOrderMode: fiveStartOrder,
+        allowEqualScore: fiveAllowEqualScore,
+        scoreInputMethod: "keypad",
+        // Le moteur 5 VIES joue actuellement les quatre membres individuellement.
+        // Ces métadonnées conservent la composition Gold/Pink sans prétendre
+        // activer un calcul collectif des vies qui n'existe pas encore.
+        participantMode: layout === "teams" ? "teams" : "players",
+        teamCount: layout === "teams" ? 2 : undefined,
+        teamSize: layout === "teams" ? 2 : undefined,
+        teamConfigs: layout === "teams" ? teamConfigs : undefined,
+        teamAssignments: layout === "teams" ? Object.fromEntries(players.map((p, i) => [p.id, i < 2 ? "gold" : "pink"])) : undefined,
+        players,
+        ...meta,
+      };
       onStart({ route: "five_lives_play", params: { ...params, ...meta, launchMode: "quick_play", config } });
       return;
     }
@@ -248,11 +288,9 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
 
   const progressive = String(params?.variantId || params?.gameId || "").toLowerCase().includes("progressive");
   const modeOptions = modeId === "killer" ? (
-    <MssKillerQuickSettings rules={killerRules} setRules={setKillerRules} accent={accent} progressive={progressive} />
+    <MssKillerQuickSettings rules={killerRules} setRules={setKillerRules} accent={accent} progressive={progressive} section={killerQuickStep === 1 ? "rules" : killerQuickStep === 2 ? "options" : "advanced"} />
   ) : modeId === "five_lives" ? (
-    <MssQuickPanel title="Règles · Les 5 vies">
-      <MssQuickChoices label="Vies de départ" options={[3,5,7,10].map(value => ({ value, label: String(value) }))} value={fiveLives} onChange={setFiveLives} compact />
-    </MssQuickPanel>
+    null
   ) : modeId === "shanghai" ? (
     <MssQuickPanel title="Règles · Shanghai">
       <MssQuickChoices label="Nombre de manches" options={[7,10,15,20].map(value => ({ value, label: String(value) }))} value={shanghaiRounds} onChange={setShanghaiRounds} compact />
@@ -296,7 +334,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     ["Dégâts", progressive || killerRules.damageRule === "multiplier" ? "S / D / T" : "−1 par impact"],
     ["Numéros", progressive || killerRules.numberAssignMode === "throw" ? "Au lancer" : "Aléatoires"],
     ["Saisie", killerRules.inputMode.toUpperCase()],
-  ] : modeId === "five_lives" ? [["Vies", fiveLives]]
+  ] : modeId === "five_lives" ? [["Variante", fiveAllowEqualScore ? "Relais" : "Classique"], ["Vies", fiveLives], ["Départ", fiveStartOrder === "random" ? "Aléatoire" : fiveStartOrder === "alternate" ? "Alterné" : fiveStartOrder === "manual" ? "Manuel" : "Bull"]]
     : modeId === "shanghai" ? [["Manches", shanghaiRounds]]
     : modeId === "cricket" ? [["Score", cricketPoints ? "Avec points" : "Sans points"], ["Manches", cricketRounds]]
     : modeId === "shooter" ? [["Marques", shooterMarks]]
@@ -310,7 +348,29 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
       <DartsQuickHeader modeId={modeId} title={title || spec.title} onBack={onBack} />
       <div style={{ maxWidth: 760, width: "100%", margin: "0 auto", display: "grid", gap: 12 }}>
         <DartsQuickIntro title={title || spec.title} />
-        <MssQuickPanel title="Participants">
+        {isKillerQuick && <section aria-label="Étapes de la partie rapide KILLER" style={{ borderRadius: 18, border: `1px solid ${accent}66`, padding: "12px 13px", background: "rgba(9,12,24,.95)", display: "grid", gap: 11 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <strong style={{ fontSize: 13, fontWeight: 950, letterSpacing: .6, color: accent }}>PARTIE RAPIDE · KILLER</strong>
+            <span style={{ fontSize: 11, color: "#b9c3d4", fontWeight: 800 }}>Étape {killerQuickStep + 1}/{killerStepNames.length}</span>
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#f5f6fc" }}>{killerStepNames[killerQuickStep]}</div>
+          <div role="group" aria-label="Choisir une étape" style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+            {killerStepNames.map((name, i) => <button type="button" key={name} aria-label={`Étape ${i + 1} : ${name}`} aria-current={killerQuickStep === i ? "step" : undefined} onClick={() => changeKillerQuickStep(i)} style={{ width: 33, height: 33, borderRadius: 11, border: `1px solid ${killerQuickStep === i ? accent : "rgba(255,255,255,.18)"}`, background: killerQuickStep === i ? `${accent}22` : "rgba(255,255,255,.025)", color: killerQuickStep === i ? accent : "#aeb8ca", fontWeight: 900, cursor: "pointer" }}>{i + 1}</button>)}
+          </div>
+          <div role="progressbar" aria-label="Progression" aria-valuemin={0} aria-valuemax={killerStepNames.length} aria-valuenow={killerQuickStep + 1} style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,.1)", overflow: "hidden" }}><div style={{ width: `${((killerQuickStep + 1) / killerStepNames.length) * 100}%`, height: "100%", borderRadius: 999, background: accent }} /></div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+            <button type="button" disabled={killerQuickStep === 0} onClick={() => changeKillerQuickStep(killerQuickStep - 1)} style={{ ...chip(false), opacity: killerQuickStep === 0 ? .4 : 1 }}>← Précédent</button>
+            <button type="button" disabled={killerQuickStep === killerStepNames.length - 1} onClick={() => changeKillerQuickStep(killerQuickStep + 1)} style={{ ...chip(killerQuickStep < killerStepNames.length - 1), opacity: killerQuickStep === killerStepNames.length - 1 ? .4 : 1 }}>Suivant →</button>
+          </div>
+        </section>}
+        {isFiveLivesQuick && <section aria-label="Étapes partie rapide 5 Vies" style={{borderRadius:18,border:`1px solid ${accent}66`,padding:"12px 13px",background:"rgba(9,12,24,.95)",display:"grid",gap:11}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:7,alignItems:"center"}}><strong style={{color:accent,fontSize:13}}>PARTIE RAPIDE · 5 VIES</strong><span style={{color:"#b9c3d4",fontSize:11}}>Étape {fiveQuickStep+1}/{fiveStepNames.length}</span></div>
+          <div style={{fontWeight:800,fontSize:12}}>{fiveStepNames[fiveQuickStep]}</div>
+          <div style={{display:"flex",gap:8,justifyContent:"center"}}>{fiveStepNames.map((name,i)=><button key={name} type="button" onClick={()=>changeFiveQuickStep(i)} aria-label={`Étape ${i+1} : ${name}`} aria-current={fiveQuickStep===i?"step":undefined} style={{width:33,height:33,borderRadius:11,border:`1px solid ${fiveQuickStep===i?accent:"#ffffff2a"}`,background:fiveQuickStep===i?`${accent}22`:"#ffffff07",color:fiveQuickStep===i?accent:"#b4bdd0",fontWeight:900}}>{i+1}</button>)}</div>
+          <div style={{height:4,background:"#ffffff1c",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${(fiveQuickStep+1)*100/fiveStepNames.length}%`,background:accent}}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><button type="button" disabled={fiveQuickStep===0} onClick={()=>changeFiveQuickStep(fiveQuickStep-1)} style={{...chip(false),opacity:fiveQuickStep===0?.35:1}}>← Précédent</button><button type="button" disabled={fiveQuickStep===fiveStepNames.length-1} onClick={()=>changeFiveQuickStep(fiveQuickStep+1)} style={{...chip(fiveQuickStep<fiveStepNames.length-1),opacity:fiveQuickStep===fiveStepNames.length-1?.35:1}}>Suivant →</button></div>
+        </section>}
+        {(!isKillerQuick || killerQuickStep === 0) && (!isFiveLivesQuick || fiveQuickStep === 0) && <MssQuickPanel title="Participants">
           <div role="group" aria-label="Format des participants" style={{ display: "grid", gridTemplateColumns: `repeat(${choices.length === 4 ? 2 : Math.min(3, choices.length)},minmax(0,1fr))`, gap: 8 }}>
             {choices.map(([key, text]) => {
               const active = key === layout;
@@ -324,7 +384,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
               </button>;
             })}
           </div>
-          {layout === "teams" && <div style={{ color: "#b2bed5", fontSize: 12, textAlign: "center" }}>2 équipes · 2 joueurs chacune · noms et avatars provisoires</div>}
+          {layout === "teams" && <div style={{ color: "#b2bed5", fontSize: 12, textAlign: "center" }}>2 équipes · 2 joueurs chacune · noms et avatars MSS temporaires. Les vies restent individuelles dans le moteur actuel.</div>}
           {layout === "multi" && <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14 }}>
             <button type="button" aria-label="Retirer un joueur" disabled={playerCount <= Math.max(3, spec.minPlayers)}
               onClick={() => setMultiCount(n => clamp(n - 1, Math.max(3, spec.minPlayers), spec.maxQuickPlayers || spec.maxPlayers))}
@@ -352,8 +412,8 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
               </span>
             </label>)}
           </div>
-        </MssQuickPanel>
-        {modeId === "killer" && (killerRules.startOrderMode === "manual" || killerRules.startOrderMode === "bull") && <MssQuickPanel title="Ordre des passages">
+        </MssQuickPanel>}
+        {modeId === "killer" && killerQuickStep === 2 && (killerRules.startOrderMode === "manual" || killerRules.startOrderMode === "bull") && <MssQuickPanel title="Ordre des passages">
           <p style={{ margin: 0, fontSize: 11, color: "#aeb6cb" }}>{killerRules.startOrderMode === "bull" ? "Classe les participants après le lancer à la BULL." : "Déplace les joueurs ou équipes avant le départ."}</p>
           {Array.from({ length: layout === "teams" ? 2 : playerCount }, (_, pos) => {
             const isTeams = layout === "teams";
@@ -366,14 +426,48 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
             </div>;
           })}
         </MssQuickPanel>}
-        {modeOptions}
-        <MssQuickRecap entries={[
+        {isFiveLivesQuick && fiveQuickStep === 1 && <MssQuickPanel title="Variante de jeu">
+          <div style={{display:"flex",justifyContent:"center",gap:14,alignItems:"center"}}>
+            <VariantIconChoice accent={accent} active={!fiveAllowEqualScore} title="Classique" subtitle="Classique" mode="classic" onClick={()=>setFiveAllowEqualScore(false)} />
+            <VariantIconChoice accent={accent} active={fiveAllowEqualScore} title="Relais" subtitle="Relais" mode="relay" onClick={()=>setFiveAllowEqualScore(true)} />
+          </div>
+          <div style={{textAlign:"center",display:"grid",gap:7}}>
+            <strong style={{color:accent,fontSize:15,fontWeight:1000}}>{fiveAllowEqualScore?"RELAIS":"CLASSIQUE"}</strong>
+            <p style={{maxWidth:360,margin:"0 auto",color:"#b5bfd7",fontSize:12,lineHeight:1.5}}>
+              {fiveAllowEqualScore?"RELAIS : l'égalité est autorisée pour valider la volée. Le rythme est plus souple, tout en gardant le même défi de survie.":"CLASSIQUE : le score de chaque nouvelle volée doit être strictement supérieur au précédent. La pression augmente au fil de la partie."}
+            </p>
+          </div>
+        </MssQuickPanel>}
+        {isFiveLivesQuick && fiveQuickStep === 2 && <MssQuickPanel title="Vies de départ">
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:9,justifyItems:"center"}}>
+            {[3,5,7,10].map(value=><HeartLivesChoice key={value} value={value} active={fiveLives===value} onClick={()=>setFiveLives(value)} primary={accent} />)}
+          </div>
+          <p style={{fontSize:11,color:"#b5bfd7",textAlign:"center",margin:0}}>Tous les participants commencent avec le nombre de vies sélectionné.</p>
+        </MssQuickPanel>}
+        {isFiveLivesQuick && fiveQuickStep === 3 && <MssQuickPanel title="Ordre de départ">
+          <div style={{display:"flex",gap:8,justifyContent:"center",alignItems:"center",flexWrap:"wrap"}}>
+            {([
+              {id:"random",icon:"random-order",label:"Aléatoire"},
+              {id:"alternate",icon:"alternate-order",label:"Alterné"},
+              {id:"manual",icon:"manual-pick",label:"Manuel"},
+              {id:"bull",icon:"bull-order",label:"Bull"},
+            ] as const).map(mode=><MssSelectorIconButton key={mode.id} icon={mode.icon} label={mode.label} accent={accent} active={fiveStartOrder===mode.id} onClick={()=>setFiveStartOrder(mode.id)} />)}
+          </div>
+          <div style={{display:"grid",textAlign:"center",gap:6}}>
+            <strong style={{fontSize:13,color:accent}}>{({random:"ALÉATOIRE",alternate:"ALTERNÉ",manual:"MANUEL",bull:"BULL"} as const)[fiveStartOrder]}</strong>
+            <p style={{fontSize:11,lineHeight:1.5,color:"#b5bfd7",margin:0}}>{({random:"L'ordre est mélangé au lancement.",alternate:"L'ordre suit la liste des participants sélectionnés.",manual:"L'ordre actuel des participants est conservé ; modifie-le à l'étape Participants.",bull:"Effectue un lancer réel à la BULL puis classe les participants selon le résultat."} as const)[fiveStartOrder]}</p>
+          </div>
+        </MssQuickPanel>}
+        {(!isKillerQuick || killerQuickStep === 1 || killerQuickStep === 2 || killerQuickStep === 3) && (!isFiveLivesQuick) && modeOptions}
+        {(!isKillerQuick || killerQuickStep === 4) && (!isFiveLivesQuick || fiveQuickStep === 4) && <MssQuickRecap entries={[
           ["Mode", title || spec.title],
           ["Participants", layout === "teams" ? "2 équipes · 2 joueurs" : `${playerCount} joueur${playerCount > 1 ? "s" : ""} · ${layout.toUpperCase()}`],
           ...ruleOverview,
           ...(modeId === "killer" ? [["Variantes", [killerRules.selfHitWhileKiller && "auto-pénalité", killerRules.lifeSteal && "vol de vies", killerRules.bullSplash && "dégâts BULL", killerRules.bullHeal && "soins", killerRules.bullHealFull && "soins max", killerRules.shieldOnDBull && "bouclier", killerRules.disarmOnDBull && "désarmement", killerRules.resurrectionMode !== "off" && "résurrection"].filter(Boolean).join(" · ") || "Aucune"] as [string,string]] : []),
-        ]} />
-        <MssQuickStart onClick={start} />
+        ]} />}
+        {(!isKillerQuick || killerQuickStep === 4) && (!isFiveLivesQuick || fiveQuickStep === 4) && <MssQuickStart onClick={start} />}
+        {isFiveLivesQuick && fiveQuickStep === 4 && <MssFiveLivesQuickAwenaTip />}
+        {isKillerQuick && killerQuickStep === 4 && <MssKillerQuickAwenaTip />}
       </div>
     </div>
   );

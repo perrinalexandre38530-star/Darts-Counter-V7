@@ -12,11 +12,20 @@ import MssSelectorIconButton from "../components/MssSelectorIconButton";
 import { MssConfigCaption, MssConfigFact } from "../components/config/MssPremiumConfig";
 import MssMatchFormatPanel, { MssStartOrderSection } from "../components/config/MssMatchFormatPanel";
 import MssParticipantModeIcon from "../components/config/MssParticipantModeIcon";
+import MssArcadeAwenaTip from "../components/config/MssArcadeAwenaTip";
 
 type QuickMode = "duel" | "teams" | "multi";
 type VictoryMode = "best_of" | "first_to";
 
 const LS_KEY = "mss:x01:quick-config:v1";
+const X01_QUICK_STEPS = ["Participants", "Score et sortie", "Format de match", "Ordre de départ", "Récapitulatif"] as const;
+const X01_QUICK_TIPS = [
+  "En 501 double out, prépare un double confortable avant la dernière volée.",
+  "Un double IN oblige à ouvrir le score avec une double : anticipe ta première fléchette.",
+  "En Best Of, la régularité fait souvent la différence sur plusieurs legs.",
+  "Aléatoire, alterné, manuel ou bull : choisissez le départ avant de jouer.",
+  "Un dernier contrôle des scores et des équipes évite les erreurs au lancement.",
+] as const;
 // Référence des formats X01 Arcade, sans restriction arbitraire sur la partie rapide.
 const LEG_BEST_OF = [1, 3, 5, 7, 9, 11, 13, 15];
 const LEG_FIRST_TO = [1, 3, 5, 7, 9, 10, 11, 13, 15, 16, 17, 18];
@@ -30,6 +39,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
   const { theme } = useTheme();
   const accent = theme?.primary || "#55e6ff";
   const [rulesVideoOpen, setRulesVideoOpen] = React.useState(false);
+  const [quickStep, setQuickStep] = React.useState(0);
   const [mode, setMode] = React.useState<QuickMode>("duel");
   const [serveMode, setServeMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
   const [multiCount, setMultiCount] = React.useState(4);
@@ -234,7 +244,13 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
           </div>
         </section>
 
-        <section style={card}>
+        <section style={{ ...card, display: "grid", gap: 10 }} aria-label="Étapes partie rapide X01">
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={heading}>CONFIGURATION RAPIDE</strong><span style={{ color: "#aeb8d0", fontSize: 11 }}>Étape {quickStep + 1}/5 · {X01_QUICK_STEPS[quickStep]}</span></div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{X01_QUICK_STEPS.map((name,i) => <button type="button" key={name} aria-label={`Étape ${i+1} : ${name}`} aria-current={i===quickStep ? "step" : undefined} onClick={() => setQuickStep(i)} style={{ width: 34, height: 34, borderRadius: 11, border: `1px solid ${i===quickStep ? accent : "rgba(255,255,255,.15)"}`, background: i===quickStep ? `${accent}20` : "rgba(255,255,255,.025)", color: i===quickStep ? accent : "#b5bfd2", fontWeight: 950, cursor: "pointer" }}>{i+1}</button>)}</div>
+          <div style={{ height: 4, borderRadius: 99, overflow: "hidden", background: "rgba(255,255,255,.09)" }}><div style={{ height: "100%", width: `${(quickStep+1)*20}%`, background: accent }}/></div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}><button type="button" disabled={quickStep===0} onClick={()=>setQuickStep(n=>Math.max(0,n-1))} style={{ ...compactChoice(false), minHeight: 44 }}>← Précédent</button><button type="button" disabled={quickStep===4} onClick={()=>setQuickStep(n=>Math.min(4,n+1))} style={{ ...compactChoice(true), minHeight: 44 }}>Suivant →</button></div>
+        </section>
+        {quickStep === 0 && <section style={card}>
           <h3 style={heading}>PARTICIPANTS</h3>
           <div role="group" aria-label="Format des participants" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 11 }}>
             {([['duel','DUEL'],['teams','ÉQUIPES'],['multi','MULTI']] as const).map(([key,text]) => (
@@ -259,9 +275,9 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
                 style={{ border: 0, background: "transparent", outline: 0, fontSize: 12, fontWeight: 850, color: "#fff", width: "100%", minWidth: 0 }} />
             </label>)}
           </div>
-        </section>
+        </section>}
 
-        <section style={card}>
+        {quickStep === 1 && <section style={card}>
           <h3 style={heading}>SCORE ET SORTIE</h3>
           <div style={{ ...miniHeading, marginTop: 13 }}>SCORE DE DÉPART</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 6, marginTop: 7 }}>
@@ -278,9 +294,9 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
             <button type="button" aria-pressed={outMode==='single'} style={keypadChoice(outMode==='single',MSS_HIT.simple)} onClick={() => setOutMode('single')}>SIMPLE OUT</button>
             <button type="button" aria-pressed={outMode==='double'} style={keypadChoice(outMode==='double',MSS_HIT.double)} onClick={() => setOutMode('double')}>DOUBLE OUT</button>
           </div>
-        </section>
+        </section>}
 
-        <section style={card}>
+        {quickStep === 2 && <section style={card}>
           <MssMatchFormatPanel
             accent={accent}
             legMode={legVictoryMode}
@@ -301,13 +317,13 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
             showAdvancedFormats={false}
             showStartOrder={false}
           />
-        </section>
+        </section>}
 
-        <section style={card}>
+        {quickStep === 3 && <section style={card}>
           <MssStartOrderSection accent={accent} value={serveMode} onChange={setServeMode}/>
-        </section>
+        </section>}
 
-        <section style={{ ...card, borderColor: `${accent}66`, background:'linear-gradient(155deg,rgba(22,23,35,.97),rgba(8,10,21,.97))' }} aria-label="Fiche de partie rapide">
+        {quickStep === 4 && <section style={{ ...card, borderColor: `${accent}66`, background:'linear-gradient(155deg,rgba(22,23,35,.97),rgba(8,10,21,.97))' }} aria-label="Fiche de partie rapide">
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
             <div>
               <h3 style={{ ...heading, fontSize:15 }}>FICHE DE PARTIE</h3>
@@ -345,7 +361,8 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
               background:`linear-gradient(90deg, ${accent}, #ffe4a4)`, color:'#161823', boxShadow:`0 0 19px ${accent}30` }}>
             LANCER LA PARTIE
           </button>
-        </section>
+        </section>}
+        {quickStep === 4 && <MssArcadeAwenaTip quick tips={X01_QUICK_TIPS} />}
       </main>
       <X01AwenaRulesVideo open={rulesVideoOpen} onDone={() => setRulesVideoOpen(false)} />
     </div>

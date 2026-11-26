@@ -678,6 +678,9 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
   const { lang } = useLang();
   const L = React.useCallback((fr: string, en: string) => lang === "fr" ? fr : en, [lang]);
   const accent = theme?.primary || "#42d6ff";
+  const arcadeSoundEnabled = config?.audio?.arcadeEnabled !== false && config?.arcadeEnabled !== false;
+  const hitSoundEnabled = config?.audio?.hitEnabled !== false && config?.hitEnabled !== false;
+  const voiceAnnouncementsEnabled = config?.audio?.voiceEnabled !== false && config?.voiceEnabled !== false;
   const pageBg = theme?.pageBg || theme?.bg || "#05070e";
 
   const [game, setGame] = React.useState(() => restoreGros6Snapshot(config, initialSnapshot));
@@ -741,13 +744,13 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
     try { unlockAudio(); } catch {}
     if (!introPlayedRef.current) {
       introPlayedRef.current = true;
-      playGros6Intro(0.52);
+      if (arcadeSoundEnabled) playGros6Intro(0.52);
     }
     return () => {
       stopGros6Intro();
       try { window.speechSynthesis?.cancel?.(); } catch {}
     };
-  }, []);
+  }, [arcadeSoundEnabled]);
 
   const compact = viewport.w < 720;
   const short = viewport.h < 760;
@@ -797,6 +800,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
   }, [commit, config]);
 
   const playHitSfx = React.useCallback((d: any) => {
+    if (!hitSoundEnabled) return;
     try {
       const value = Number(d?.v || 0);
       const mult = Number(d?.mult || 1);
@@ -806,7 +810,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
         playSfx("hit", { volume: 0.72 });
       }
     } catch {}
-  }, []);
+  }, [hitSoundEnabled]);
 
   const submitUiDart = React.useCallback((d: any) => {
     playHitSfx(d);
@@ -868,7 +872,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
     if (typeof window === "undefined") return;
     const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!Ctor) {
-      speak(lang === "fr" ? "La reconnaissance vocale n'est pas disponible sur cet appareil." : "Voice recognition is not available on this device.", { lang: speechLang, rate: .98 });
+      if (voiceAnnouncementsEnabled) speak(lang === "fr" ? "La reconnaissance vocale n'est pas disponible sur cet appareil." : "Voice recognition is not available on this device.", { lang: speechLang, rate: .98 });
       return;
     }
     try {
@@ -904,19 +908,19 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
         if (/double|\bd\s*\d+/.test(heard)) { submitUiDart({ v: n, mult: 2 }); return; }
         if (/petit|little|small|\bp\s*\d+|\bl\s*\d+/.test(heard)) { submitUiDart({ v: n, mult: 1, singleArea: "small" }); return; }
         if (/gros|big|\bg\s*\d+|\bb\s*\d+/.test(heard)) { submitUiDart({ v: n, mult: 1, singleArea: "big" }); return; }
-        speak(lang === "fr" ? "Précise la zone. Dis par exemple gros 6, petit 7, double 18 ou triple 20." : "Please specify the zone. Say for example big 6, little 7, double 18 or treble 20.", { lang: speechLang, rate: .98 });
+        if (voiceAnnouncementsEnabled) speak(lang === "fr" ? "Précise la zone. Dis par exemple gros 6, petit 7, double 18 ou triple 20." : "Please specify the zone. Say for example big 6, little 7, double 18 or treble 20.", { lang: speechLang, rate: .98 });
       };
       rec.start();
     } catch { setVoiceListening(false); }
-  }, [lang, speechLang, stopGros6Voice, submitBull, submitDoubleBull, submitHit, submitUiDart]);
+  }, [lang, speechLang, stopGros6Voice, submitBull, submitDoubleBull, submitHit, submitUiDart, voiceAnnouncementsEnabled]);
 
   React.useEffect(() => () => stopGros6Voice(), [stopGros6Voice]);
 
   const pickSpecial = React.useCallback((zone: any) => {
-    playSfx("hit", { volume: 0.78 });
+    if (hitSoundEnabled) playSfx("hit", { volume: 0.78 });
     submitHit(makeGros6Special(zone.code, zone.label));
     setSpecialOpen(false);
-  }, [submitHit]);
+  }, [submitHit, hitSoundEnabled]);
 
   React.useEffect(() => {
     if (!game.winnerId || reportedRef.current) return;
@@ -964,7 +968,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
   }, [game.phase, game.turnIndex, game.winnerId, game.players, config]);
 
   React.useEffect(() => {
-    if (finished || !activePlayer?.name || game.phase !== "attack") return;
+    if (!voiceAnnouncementsEnabled || finished || !activePlayer?.name || game.phase !== "attack") return;
     const key = `${game.turnNo}-${game.turnIndex}`;
     if (announcedTurnRef.current === key) return;
     announcedTurnRef.current = key;
@@ -975,7 +979,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
         : `${activePlayer.name}, your turn. Your target is ${objective}.`,
       { lang: speechLang, rate: 0.98 }
     );
-  }, [activePlayer?.name, finished, game.currentTarget, game.phase, game.turnIndex, game.turnNo, lang, speechLang]);
+  }, [activePlayer?.name, finished, game.currentTarget, game.phase, game.turnIndex, game.turnNo, lang, speechLang, voiceAnnouncementsEnabled]);
 
   React.useEffect(() => {
     const history = Array.isArray(game.history) ? game.history : [];
@@ -990,21 +994,21 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
       message = lang === "fr" ? `Nouvelle cible ${last.nextTarget}` : `New target ${last.nextTarget}`;
     } else if (last?.lifeLost) {
       message = lang === "fr" ? `${last.playerName || "Joueur"} perd une vie` : `${last.playerName || "Player"} loses a life`;
-      playSfx("bust", { volume: 0.76 });
+      if (arcadeSoundEnabled) playSfx("bust", { volume: 0.76 });
     } else if (last?.success && last?.phase === "attack") {
       message = lang === "fr" ? "Cible validée" : "Target cleared";
     }
 
-    if (message) speak(message, { lang: speechLang, rate: 0.98 });
-  }, [game.history, lang, speechLang]);
+    if (message && voiceAnnouncementsEnabled) speak(message, { lang: speechLang, rate: 0.98 });
+  }, [game.history, lang, speechLang, arcadeSoundEnabled, voiceAnnouncementsEnabled]);
 
   React.useEffect(() => {
     if (!game.winnerId || !game.winnerName) return;
     const key = `${game.winnerType || "player"}:${game.winnerId}`;
     if (announcedWinnerRef.current === key) return;
     announcedWinnerRef.current = key;
-    speak(lang === "fr" ? `Victoire ${game.winnerName}` : `${game.winnerName} wins`, { lang: speechLang, rate: 0.96 });
-  }, [game.winnerId, game.winnerName, game.winnerType, lang, speechLang]);
+    if (voiceAnnouncementsEnabled) speak(lang === "fr" ? `Victoire ${game.winnerName}` : `${game.winnerName} wins`, { lang: speechLang, rate: 0.96 });
+  }, [game.winnerId, game.winnerName, game.winnerType, lang, speechLang, voiceAnnouncementsEnabled]);
 
   const activeTarget = phaseSelect ? (game.pendingNextTarget || null) : game.currentTarget;
   const phaseText = phaseSelect ? L("CHOISIS LA PROCHAINE CIBLE", "CHOOSE NEXT TARGET") : L("CIBLE À TOUCHER", "TARGET TO HIT");

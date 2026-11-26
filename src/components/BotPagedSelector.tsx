@@ -172,9 +172,11 @@ export default function BotPagedSelector({
     });
   }, [bots]);
 
-  const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  // Charte MSS : 4 bots maximum par page, même si un jeu passe un ancien pageSize=9.
+  const effectivePageSize = 4;
+  const pages = Math.max(1, Math.ceil(sorted.length / effectivePageSize));
   const safePage = Math.min(Math.max(page, 0), pages - 1);
-  const pageBots = sorted.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  const pageBots = sorted.slice(safePage * effectivePageSize, safePage * effectivePageSize + effectivePageSize);
   const pageTitle = pageBots.length ? itemGroup(pageBots[0]) : "BOTS IA";
   const selectedBots = React.useMemo(() => {
     const byId = new Map(sorted.map((bot) => [String(bot.id), bot]));
@@ -288,7 +290,7 @@ export default function BotPagedSelector({
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "min(520px, 96vw)",
-              maxHeight: "88vh",
+              maxHeight: "min(82dvh, 680px)",
               borderRadius: 18,
               border: `1px solid ${accent}88`,
               background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))",
@@ -310,12 +312,12 @@ export default function BotPagedSelector({
               </div>
             </div>
 
-            <div style={{ padding: 14, overflow: "hidden", minHeight: 0, flex: "1 1 auto", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: 12, overflowY: "auto", minHeight: 0, flex: "1 1 auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", display: "flex", flexDirection: "column" }}>
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gridTemplateRows: "repeat(2, minmax(0, 1fr))",
+                  gridTemplateRows: "repeat(2, auto)",
                   gap: 14,
                   alignContent: "center",
                 }}

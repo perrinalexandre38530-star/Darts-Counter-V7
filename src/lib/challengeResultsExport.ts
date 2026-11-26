@@ -95,6 +95,8 @@ export type ChallengeExportReport = {
   configSummary?: ChallengeExportMetric[];
   tickerSrc?: string;
   appLogoSrc?: string;
+  headerAccent?: string;
+  headerSecondary?: string;
   footerBrand?: string;
   sportLabel?: string;
   matchType?: 'x01' | 'generic';
@@ -321,9 +323,11 @@ function drawHeader(ctx: CanvasRenderingContext2D, report: ChallengeExportReport
   title: string, subtitle: string, pageLabel?: string) {
   drawRoundImage(ctx, assets.ticker, MARGIN, 34, CONTENT, 138, 21, true);
   const lineGrad = ctx.createLinearGradient(MARGIN, 34, MARGIN + CONTENT, 34);
-  lineGrad.addColorStop(0, 'rgba(255,91,109,.75)');
-  lineGrad.addColorStop(.5, 'rgba(98,190,255,.32)');
-  lineGrad.addColorStop(1, 'rgba(255,91,109,.75)');
+  const customAccent = /^#[0-9a-f]{6}$/i.test(report.headerAccent || '') ? report.headerAccent! : '';
+  const secondary = /^#[0-9a-f]{6}$/i.test(report.headerSecondary || '') ? report.headerSecondary! : '';
+  lineGrad.addColorStop(0, customAccent || 'rgba(255,91,109,.75)');
+  lineGrad.addColorStop(.5, secondary || 'rgba(98,190,255,.32)');
+  lineGrad.addColorStop(1, customAccent || 'rgba(255,91,109,.75)');
   ctx.strokeStyle = lineGrad;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -815,7 +819,7 @@ async function loadImageMaybe(src: string | null | undefined): Promise<HTMLImage
 }
 
 async function prepareAssets(report: ChallengeExportReport): Promise<PreparedAssets> {
-  const logo = await loadImageMaybe(report.appLogoSrc || APP_LOGO_SRC);
+  const logo = await loadImageMaybe(report.appLogoSrc || APP_LOGO_SRC) || (report.appLogoSrc ? await loadImageMaybe(APP_LOGO_SRC) : null);
   const ticker = await loadImageMaybe(report.tickerSrc || '');
   const avatars = new Map<string, HTMLImageElement | null>();
   await Promise.all(report.players.map(async (player) => {
