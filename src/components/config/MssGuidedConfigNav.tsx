@@ -6,7 +6,7 @@ import MssAwenaExplainButton from "../MssAwenaExplainButton";
  * sur l'étape, le mode, la restauration des paramètres et les validations. */
 export function MssGuidedConfigNav({
   steps, step, selectionSummary, accent, onStepChange, onPrev, onNext,
-  onComplete, onAwenaExplain, compactLikeKiller = false,
+  onComplete, onAwenaExplain, compactLikeKiller = false, progressiveSingleLine = false,
 }: {
   steps: string[];
   step: number;
@@ -18,9 +18,20 @@ export function MssGuidedConfigNav({
   onComplete: () => void;
   onAwenaExplain: () => void;
   compactLikeKiller?: boolean;
+  progressiveSingleLine?: boolean;
 }) {
   const current = Math.min(Math.max(0, step), Math.max(0, steps.length - 1));
   const final = current === steps.length - 1;
+  const stripRef = React.useRef<HTMLDivElement>(null);
+  const activeRef = React.useRef<HTMLButtonElement>(null);
+  React.useLayoutEffect(() => {
+    if (!progressiveSingleLine) return;
+    const strip = stripRef.current;
+    const active = activeRef.current;
+    if (!strip || !active) return;
+    const target = active.offsetLeft - strip.offsetLeft + active.offsetWidth / 2 - strip.clientWidth / 2;
+    strip.scrollTo({ left: Math.max(0, target), behavior: 'auto' });
+  }, [current, steps.length, progressiveSingleLine]);
   return (
     <section className="mss-guided-config-nav" style={{
       borderRadius: 18, border: `1px solid ${accent}55`,
@@ -45,6 +56,27 @@ export function MssGuidedConfigNav({
           }}>Complète</button>
         </div>
       </div>
+      {progressiveSingleLine ? (
+        <div ref={stripRef} role="group" aria-label="Étapes de la configuration guidée" style={{
+          display: "flex", alignItems: "center", gap: 8, overflowX: "auto", overflowY: "hidden",
+          whiteSpace: "nowrap", flexWrap: "nowrap", padding: "8px 0", marginTop: 6,
+          scrollbarWidth: "none", scrollSnapType: "x proximity", maxWidth: "100%",
+        }}>
+          <span aria-hidden="true" style={{ flex: "0 0 calc(50% - 18px)" }} />
+          {steps.map((label, i) => i > current + 2 ? null : (
+            <button ref={i === current ? activeRef : undefined} type="button" key={`${label}-${i}`}
+              onClick={() => onStepChange(i)} title={label} aria-label={`Étape ${i + 1} : ${label}`}
+              aria-current={i === current ? "step" : undefined} style={{
+                width: i === current ? 38 : 30, height: i === current ? 35 : 30,
+                borderRadius: 12, flex: `0 0 ${i === current ? 38 : 30}px`, scrollSnapAlign: "center",
+                border: `1px solid ${i === current ? accent : "rgba(255,255,255,.17)"}`,
+                background: i === current ? `${accent}24` : "rgba(255,255,255,.04)",
+                color: i === current ? accent : "#bbc3d9", fontWeight: 900, fontSize: 12, cursor: "pointer",
+              }}>{i + 1}</button>
+          ))}
+          <span aria-hidden="true" style={{ flex: "0 0 calc(50% - 18px)" }} />
+        </div>
+      ) : (
       <div style={{ display: "flex", gap: compactLikeKiller ? 5 : 6, flexWrap: "wrap", justifyContent: compactLikeKiller ? "center" : "flex-start", marginTop: compactLikeKiller ? 8 : 12, alignItems: "center" }} role="group" aria-label="Étapes de la configuration guidée">
         {steps.map((label, i) => (
           <button type="button" key={`${label}-${i}`} onClick={() => onStepChange(i)} title={label} aria-label={`Étape ${i + 1} : ${label}`} aria-current={i === current ? "step" : undefined}
@@ -53,6 +85,7 @@ export function MssGuidedConfigNav({
           </button>
         ))}
       </div>
+      )}
       <div style={{ height: 5, background: "rgba(255,255,255,.09)", borderRadius: 999, overflow: "hidden", marginTop: 12 }}>
         <div style={{ width: `${((current + 1) / Math.max(1, steps.length)) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg,${accent},#ff8fd0)`, transition: "width .18s ease" }} />
       </div>

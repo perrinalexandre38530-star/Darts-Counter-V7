@@ -2,7 +2,7 @@ import React from "react";
 import TrainingPlayLayout from "../../ui/TrainingPlayLayout";
 import TrainingDartPad from "../../ui/TrainingDartPad";
 import TrainingResultModal from "../../ui/TrainingResultModal";
-import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { appendTrainingVisit, recordSoloTrainingResult, type TrainingVisitLogRow } from "../../stats/trainingSessionRecorder";
 import { makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { EXTENDED_RULE_BY_ID, type ExtendedTrainingRule } from "../../catalog/trainingLabExtendedRules";
 import { evaluateExtendedOutcome } from "../../profile/trainingExtendedOutcome";
@@ -47,9 +47,9 @@ const cardMissions=[
   {t:"Finir 105 en 3 fléchettes",k:"finish",v:105,d:3},{t:"Finir 140 en 3 fléchettes",k:"finish",v:140,d:3},{t:"2 triples en 3 fléchettes",k:"triple",c:2,d:3},{t:"Finir 121 en 3 fléchettes",k:"finish",v:121,d:3},
 ] as const;
 
-type State={darts:number;hits:number;points:number;round:number;index:number;remaining:number;best:number;worst:number|null;lives:number;streak:number;bestStreak:number;aggregatedDarts:number;aux:any};
+type State={visitHistory:TrainingVisitLogRow[];darts:number;hits:number;points:number;round:number;index:number;remaining:number;best:number;worst:number|null;lives:number;streak:number;bestStreak:number;aggregatedDarts:number;aux:any};
 function initial(rule:ExtendedTrainingRule):State{
-  return {darts:0,hits:0,points:rule.kind==="bob27"?27:rule.kind==="half_it"?40:0,round:0,index:0,remaining:rule.kind==="x01_restricted"?501:rule.kind==="fish170"?170:0,best:0,worst:null,lives:3,streak:0,bestStreak:0,aggregatedDarts:0,aux: rule.kind==="atomic"?{temps:Array(21).fill(0),fused:new Set<number>()}:{}};
+  return {visitHistory:[],darts:0,hits:0,points:rule.kind==="bob27"?27:rule.kind==="half_it"?40:0,round:0,index:0,remaining:rule.kind==="x01_restricted"?501:rule.kind==="fish170"?170:0,best:0,worst:null,lives:3,streak:0,bestStreak:0,aggregatedDarts:0,aux: rule.kind==="atomic"?{temps:Array(21).fill(0),fused:new Set<number>()}:{}};
 }
 
 function targetText(rule:ExtendedTrainingRule,s:State){
@@ -101,7 +101,7 @@ export default function TrainingCustomExercisePlay({config,onExit,onStartCorrect
   const ruleMissing = !resolvedRule;
   const participantId = String(config?.activeParticipant?.id || config?.selectedPlayerIds?.[0] || "").trim() || null;
   const resumeExerciseDraft = config?.resumeExerciseDraft && String(config.resumeExerciseDraft.exerciseId || "") === String(exercise.id) ? config.resumeExerciseDraft : null;
-  const [state,setState]=React.useState<State>(()=>resumeExerciseDraft?.state ? { ...initial(rule), ...resumeExerciseDraft.state, aux: resumeExerciseDraft.state.aux || {} } : initial(rule));
+  const [state,setState]=React.useState<State>(()=>resumeExerciseDraft?.state ? { ...initial(rule), ...resumeExerciseDraft.state, visitHistory: Array.isArray(resumeExerciseDraft.visitHistory) ? resumeExerciseDraft.visitHistory : [], aux: resumeExerciseDraft.state.aux || {} } : initial(rule));
   const stateRef=React.useRef(state); React.useEffect(()=>{stateRef.current=state},[state]);
   const startedAt=React.useRef(Number(resumeExerciseDraft?.startedAt) || Date.now());
   const [result,setResult]=React.useState<any>(null);
@@ -118,7 +118,7 @@ export default function TrainingCustomExercisePlay({config,onExit,onStartCorrect
     if(finishedRef.current || String(config?.sessionKind || "exercise") !== "exercise") return;
     // Prevent a pagehide event in the same tick from writing an older render snapshot.
     stateRef.current = nextState;
-    saveTrainingExerciseDraft({exerciseId:exercise.id,participantId,engine:"custom",dartSet:config?.dartSetsByParticipant?.[participantId || ""] ?? null,savedAt:Date.now(),startedAt:startedAt.current,state:nextState,visitHistory:[],secondsLeft:rule.durationSec?nextSeconds:null});
+    saveTrainingExerciseDraft({exerciseId:exercise.id,participantId,engine:"custom",dartSet:config?.dartSetsByParticipant?.[participantId || ""] ?? null,savedAt:Date.now(),startedAt:startedAt.current,state:nextState,visitHistory:nextState.visitHistory,secondsLeft:rule.durationSec?nextSeconds:null});
   },[config?.sessionKind,config?.dartSetsByParticipant,exercise.id,participantId,rule.durationSec,secondsLeft]);
 
   const finish=React.useCallback((success=true,finalState?:State)=>{
@@ -133,7 +133,7 @@ export default function TrainingCustomExercisePlay({config,onExit,onStartCorrect
     const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct,accuracyPct,precisionUnavailable:accuracyPct===null,aggregatedDarts:s.aggregatedDarts||0,aggregateVisits:Array.isArray(s.aux?.aggregateVisits)?s.aux.aggregateVisits:[],performanceScore:outcome.performanceScore,score:scorePoints,customRule:rule.kind,objectivePassed:outcome.passed,objectiveMetric:outcome.metricLabel,objectiveValue:outcome.metricValue,objectiveTarget:outcome.targetValue,objectiveDirection:outcome.direction};
     const participantId=String(config?.activeParticipant?.id||participantIds?.[0]||"").trim()||null;
     const progressionBefore=getTrainingExerciseProgressionSnapshot(exercise,participantId);
-    recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:scorePoints,success:outcome.passed,metrics,visitHistory:[]});
+    recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:scorePoints,success:outcome.passed,metrics,visitHistory:s.visitHistory});
     setExerciseFeedback(buildTrainingExercisePostSessionFeedback(exercise,participantId,progressionBefore,Number(metrics.performanceScore)||0));
     setResult({success:outcome.passed,metrics,outcome,stats:makeTrainingStats({darts:s.darts,hits:s.hits,points:Math.max(0,s.points),startedAt:startedAt.current,endedAt})});
   },[config,exercise,participantId,participantIds,rule]);
@@ -173,9 +173,12 @@ export default function TrainingCustomExercisePlay({config,onExit,onStartCorrect
   }, [finish, foreground, result, rule.durationSec]);
 
   const applyVisit=React.useCallback((visit:TrainingDart[])=>{
-    if(result||!visit.length)return;
+    if(result||finishedRef.current||!visit.length)return;
+    const visitAt=Date.now();
     setState(prev=>{
-      let s:{[K in keyof State]:State[K]}={...prev,aux:{...prev.aux}};
+      if(finishedRef.current)return prev;
+      let s:{[K in keyof State]:State[K]}={...prev,aux:{...prev.aux},visitHistory:[...prev.visitHistory]};
+      appendTrainingVisit(s.visitHistory,visit,{endedAt:visitAt,roundIndex:prev.round,meta:{exerciseId:exercise.id}});
       s.darts+=visit.length; s.hits+=visit.filter(d=>!d.miss).length;
       const vs=visitScore(visit);
       const done=(ok=true)=>setTimeout(()=>finish(ok,s as State),0);
@@ -234,7 +237,7 @@ export default function TrainingCustomExercisePlay({config,onExit,onStartCorrect
       persistDraft(s as State,secondsLeft);
       return s as State;
     });
-  },[finish,persistDraft,result,rule,secondsLeft]);
+  },[finish,persistDraft,result,rule,secondsLeft,exercise.id]);
 
   const quickScoreCompatible = rule.kind === "survival_score" || rule.kind === "redemption" || (rule.kind === "round_score" && !rule.params?.target && !rule.params?.chooseSegment && rule.params?.mode !== "checkout50");
   const onQuickVisit = (total: number, dartCount: number) => {

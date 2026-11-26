@@ -51,7 +51,7 @@ export type TrainingDetailedSession = {
   visitHistory?: any[];
   /** Canonical S/D/T/BULL/DBULL/MISS telemetry, rebuildable for future stats. */
   telemetry?: any;
-  telemetryCoverage?: "exact" | "missing";
+  telemetryCoverage?: "exact" | "partial" | "missing";
 };
 
 export type TrainingGroupParticipantResult = {
@@ -373,7 +373,8 @@ export function recordTrainingDetailedSession(input: TrainingDetailedSession) {
   const startedAt = Math.min(endedAt, Math.max(0, Number(input.startedAt || endedAt) || endedAt));
   const darts = Math.max(0, Math.floor(Number(input.darts) || 0));
   const hits = Math.max(0, Math.min(darts, Math.floor(Number(input.hits) || 0)));
-  const misses = Math.max(0, Math.floor(Number(input.misses) || Math.max(0, darts - hits)));
+  const misses = input.misses == null || !Number.isFinite(Number(input.misses))
+    ? Math.max(0, darts - hits) : Math.max(0, Math.min(darts, Math.floor(Number(input.misses))));
   const participantId = input.participantId ? String(input.participantId) : null;
 
   const record: TrainingDetailedSession = {
@@ -394,7 +395,8 @@ export function recordTrainingDetailedSession(input: TrainingDetailedSession) {
     hits,
     misses,
     points: Math.max(0, Math.round(Number(input.points) || 0)),
-    accuracyPct: Math.max(0, Number(input.accuracyPct) || (darts > 0 ? (hits / darts) * 100 : 0)),
+    accuracyPct: Math.max(0, Math.min(100, input.accuracyPct != null && Number.isFinite(Number(input.accuracyPct))
+      ? Number(input.accuracyPct) : (darts > 0 ? (hits / darts) * 100 : 0))),
     success: !!input.success,
     config: input.config || {},
     dartSet: input.dartSet ?? (participantId ? input.config?.dartSetsByParticipant?.[participantId] : null) ?? null,

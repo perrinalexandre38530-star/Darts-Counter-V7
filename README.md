@@ -191,8 +191,8 @@ Official website:
 
 ## Current release
 
-Version de référence : **1.0.0-rc17**  
-Code Google Play : **18**  
+Version de référence : **1.0.0-rc18**  
+Code Google Play : **19**  
 Package Android : `com.multisportsscoring.app`
 
 La source unique de version est :

@@ -131,18 +131,22 @@ export function recordSoloTrainingResult(input: {
   );
   const darts = Math.max(0, Math.floor(Number(input.darts) || 0));
   const hits = Math.max(0, Math.min(darts, Math.floor(Number(input.hits) || 0)));
-  const participantId = (Array.isArray(input.participantIds) ? input.participantIds : [])
-    .map((id) => String(id || "").trim())
-    .find(Boolean) || null;
   const activeParticipant = input.config?.activeParticipant && typeof input.config.activeParticipant === "object"
     ? input.config.activeParticipant
     : null;
+  const participantId = String(activeParticipant?.id || "").trim() ||
+    (Array.isArray(input.participantIds) ? input.participantIds : [])
+      .map((id) => String(id || "").trim()).find(Boolean) || null;
   const configForHistory = { ...(input.config || {}) };
   delete (configForHistory as any).activeParticipant;
   delete (configForHistory as any).trainingParticipants;
 
   const modeId = String(input.modeId || "unknown");
-  const id = String(input.historyId || `training-${modeId}-${endedAt}-${Math.random().toString(36).slice(2, 8)}`);
+  // Repeated finish callbacks must produce the same identity, including after a draft resume.
+  const identity = [modeId, participantId || "anonymous", startedAt,
+    input.config?.groupSessionId || "", input.config?.exerciseId || "", input.config?.programStep ?? ""]
+    .map(value => encodeURIComponent(String(value))).join(":");
+  const id = String(input.historyId || `training:${identity}`);
   const visitHistory = normalizeTrainingVisitHistory(input.visitHistory, participantId, startedAt);
   const telemetrySeed = {
     id,
@@ -155,6 +159,8 @@ export function recordSoloTrainingResult(input: {
     dartLog: visitHistory,
   };
   const telemetry = visitHistory.length ? buildDartsTelemetry(telemetrySeed, telemetrySeed) : null;
+  const exactDarts = visitHistory.reduce((sum, row) => sum + row.darts.length, 0);
+  const telemetryCoverage = exactDarts === 0 ? "missing" : exactDarts === darts ? "exact" : "partial";
 
   const record: TrainingDetailedSession = {
     id,
@@ -162,7 +168,7 @@ export function recordSoloTrainingResult(input: {
     groupSessionId: input.config?.groupSessionId ? String(input.config.groupSessionId) : null,
     participantId,
     participantName: activeParticipant?.name ? String(activeParticipant.name) : null,
-    participantType: "player",
+    participantType: activeParticipant?.isBot === true || activeParticipant?.type === "bot" || activeParticipant?.kind === "bot" || (participantId && Array.isArray(input.config?.selectedBotIds) && input.config.selectedBotIds.map(String).includes(participantId)) ? "bot" : "player",
     teamId: activeParticipant?.teamId ? String(activeParticipant.teamId) : null,
     teamName: activeParticipant?.teamName ? String(activeParticipant.teamName) : null,
     teamLogo: activeParticipant?.teamLogo ? String(activeParticipant.teamLogo) : null,
@@ -176,10 +182,10 @@ export function recordSoloTrainingResult(input: {
     accuracyPct: darts > 0 ? (hits / darts) * 100 : 0,
     success: !!input.success,
     config: configForHistory,
-    metrics: input.metrics || {},
+    metrics: { ...input.metrics, exactImpactDarts: exactDarts, unknownImpactDarts: Math.max(0, darts - exactDarts) },
     visitHistory,
     telemetry,
-    telemetryCoverage: telemetry?.visits?.length ? "exact" : "missing",
+    telemetryCoverage,
   };
 
   const saved = recordTrainingDetailedSession(record);

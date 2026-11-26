@@ -15,6 +15,10 @@ import { MssKillerParticipantMode, MssKillerFormat } from "../components/config/
 import MssSelectorIconButton from "../components/MssSelectorIconButton";
 import MssGros6AwenaTip from "../components/config/MssGros6AwenaTip";
 import MssLivesHeartChoice from "../components/config/MssLivesHeartChoice";
+import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
+import MssKillerCreateMenu from "../components/config/MssKillerCreateMenu";
+import MssKillerCreateParticipantDialog from "../components/config/MssKillerCreateParticipantDialog";
+import { loadStoredBots, saveStoredBots } from "../lib/bots";
 import MssGros6InputSelector from "../components/config/MssGros6InputSelector";
 import { MssConfigFact } from "../components/config/MssPremiumConfig";
 import MssGolfKillerTeamSelector from "./MssGolfKillerTeamSelector";
@@ -45,6 +49,7 @@ import { makeGros6Segment, randomGros6StartTarget } from "../lib/gros6Engine";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.webp";
 import tickerBig6 from "../assets/tickers/ticker_gros_6_en.webp";
 import gros6RulesBoard from "../assets/gros6/gros6_rules_board.webp";
+import cricketDartShape from "../ui_assets/cricket-dart.svg";
 import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
 import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
 import smallSingleZoneVisualEn from "../assets/rules/darts-single-zones/zone_petit_simple_en.webp";
@@ -162,6 +167,13 @@ const PRESETS = [
     values: { startingLives: 10, targetRule: "strict", allowBull: true, allowSpecialZones: true, thirdDartBonusSelection: true, thirdDartBonusCount: 3, selectionPolicy: "open", startingTargetMode: "s6" },
   },
 ];
+
+const START_ORDER_OPTIONS = [
+  { id: "random", icon: "random-order", label: "Aléatoire", detail: "Les participants sont mélangés automatiquement au lancement de la partie." },
+  { id: "alternate", icon: "alternate-order", label: "Alterné", detail: "Le premier départ respecte l'ordre actuel de sélection des participants." },
+  { id: "manual", icon: "manual-pick", label: "Manuel", detail: "Tu choisis l'ordre exact des participants avant le début de la partie." },
+  { id: "bull", icon: "bull-order", label: "Bull", detail: "Après le lancer physique à la Bull, classe les participants selon le résultat obtenu." },
+] as const;
 
 function avatarOf(value: any): string | null {
   return value?.avatarDataUrl ?? value?.avatarUrl ?? value?.avatar ?? value?.photoDataUrl ?? null;
@@ -346,6 +358,17 @@ export default function Gros6Config({ store, go }: any) {
   const [voiceId,setVoiceId] = React.useState("awena");
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [gros6HelpOpen, setGros6HelpOpen] = React.useState(false);
+  const [variantInfoId, setVariantInfoId] = React.useState<string | null>(null);
+  const [specialZonesDetail, setSpecialZonesDetail] = React.useState<"closed" | "outer" | null>(null);
+  const [botsPickerOpen, setBotsPickerOpen] = React.useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = React.useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
+  const [createKind, setCreateKind] = React.useState<"profile" | "bot">("profile");
+  const [createName, setCreateName] = React.useState("");
+  const [createCountry, setCreateCountry] = React.useState("");
+  const [createAvatar, setCreateAvatar] = React.useState<string | null>(null);
+  const [createLevel, setCreateLevel] = React.useState<"easy" | "medium" | "strong" | "pro" | "legend">("medium");
+  const [createError, setCreateError] = React.useState("");
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
@@ -443,7 +466,10 @@ export default function Gros6Config({ store, go }: any) {
     setAutoTeams([]);
   }, [selectedIds, autoTeamCount, autoTeamSize, autoShuffleMode, teamsSourceMode]);
 
-  const guidedSteps = ["Awena vous explique", "Joueurs ou équipes", "Format", "Sélection", "Variantes et vies", "Cibles", "Zones spéciales", "Bonus", "Départ", "Mode de saisie", "Mode audio", "Récapitulatif"];
+  const guidedSteps = ["Awena vous explique", "Joueurs ou équipes", "Format", "Sélection", "Variantes", "Vies de départ",
+    ...(participantMode === "teams" ? ["Vies d'équipes"] : []), "Validation", "Bulls", "Cible imposable", "Première cible", "Zones spéciales", "Bonus", "Départ", "Mode de saisie", "Mode audio", "Récapitulatif"];
+  const hasTeamLifeStep = participantMode === "teams";
+  const stepAfterLives = guidedStep + (!hasTeamLifeStep && guidedStep >= 6 ? 1 : 0);
   const [teamChoiceAction, setTeamChoiceAction] = React.useState("saved");
   const guidedSelectionLabel = participantMode === "players"
     ? `${selectedPlayers.length} joueur${selectedPlayers.length > 1 ? "s" : ""}`
@@ -583,12 +609,52 @@ export default function Gros6Config({ store, go }: any) {
     go?.("gros_6_play", { config });
   }, [participantMode, teamsSourceMode, teamLifeMode, startingLives, targetRule, allowBull, allowSpecialZones, allowOuterRing, selectionPolicy, startingTargetMode, randomStartOrder, startOrderMode, thirdDartBonusSelection, thirdDartBonusCount, scoreInputMethod, presetId, arcadeEnabled, hitEnabled, voiceEnabled, voiceId, go, selectedIds, selectedSavedTeamIds, selectedBotTeamIds, teamMemberSelections, manualAssignments, autoTeams, teamMetadata]);
 
-  const ParticipantsSelector = () => (
+  const readCreateAvatar = (file: File) => new Promise<void>((resolve, reject) => {
+    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
+      setCreateError("Image invalide ou supérieure à 2 Mo."); reject(new Error("Invalid avatar")); return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => { setCreateAvatar(typeof reader.result === "string" ? reader.result : null); resolve(); };
+    reader.onerror = () => { setCreateError("Impossible de lire cette image."); reject(new Error("Avatar read failed")); };
+    reader.readAsDataURL(file);
+  });
+  const submitCreatedParticipant = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!createName.trim()) return;
+    const id = `mss-${createKind}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    if (createKind === "bot") {
+      const now = new Date().toISOString();
+      const record = { id, name:createName.trim(), level:createLevel, botLevel:createLevel,
+        avatarDataUrl:createAvatar, country:createCountry.trim(), isBot:true, cpu:true,
+        type:"bot", kind:"bot", createdAt:now, updatedAt:now };
+      if (!saveStoredBots([...loadStoredBots(), record])) {
+        setCreateError("Impossible de sauvegarder le bot CPU."); return;
+      }
+      setExtraBots(prev => [...prev, record]);
+      setBotsRevision(n => n + 1);
+    } else {
+      setLocalNewProfiles(prev => [...prev, { id, name:createName.trim(), avatarDataUrl:createAvatar,
+        avatarUpdatedAt:Date.now(), privateInfo:createCountry.trim() ? { country:createCountry.trim() } : undefined }]);
+    }
+    const limit = playerFormat === "duel" ? 2 : 20;
+    setSelectedIds(prev => prev.length < limit ? [...prev, id] : prev);
+    setCreateDialogOpen(false); setCreateName(""); setCreateCountry(""); setCreateAvatar(null); setCreateError("");
+  };
+  const openCreateChoice = (kind: "profile" | "bot" | "team" | "bot-team") => {
+    setCreateMenuOpen(false);
+    if (kind === "team" || kind === "bot-team") return; // mode équipes : création pilotée par son sélecteur dédié
+    setCreateKind(kind); setCreateDialogOpen(true); setCreateError("");
+  };
+  const onTeamMetaChange = React.useCallback((next: Record<string,{name:string;logo:string|null}>) => {
+    setTeamMetadata(prev => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
+  }, []);
+
+  const renderParticipantsSelector = () => (
     <Section title="3. SÉLECTION" subtitle={participantMode === "players" ? "Ajoute les profils locaux et les bots IA qui participeront à la partie." : "Compose les équipes en reprenant le sélecteur standard MSS de Killer / Golf."} primary={primary}>
-      {participantMode === "teams" ? <MssGolfKillerTeamSelector
+      {participantMode === "teams" ? <div style={{position:"relative",zIndex:1}}><MssGolfKillerTeamSelector 
         humanProfiles={humanProfiles} bots={botProfiles} selectedIds={selectedIds} setSelectedIds={setSelectedIds}
         teamAssignments={manualAssignments as any} setTeamAssignments={setManualAssignments as any}
-        onTeamMetaChange={setTeamMetadata}
+        onTeamMetaChange={onTeamMetaChange}
         teamCount={autoTeamCount} teamSize={autoTeamSize} accent={primary}
         onRefreshBots={()=>setBotsRevision(n=>n+1)}
         onAddBots={(bots:any[])=>setExtraBots(old=>[...old,...bots])}
@@ -596,28 +662,29 @@ export default function Gros6Config({ store, go }: any) {
           const next=update({profiles:[...(store?.profiles||[]),...prev]});
           return (next?.profiles||[]).filter((x:any)=>!(store?.profiles||[]).some((p:any)=>String(p.id)===String(x.id)));
         })}
-      /> : <>
-        {selectedPlayers.length ? <SelectionStickyBanner title="Participants sélectionnés" accent={primary}
-          items={selectedPlayers.map((p:any)=>({id:String(p.id),name:p.name,avatarDataUrl:avatarOf(p),subtitle:p.isBot?`BOT ${p.botLevel||""}`:"Joueur"}))}/> : null}
-        <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:12}}>
-          <MssSelectorIconButton icon="players" label="Profils" accent={primary} active onClick={()=>{}} />
-          <MssSelectorIconButton icon="profiles" label="Choisir les joueurs" accent={primary} onClick={()=>{}} />
-        </div>
-        <PlayerPagedSelector usageMode="gros_6" profiles={humanProfiles} selectedIds={selectedIds} onToggle={(id:any)=>{
-          if(!selectedIds.includes(String(id)) && playerFormat==="duel" && selectedIds.length>=2)return;
-          togglePlayer(String(id));
-        }} accent={primary} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false}/>
-        <div style={{marginTop:12}}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={(id:any)=>{
-          if(!selectedIds.includes(String(id)) && playerFormat==="duel" && selectedIds.length>=2)return;
-          togglePlayer(String(id));
-        }} accent={primary} label="BOTS IA" pageSize={4} showCheckbox={false} showSelectedSummary={false}/></div>
+      /></div> : <>
+        <PlayerPagedSelector usageMode="gros_6" profiles={humanProfiles} selectedIds={selectedIds}
+          onToggle={(id:any) => { if (!selectedIds.includes(String(id)) && playerFormat === "duel" && selectedIds.length >= 2) return; togglePlayer(String(id)); }}
+          accent={primary} pageSize={9} modalTitle="Choisir des joueurs"
+          toolbarExtra={<>
+            <MssSelectorIconButton icon="bots" label="Choisir les bots IA" accent={primary} active={botsPickerOpen} onClick={() => setBotsPickerOpen(true)} />
+            <MssSelectorIconButton icon="plus" label="Créer un joueur ou un bot CPU" accent={primary} onClick={() => setCreateMenuOpen(true)} />
+          </>}
+          modalHeaderExtra={<MssSelectorIconButton icon="plus" label="Créer un joueur ou un bot CPU" accent={primary} onClick={() => setCreateMenuOpen(true)} />}
+          summaryExtra={selectedPlayers.filter((p:any) => p.isBot).length ? <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",marginTop:10}}>
+            {selectedPlayers.filter((p:any) => p.isBot).map((p:any) => <button key={p.id} type="button" onClick={()=>togglePlayer(String(p.id))} title={`Retirer ${p.name}`} style={{border:`1px solid ${primary}66`,background:`${primary}16`,borderRadius:10,color:primary,padding:7,cursor:"pointer"}}>{p.name} ×</button>)}
+          </div> : null} />
+        <BotPagedSelector bots={botProfiles} selectedIds={selectedIds}
+          onToggle={(id:any) => { if (!selectedIds.includes(String(id)) && playerFormat === "duel" && selectedIds.length >= 2) return; togglePlayer(String(id)); }}
+          accent={primary} label="BOTS IA" pageSize={4} showCheckbox={false} showSelectedSummary={false}
+          hideToolbar controlledOpen={botsPickerOpen} onControlledOpenChange={setBotsPickerOpen} />
       </>}
     </Section>
   );
 
   const PartyTypeSection = () => (
     <Section title="1. TYPE DE PARTIE" subtitle="Choisis si le Gros 6 se joue en individuel ou par équipes." primary={primary}>
-      <MssKillerParticipantMode mode={participantMode} onChange={(mode) => {setParticipantMode(mode);setError("");}} accent={primary} />
+      <MssKillerParticipantMode mode={participantMode} onChange={(mode) => {setParticipantMode(mode);setGuidedStep(s => Math.min(s, mode === "teams" ? 13 : 12));setError("");}} accent={primary} />
     </Section>
   );
 
@@ -630,92 +697,205 @@ export default function Gros6Config({ store, go }: any) {
     </Section>
   );
 
-  const LivesSection = () => (
-    <Section title="4. VARIANTES & VIES" subtitle="Les presets appliquent un ensemble cohérent de règles, puis chaque réglage reste modifiable." primary={primary}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(185px,1fr))", gap: 8, marginBottom: 14 }}>
-        {PRESETS.map((preset) => (
-          <button key={preset.id} type="button" onClick={() => applyPreset(preset)} style={{ borderRadius: 15, border: `1px solid ${presetId === preset.id ? primary : "rgba(255,255,255,.08)"}`, background: presetId === preset.id ? primarySoft : "rgba(255,255,255,.025)", color: "#fff", padding: 11, textAlign: "left", cursor: "pointer" }}>
-            <div style={{ fontSize: 12, fontWeight: 950, color: presetId === preset.id ? primary : "#fff" }}>{preset.label}</div>
-            <div style={{ fontSize: 10.5, color: "#9298bb", marginTop: 4, lineHeight: 1.35 }}>{preset.detail}</div>
-          </button>
-        ))}
+  const VariantPresetsSection = () => (
+    <Section title="4. VARIANTES" subtitle="Choisis un preset de règles pour démarrer rapidement. Les autres cartes se grisent dès qu'une variante est active." primary={primary}>
+      <div style={{ display: "grid", gap: 10 }}>
+        {PRESETS.map((preset, index) => {
+          const active = presetId === preset.id;
+          const muted = presetId !== "custom" && presetId !== preset.id;
+          const gradients = [
+            "linear-gradient(135deg, rgba(255,166,0,.35), rgba(255,72,0,.16))",
+            "linear-gradient(135deg, rgba(255,205,90,.30), rgba(255,120,30,.12))",
+            "linear-gradient(135deg, rgba(86,162,255,.30), rgba(64,97,255,.12))",
+            "linear-gradient(135deg, rgba(210,64,255,.28), rgba(76,34,120,.12))",
+            "linear-gradient(135deg, rgba(61,226,149,.25), rgba(24,120,82,.12))",
+          ];
+          const gradient = gradients[index % gradients.length];
+          return (
+            <div key={preset.id} style={{ opacity: muted ? .46 : 1, transition: 'opacity .18s ease' }}>
+              <div role="button" tabIndex={0} onClick={() => applyPreset(preset)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); applyPreset(preset); } }} style={{ width: "100%", borderRadius: 18, border: `1px solid ${active ? primary : "rgba(255,255,255,.10)"}`, background: active ? gradient : "rgba(255,255,255,.03)", color: "#fff", overflow: "hidden", textAlign: "left", cursor: "pointer", boxShadow: active ? `0 0 22px ${primary}22` : "none" }}>
+                <div style={{ display: "flex", alignItems: "stretch", minHeight: 84 }}>
+                  <div style={{ flex: 1, padding: "12px 14px", display: "grid", gap: 6, alignContent: "center" }}>
+                    <div style={{ fontSize: 18, lineHeight: 1, fontWeight: 1000, letterSpacing: .4, color: active ? primary : "#fff", textTransform: "uppercase" }}>{preset.label}</div>
+                    <div style={{ fontSize: 12, color: "#d1d7e9", lineHeight: 1.35 }}>{preset.detail}</div>
+                  </div>
+                  <div style={{ width: 78, borderLeft: '1px solid rgba(255,255,255,.08)', display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,.04)' }}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setVariantInfoId((v) => v === preset.id ? null : preset.id); }} aria-label={`Infos ${preset.label}`} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${primary}99`, background: "rgba(10,12,24,.7)", color: primary, fontWeight: 1000, fontSize: 16, cursor: "pointer" }}>i</button>
+                  </div>
+                </div>
+              </div>
+              {variantInfoId === preset.id ? (
+                <div style={{ marginTop: 6, borderRadius: 12, border: `1px solid ${primary}33`, background: 'rgba(255,255,255,.03)', color: '#b7bfd5', fontSize: 11.5, lineHeight: 1.45, padding: '10px 12px' }}>
+                  {preset.id === 'mss' ? 'Preset signature MSS : Bull actif, zones spéciales activées et bonus de troisième fléchette pour enrichir les enchaînements.' : preset.id === 'classic' ? 'La base Gros 6 classique : départ sur Gros 6, validation stricte et structure équilibrée.' : preset.id === 'easy' ? 'Version plus accessible : la même valeur compte quel que soit le segment touché (simple, double ou triple).' : preset.id === 'pro' ? 'Version plus exigeante : les cibles imposées sont limitées aux doubles, triples et Bulls.' : preset.id === 'sudden' ? 'Version ultra nerveuse : une seule vie, chaque erreur peut éliminer immédiatement.' : 'Version longue : plus de vies pour prolonger la pression stratégique.'}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
-      <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Vies de départ</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7,justifyItems:"center",marginBottom:participantMode==="teams"?14:0}}>
-        {[1,3,5,6,7,10,15,20].map(n=><MssLivesHeartChoice key={n} value={n} active={startingLives===n} onClick={()=>{setStartingLives(n);setPresetId("custom");}} accent={primary}/>)}
-      </div>
-      {participantMode === "teams" ? (
-        <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Gestion des vies par équipes</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label="Vies individuelles" active={teamLifeMode === "individual"} onClick={() => setTeamLifeMode("individual")} primary={primary} primarySoft={primarySoft} />
-            <PillButton label="Réserve commune" active={teamLifeMode === "shared"} onClick={() => setTeamLifeMode("shared")} primary={primary} primarySoft={primarySoft} />
-          </div>
-          <div style={{ marginTop: 7, color: "#8f94b5", fontSize: 10.5 }}>{teamLifeMode === "shared" ? `Chaque équipe partage ${startingLives} vies.` : `Chaque joueur possède ${startingLives} vies. L'équipe reste en jeu tant qu'un de ses membres survit.`} Une équipe joue une fois par cycle, puis fait tourner ses membres : les effectifs différents restent équitables.</div>
-        </div>
-      ) : null}
+      {presetId === 'custom' ? <div style={{ marginTop: 8, color: '#f7d27a', fontSize: 11 }}>Mode personnalisé actif : les réglages ont été modifiés manuellement.</div> : null}
     </Section>
   );
 
-  const TargetsSection = () => (
-    <Section title="5. CIBLES" subtitle="Règles de validation, Bull, cible imposable et cible de départ." primary={primary}>
-      <div style={{ display: "grid", gap: 14 }}>
-        <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Validation de la cible</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label="Strict : S / D / T distincts" active={targetRule === "strict"} onClick={() => { setTargetRule("strict"); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
-            <PillButton label="Facile : même valeur" active={targetRule === "value"} onClick={() => { setTargetRule("value"); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
+  const StartingLivesSection = () => (
+    <Section title="5. VIES DE DÉPART" subtitle="Choisis la réserve de vies de départ. Le contour en cœur reste la référence visuelle MSS pour tout ce qui touche aux vies." primary={primary}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7,justifyItems:"center"}}>
+        {[1,3,5,6,7,10,15,20].map(n=><MssLivesHeartChoice key={n} value={n} active={startingLives===n} onClick={()=>{setStartingLives(n);setPresetId("custom");}} accent={primary}/>)}
+      </div>
+    </Section>
+  );
+
+  const TeamLivesSection = () => {
+    const methods = [
+      { id: "individual", icon: "♡", title: "VIES INDIVIDUELLES", description: `Chaque membre possède ${startingLives} vies. L'équipe reste en jeu tant qu'un joueur survit.` },
+      { id: "shared", icon: "♧", title: "RÉSERVE COMMUNE", description: `Les coéquipiers partagent ${startingLives} vies et poursuivent la partie ensemble jusqu'à épuisement de la réserve.` },
+    ] as const;
+    const selected = methods.find(method => method.id === teamLifeMode) || methods[0];
+    return <Section title="GESTION DES VIES PAR ÉQUIPES" primary={primary}>
+      <div style={{display:"flex",justifyContent:"center",gap:12,alignItems:"center"}}>
+        {methods.map(method => <button key={method.id} type="button" title={method.title} aria-label={method.title} aria-pressed={teamLifeMode === method.id}
+          onClick={() => setTeamLifeMode(method.id)} style={{width:70,height:70,borderRadius:18,border:`1px solid ${teamLifeMode===method.id?primary:`${primary}55`}`,background:teamLifeMode===method.id?`${primary}24`:'rgba(255,255,255,.03)',color:primary,fontSize:34,fontWeight:900,cursor:'pointer',boxShadow:teamLifeMode===method.id?`0 0 14px ${primary}35`:'none'}}>{method.icon}</button>)}
+      </div>
+      <div style={{textAlign:'center',marginTop:13}}>
+        <strong style={{color:primary,fontSize:14,letterSpacing:.35}}>{selected.title}</strong>
+        <p style={{color:'#adb8d2',fontSize:12,lineHeight:1.55,maxWidth:380,margin:'7px auto 0'}}>{selected.description}</p>
+        <p style={{color:'#8896b8',fontSize:11,lineHeight:1.4,margin:'8px auto 0'}}>Une équipe joue une fois par cycle et fait tourner ses membres.</p>
+      </div>
+    </Section>;
+  };
+
+  const TargetChoice = ({label, detail, active, onClick}: {label:string;detail:string;active:boolean;onClick:()=>void}) => <button type="button" aria-pressed={active} onClick={onClick}
+    style={{minWidth:0,minHeight:110,display:'grid',placeItems:'center',alignContent:'center',gap:8,borderRadius:18,padding:12,border:`1px solid ${active?primary:`${primary}50`}`,background:active?`${primary}24`:'rgba(255,255,255,.025)',color:active?primary:'#fff',cursor:'pointer'}}>
+    <strong style={{fontSize:16,fontWeight:950}}>{label}</strong><span style={{fontSize:11,textAlign:'center',lineHeight:1.35}}>{detail}</span>
+  </button>;
+
+  const TargetsSection = ({part="all"}: {part?:"all"|"validation"|"bull"|"policy"|"first"}) => (
+    <Section title={part === 'validation' ? 'VALIDATION DE LA CIBLE' : part === 'bull' ? 'BULL25 ET BULL50' : part === 'policy' ? 'CIBLE IMPOSABLE' : part === 'first' ? 'PREMIÈRE CIBLE' : 'CIBLES'} primary={primary}>
+      <div style={{display:'grid',gap:14}}>
+        {(part==='all'||part==='validation') && <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
+          <TargetChoice label="S / D / T" detail="Chaque multiplicateur compte séparément" active={targetRule==='strict'} onClick={()=>{setTargetRule('strict');setPresetId('custom');}}/>
+          <TargetChoice label="VALEUR" detail="Simple, double ou triple acceptés" active={targetRule==='value'} onClick={()=>{setTargetRule('value');setPresetId('custom');}}/>
+        </div>}
+        {(part==='all'||part==='bull') && <div style={{display:'grid',gap:10}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
+            {([{name:'BULL25',score:'25',color:'#25b76b',text:'#ffffff'},{name:'BULL50 / DBULL',score:'50',color:'#ce263c',text:'#ffffff'}] as const).map(b => <button key={b.score} type="button"
+              aria-label={`${b.name} : ${allowBull?'actif':'inactif'}`} aria-pressed={allowBull} onClick={()=>{setAllowBull(!allowBull);setPresetId('custom');}}
+              style={{minHeight:97,borderRadius:15,padding:10,background:allowBull?b.color:'rgba(255,255,255,.035)',border:`2px solid ${b.color}`,opacity:allowBull?1:.55,display:'grid',placeItems:'center',gap:5,cursor:'pointer',color:allowBull?b.text:b.color,boxShadow:allowBull?`0 0 12px ${b.color}55`:'none'}}>
+                <strong style={{fontSize:27,fontWeight:1000}}>{b.score}</strong><span style={{fontSize:11,fontWeight:900}}>{b.name}</span>
+              </button>)}
           </div>
-        </div>
-        <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Bull</div>
-          <PillButton label={allowBull ? "Bull / DBull ON" : "Bull / DBull OFF"} active={allowBull} onClick={() => { setAllowBull((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
-        </div>
-        <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Cible imposable</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label="Libre" active={selectionPolicy === "open"} onClick={() => { setSelectionPolicy("open"); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
-            <PillButton label="PRO : doubles / triples / Bulls" active={selectionPolicy === "pro"} onClick={() => { setSelectionPolicy("pro"); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
-          </div>
-        </div>
-        <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Première cible</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label="G6 classique" active={startingTargetMode === "s6"} onClick={() => setStartingTargetMode("s6")} primary={primary} primarySoft={primarySoft} />
-            <PillButton label="Aléatoire" active={startingTargetMode === "random"} onClick={() => setStartingTargetMode("random")} primary={primary} primarySoft={primarySoft} />
-          </div>
-        </div>
+          <MssKillerBooleanToggle label="AUTORISER LES DEUX BULLS" checked={allowBull} accent={primary} onChange={v=>{setAllowBull(v);setPresetId('custom');}}/>
+          <p style={{fontSize:11,color:'#aebbd4',lineHeight:1.5,margin:0,textAlign:'center'}}>BULL25 = anneau vert · BULL50/DBULL = centre rouge. Le moteur GROS 6 les active ensemble pour le moment.</p>
+        </div>}
+        {(part==='all'||part==='policy') && <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
+          <TargetChoice label="LIBRE" detail="Toutes les zones autorisées" active={selectionPolicy==='open'} onClick={()=>{setSelectionPolicy('open');setPresetId('custom');}}/>
+          <TargetChoice label="PRO" detail="Doubles, triples et Bulls" active={selectionPolicy==='pro'} onClick={()=>{setSelectionPolicy('pro');setPresetId('custom');}}/>
+        </div>}
+        {(part==='all'||part==='first') && <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
+          <TargetChoice label="GROS 6" detail="Départ sur la cible classique" active={startingTargetMode==='s6'} onClick={()=>setStartingTargetMode('s6')}/>
+          <TargetChoice label="ALÉATOIRE" detail="Cible tirée au sort" active={startingTargetMode==='random'} onClick={()=>setStartingTargetMode('random')}/>
+        </div>}
       </div>
     </Section>
   );
 
   const SpecialZonesSection = () => (
-    <Section title="6. ZONES SPÉCIALES" subtitle="Active ou désactive les zones fermées hors cible et le fin contour extérieur." primary={primary}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <PillButton label={allowSpecialZones ? "Zones fermées ON" : "Zones fermées OFF"} active={allowSpecialZones} onClick={() => { setAllowSpecialZones((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} />
-        <PillButton label={allowOuterRing ? "Contour extérieur ON" : "Contour extérieur OFF"} active={allowOuterRing} onClick={() => { setAllowOuterRing((v) => !v); setPresetId("custom"); }} primary={primary} primarySoft={primarySoft} disabled={!allowSpecialZones} compact />
+    <Section title="ZONES SPÉCIALES" subtitle="Active ou désactive les zones hors cible et le contour indépendant." primary={primary}>
+      <div style={{ display: "grid", gap: 12, position: "relative" }}>
+        <div style={{ display: "grid", gap: 8, borderRadius: 16, border: `1px solid ${primary}22`, background: "rgba(255,255,255,.02)", padding: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+            <MssKillerBooleanToggle label="ZONES FERMÉES" checked={allowSpecialZones} accent={primary} onChange={v=>{setAllowSpecialZones(v);setPresetId('custom');}}/>
+            <button type="button" onClick={() => setSpecialZonesDetail((v) => v === "closed" ? null : "closed")} style={{ height: 34, borderRadius: 999, border: `1px solid ${primary}66`, background: "rgba(255,255,255,.03)", color: primary, fontWeight: 900, padding: "0 12px", cursor: "pointer", whiteSpace: "nowrap" }}>Détail</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+            <MssKillerBooleanToggle label="CONTOUR EXTÉRIEUR" checked={allowOuterRing} accent={primary} onChange={v=>{setAllowOuterRing(v);setPresetId('custom');}} />
+            <button type="button" onClick={() => setSpecialZonesDetail((v) => v === "outer" ? null : "outer")} style={{ height: 34, borderRadius: 999, border: `1px solid ${primary}66`, background: "rgba(255,255,255,.03)", color: primary, fontWeight: 900, padding: "0 12px", cursor: "pointer", whiteSpace: "nowrap" }}>Détail</button>
+          </div>
+          <div style={{color:'#a8b2c9',fontSize:11,lineHeight:1.55}}>Zones fermées : 4, 6, 8, 9, 10, 14, 16, 18, 19 et 20 selon les secteurs concernés. Le contour extérieur reste indépendant des zones fermées.</div>
+        </div>
+
+        {specialZonesDetail ? (
+          <div style={{ position: "relative", zIndex: 2, borderRadius: 18, border: `1px solid ${primary}55`, background: "rgba(7,10,20,.98)", boxShadow: "0 18px 46px rgba(0,0,0,.55)", padding: 14, display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div>
+                <div style={{ color: primary, fontSize: 13, fontWeight: 950, textTransform: "uppercase", letterSpacing: .9 }}>
+                  {specialZonesDetail === "closed" ? "Détail · zones fermées" : "Détail · contour extérieur"}
+                </div>
+                <div style={{ color: "#aeb7ce", fontSize: 11, marginTop: 4 }}>
+                  {specialZonesDetail === "closed" ? "Visualise les secteurs neutralisés hors cible et les règles d'application." : "Visualise la zone de contour indépendante et la logique de validation associée."}
+                </div>
+              </div>
+              <button type="button" onClick={() => setSpecialZonesDetail(null)} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${primary}66`, background: "rgba(255,255,255,.03)", color: primary, fontSize: 18, fontWeight: 900, cursor: "pointer" }}>×</button>
+            </div>
+            <DartsSpecialZonesRulesVisual lang={lang} compact borderColor={`${primary}77`} />
+            <div style={{ display: "grid", gap: 6, color: "#d8deee", fontSize: 11.5, lineHeight: 1.5 }}>
+              {specialZonesDetail === "closed" ? (<>
+                <div><strong style={{ color: primary }}>Zones fermées :</strong> les impacts hors cible dans les secteurs 4, 6, 8 haut/bas, 9, 10, 14, 16, 18 haut/bas, 19 et 20 sont bloqués quand l'option est activée.</div>
+                <div><strong style={{ color: primary }}>Effet en jeu :</strong> ces zones ne peuvent pas devenir des cibles de remplacement. Elles augmentent la précision demandée et rendent les erreurs plus punitives.</div>
+              </>) : (<>
+                <div><strong style={{ color: primary }}>Contour extérieur :</strong> l'anneau externe est géré séparément des zones fermées. Il peut rester actif même si certaines zones hors cible sont interdites.</div>
+                <div><strong style={{ color: primary }}>Effet en jeu :</strong> un impact sur le contour suit sa propre règle de validation. Tu peux donc garder un filet de sécurité partiel sans rouvrir toutes les zones fermées.</div>
+              </>)}
+            </div>
+          </div>
+        ) : null}
       </div>
-      <div style={{ color: "#8f94b5", fontSize: 10.5, lineHeight: 1.4, marginTop: 9 }}>Zones hors cible : zones fermées des 4, 6, 8 haut/bas, 9, 10, 14, 16, 18 haut/bas, 19 et 20. Le contour extérieur reste indépendant.</div>
     </Section>
   );
 
   const OptionsSection = ({part="all"}:{part?:"all"|"bonus"|"order"}) => (
-    <Section title={part === "bonus" ? "7. BONUS D3" : part === "order" ? "8. ORDRE DE DÉPART" : "OPTIONS"} subtitle={part === "bonus" ? "Définis le bonus accordé lorsque la cible est validée sur la troisième fléchette." : part === "order" ? "Choisis la méthode de départ, avec les mêmes icônes MSS que KILLER." : "Bonus de validation sur D3 et ordre de départ."} primary={primary}>
+    <Section title={part === "bonus" ? "BONUS D3" : part === "order" ? "ORDRE DE DÉPART" : "OPTIONS"} subtitle={part === "bonus" ? "Définis le bonus accordé lorsque la cible est validée sur la troisième fléchette." : part === "order" ? "Choisis la méthode de départ, avec les mêmes icônes MSS que KILLER." : "Bonus de validation sur D3 et ordre de départ."} primary={primary}>
       <div style={{ display: "grid", gap: 14 }}>
-        {(part === "all" || part === "bonus") && <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Validation sur la dernière fléchette</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label={thirdDartBonusSelection ? "Bonus ON" : "Bonus OFF"} active={thirdDartBonusSelection} onClick={() => setThirdDartBonusSelection((v) => !v)} primary={primary} primarySoft={primarySoft} />
-            {[1,2,3].map((n) => <PillButton key={n} label={`${n} fléchette${n > 1 ? "s" : ""}`} active={thirdDartBonusCount === n} onClick={() => setThirdDartBonusCount(n)} primary={primary} primarySoft={primarySoft} disabled={!thirdDartBonusSelection} compact />)}
-          </div>
+        {(part === "all" || part === "bonus") && <div style={{ display: "grid", gap: 14 }}>
+          <MssKillerBooleanToggle label="ACTIVER LE BONUS D3" checked={thirdDartBonusSelection} accent={primary} onChange={v=>{setThirdDartBonusSelection(v);setPresetId('custom');}}/>
+          {thirdDartBonusSelection && <>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12,marginTop:2}}>
+              {[1,2,3].map(n => {
+                const active = thirdDartBonusCount === n;
+                const label = `${n} FLÉCHETTE${n > 1 ? 'S' : ''}`;
+                const detail = n === 1
+                  ? "Une fléchette bonus pour désigner l'objectif suivant."
+                  : n === 2
+                  ? "Deux fléchettes bonus pour élargir la relance."
+                  : "Trois fléchettes bonus pour viser le prochain objectif.";
+                return (
+                  <button key={n} type="button" aria-label={label} aria-pressed={active} onClick={()=>{setThirdDartBonusCount(n);setPresetId('custom');}}
+                    style={{minHeight:142,borderRadius:18,border:`1px solid ${active?primary:`${primary}44`}`,background:active?`${primary}20`:'rgba(255,255,255,.03)',boxShadow:active?`0 0 18px ${primary}33`:'none',display:'grid',gridTemplateRows:'70px auto auto',alignItems:'center',justifyItems:'center',padding:'12px 10px',cursor:'pointer',color:active?primary:'#eef2ff',textAlign:'center'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:n===3?2:6}}>
+                      {Array.from({length:n}).map((_,i)=><span key={i} aria-hidden="true" style={{width:n===3?18:22,height:n===3?42:48,display:'block',backgroundColor:active?primary:'#60698a',opacity:active?1:.85,WebkitMaskImage:`url(${cricketDartShape})`,maskImage:`url(${cricketDartShape})`,WebkitMaskRepeat:'no-repeat',maskRepeat:'no-repeat',WebkitMaskSize:'contain',maskSize:'contain',WebkitMaskPosition:'center',maskPosition:'center',filter:active?`drop-shadow(0 0 5px ${primary}66)`: 'none'}} />)}
+                    </div>
+                    <strong style={{fontSize:14,fontWeight:1000,lineHeight:1.05}}>{label}</strong>
+                    <span style={{fontSize:11,lineHeight:1.35,color:active?'#ffeec3':'#adb6cc'}}>{detail}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>}
         </div>}
         {(part === "all" || part === "order") && <div>
-          <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Ordre de départ</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {([['random','random-order','ALÉATOIRE'],['alternate','alternate-order','ALTERNÉ'],['manual','manual-pick','MANUEL'],['bull','bull-order','BULL']] as const).map(([mode,icon,label]) => (
-              <MssSelectorIconButton key={mode} icon={icon} label={label} active={startOrderMode === mode} accent={primary}
-                onClick={() => {setStartOrderMode(mode);setRandomStartOrder(mode==='random');}} />
-            ))}
+          <div data-mss-guide-section="gros6-start-order" data-mss-guide-label="Ordre de départ" style={{ marginTop: 2, marginBottom: 2 }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>Ordre de départ</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 6, flexWrap: "nowrap" }}>
+              {START_ORDER_OPTIONS.map((option) => (
+                <MssSelectorIconButton
+                  key={option.id}
+                  icon={option.icon as any}
+                  label={option.label}
+                  accent={primary}
+                  active={startOrderMode === option.id}
+                  onClick={() => { setStartOrderMode(option.id as any); setRandomStartOrder(option.id === "random"); }}
+                />
+              ))}
+            </div>
+            {(() => {
+              const activeOption = START_ORDER_OPTIONS.find((option) => option.id === startOrderMode) || START_ORDER_OPTIONS[0];
+              return (
+                <div style={{ marginTop: 10, textAlign: "center", display: "grid", gap: 4 }}>
+                  <div style={{ color: primary, fontSize: 13, fontWeight: 950, textTransform: "uppercase", letterSpacing: .9 }}>{activeOption.label}</div>
+                  <div style={{ fontSize: 11, color: "#9da5b9", maxWidth: 420, margin: "0 auto", lineHeight: 1.45 }}>{activeOption.detail}</div>
+                </div>
+              );
+            })()}
           </div>
         </div>}
       </div>
@@ -730,7 +910,7 @@ export default function Gros6Config({ store, go }: any) {
       ? validTeamSize && uniqueMemberIds.size===autoTeamCount*autoTeamSize
       : (playerFormat === "duel" ? selectedPlayers.length===2 : selectedPlayers.length>=2);
     const textValue = (label:string,value:any)=><MssConfigFact label={label} value={value}/>;
-    return <Section title="11. FICHE DE PARTIE" primary={primary}>
+    return <Section title="FICHE DE PARTIE" primary={primary}>
       <div style={{display:"grid",gap:13,minWidth:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:9}}>
           <div style={{color:"#aeb8cc",fontSize:11}}>{participantMode==="teams"?`${teams.length} équipes · ${autoTeamSize} membres`:`${selectedPlayers.length} joueurs · ${playerFormat.toUpperCase()}`}</div>
@@ -785,10 +965,17 @@ export default function Gros6Config({ store, go }: any) {
       </header>
       <div data-mss-config-difficulty="1" style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 8 }}><GameDifficultyStars game="gros_6" compact showValue={false} /></div>
 
-      {(configViewMode === "complete" || guidedStep === 0) && <DartsRelatedModesPanel gameId="gros_6" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />}
+      {configViewMode === "complete" && <DartsRelatedModesPanel gameId="gros_6" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />}
       <div className="msc-mode-config-body gros6-config-content" style={{ width: "100%", maxWidth: 1180, margin: "0 auto" }}>
+        <MssKillerCreateMenu open={createMenuOpen} accent={primary} withTeams={false}
+          onClose={() => setCreateMenuOpen(false)} onChoose={openCreateChoice} />
+        <MssKillerCreateParticipantDialog open={createDialogOpen} kind={createKind} accent={primary}
+          name={createName} country={createCountry} avatar={createAvatar} level={createLevel} error={createError}
+          onClose={() => setCreateDialogOpen(false)} onSubmit={submitCreatedParticipant}
+          onName={setCreateName} onCountry={setCreateCountry} onAvatar={readCreateAvatar} onLevel={setCreateLevel} />
         <MssClassicConfigFlow title="Gros 6" steps={guidedSteps} step={guidedStep} view={configViewMode}
           accent={primary} summary={guidedSelectionLabel}
+          progressiveSingleLine
           onStep={setGuidedStep} onView={setConfigViewMode}
           onHelp={() => setGros6HelpOpen((v) => !v)} />
         {configViewMode === "guided" ? (
@@ -800,25 +987,33 @@ export default function Gros6Config({ store, go }: any) {
               padding: 12, marginBottom: 12, fontSize: 12, color: "#bac4d9" }}>
               Le Gros 6 impose une cible au joueur suivant. Quand une cible est validée, les fléchettes restantes servent à définir la prochaine cible. Les zones spéciales et le bonus de troisième fléchette peuvent durcir ou enrichir la partie.
             </div>}
+            {guidedStep === 0 && <DartsRelatedModesPanel gameId="gros_6" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />}
             {guidedStep === 1 && <PartyTypeSection />}
             {guidedStep === 2 && <FormatSection />}
-            {guidedStep === 3 && <ParticipantsSelector />}
-            {guidedStep === 4 && <LivesSection />}
-            {guidedStep === 5 && <TargetsSection />}
-            {guidedStep === 6 && <SpecialZonesSection />}
-            {guidedStep === 7 && <OptionsSection part="bonus" />}
-            {guidedStep === 8 && <OptionsSection part="order" />}
-            {guidedStep === 9 && <Section title="9. MODE DE SAISIE" subtitle="Réutilise le panneau de saisie standard MSS du Gros 6." primary={primary}><MssGros6InputSelector value={scoreInputMethod} onChange={setScoreInputMethod} accent={primary}/></Section>}
-            {guidedStep === 10 && <Section title="10. MODE AUDIO" subtitle="Active les sons Arcade, les bruitages et les annonces vocales." primary={primary}><MssGuidedAudioPanel accent={primary} arcade={arcadeEnabled} hits={hitEnabled} voice={voiceEnabled} onArcadeChange={setArcadeEnabled} onHitsChange={setHitEnabled} onVoiceChange={setVoiceEnabled} voiceId={voiceId} voices={[{id:"awena",label:"Awena · voix officielle"},{id:"default",label:"Défaut"},{id:"female",label:"Voix féminine"},{id:"male",label:"Voix masculine"}]} onVoiceIdChange={setVoiceId}/></Section>}
-            {guidedStep === 11 && <PreviewRecapSection />}
-            {guidedStep > 0 && <MssGros6AwenaTip mode="arcade" step={guidedStep} />}
+            {guidedStep === 3 && renderParticipantsSelector()}
+            {guidedStep === 4 && <VariantPresetsSection />}
+            {guidedStep === 5 && <StartingLivesSection />}
+            {hasTeamLifeStep && guidedStep === 6 && <TeamLivesSection />}
+            {stepAfterLives === 7 && <TargetsSection part="validation" />}
+            {stepAfterLives === 8 && <TargetsSection part="bull" />}
+            {stepAfterLives === 9 && <TargetsSection part="policy" />}
+            {stepAfterLives === 10 && <TargetsSection part="first" />}
+            {stepAfterLives === 11 && <SpecialZonesSection />}
+            {stepAfterLives === 12 && <OptionsSection part="bonus" />}
+            {stepAfterLives === 13 && <OptionsSection part="order" />}
+            {stepAfterLives === 14 && <Section title="MODE DE SAISIE" subtitle="Réutilise le panneau de saisie standard MSS du Gros 6." primary={primary}><MssGros6InputSelector value={scoreInputMethod} onChange={setScoreInputMethod} accent={primary}/></Section>}
+            {stepAfterLives === 15 && <Section title="MODE AUDIO" subtitle="Active les sons Arcade, les bruitages et les annonces vocales." primary={primary}><MssGuidedAudioPanel accent={primary} arcade={arcadeEnabled} hits={hitEnabled} voice={voiceEnabled} onArcadeChange={setArcadeEnabled} onHitsChange={setHitEnabled} onVoiceChange={setVoiceEnabled} voiceId={voiceId} voices={[{id:"awena",label:"Awena · voix officielle"},{id:"default",label:"Défaut"},{id:"female",label:"Voix féminine"},{id:"male",label:"Voix masculine"}]} onVoiceIdChange={setVoiceId}/></Section>}
+            {stepAfterLives === 16 && <PreviewRecapSection />}
+            {guidedStep > 0 && <MssGros6AwenaTip mode="arcade" step={stepAfterLives} />}
           </>
         ) : (
           <>
             <PartyTypeSection />
             <FormatSection />
-            <ParticipantsSelector />
-            <LivesSection />
+            {renderParticipantsSelector()}
+            <VariantPresetsSection />
+            <StartingLivesSection />
+            {participantMode === "teams" && <TeamLivesSection />}
             <TargetsSection />
             <SpecialZonesSection />
             <OptionsSection />

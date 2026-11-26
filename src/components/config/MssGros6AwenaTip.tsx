@@ -2,18 +2,23 @@ import React from "react";
 import awenaConseils from "../../assets/president/awena_conseils.webp";
 
 const TIPS = [
-  "GROS 6 : la précision compte autant que le nombre de vies.",
-  "Sélectionne JOUEURS ou ÉQUIPES avant de définir le format.",
-  "En duel, deux adversaires ; en multi, plusieurs participants.",
-  "Vérifie les profils, les bots et les équipes sélectionnées.",
-  "Moins de vies accélère la partie ; plus de vies prolonge les défis.",
-  "En strict, un SIMPLE ne remplace pas un DOUBLE ou un TRIPLE.",
-  "Les zones spéciales rendent les coups hors cible plus exigeants.",
-  "Le bonus de troisième fléchette modifie l'objectif suivant.",
-  "La BULL peut déterminer le premier joueur à lancer.",
-  "Choisis le KEYPAD pour saisir chaque impact avec précision.",
-  "Choisis tes sons, bruitages et annonces avant de commencer.",
-  "Vérifie les vies, les cibles et les participants avant de lancer.",
+  "GROS 6 : vise juste pour conserver tes vies.",
+  "Commence par choisir JOUEURS ou ÉQUIPES.",
+  "En JOUEURS : duel ou multi. En ÉQUIPES : règle le nombre de groupes et leurs membres.",
+  "Choisis les profils et les bots, ou compose les équipes dans le sélecteur MSS.",
+  "Les variantes modifient les règles. Lis l'InfoDot de chaque carte avant de choisir.",
+  "Peu de cœurs : partie rapide. Beaucoup de cœurs : défi plus long.",
+  "En équipes, choisis entre vies individuelles et réserve commune.",
+  "En strict, distingue S, D et T ; en valeur, le multiplicateur n'importe pas.",
+  "BULL25 vert : couronne extérieure. BULL50 rouge : centre DBULL. Les deux s'activent ensemble.",
+  "En LIBRE, impose toutes les zones ; en PRO, doubles, triples et Bulls uniquement.",
+  "Commence par le GROS 6 classique ou tire la première cible au sort.",
+  "Les zones fermées et le contour extérieur ont chacun leur propre interrupteur.",
+  "Active d'abord le bonus D3, puis choisis une, deux ou trois fléchettes.",
+  "Le BULL peut décider du premier joueur à lancer.",
+  "Le KEYPAD permet de saisir les impacts avec précision.",
+  "Règle les sons Arcade, les bruitages et les annonces vocales.",
+  "Avant de lancer, vérifie tous les participants et tes paramètres.",
 ];
 export default function MssGros6AwenaTip({ mode, step = 0 }: { mode: "quick" | "arcade"; step?: number }) {
   const [index, setIndex] = React.useState(0);

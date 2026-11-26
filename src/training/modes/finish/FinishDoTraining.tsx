@@ -8,6 +8,8 @@ import TrainingHeader from "../../ui/TrainingHeader";
 import cricketDartSvg from "../../../ui_assets/cricket-dart.svg";
 import { MSS_HIT } from "../../../lib/mssVisualCharter";
 import { recordTrainingDetailedSession } from "../../stats/trainingStatsHub";
+import { appendTrainingVisit, type TrainingVisitLogRow } from "../../stats/trainingSessionRecorder";
+import { buildDartsTelemetry } from "../../../lib/dartsTelemetry";
 import { loadFinishDoProgress, saveFinishDoAttempt, getFinishDoPriority } from "./finishDoProgress";
 
 /** A deterministic DO checkout tutor. All scores are derived from actual darts, never intended targets. */
@@ -243,8 +245,24 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
     setCompletedShots((prev) => [...prev, ...result.shots]);
     setCareer(saveFinishDoAttempt(participantId, result.shots.map(s => ({ aimedDouble: s.aimedDouble, actual: s.dart.label })), result.won ? result.shots.at(-1)?.dart.label : undefined));
     const endedAt = Date.now();
+    const id = `finish-${participantId || "anonymous"}-${attemptStart.current}`;
+    const visitHistory: TrainingVisitLogRow[] = [];
+    let pending: string[] = [];
+    for (const shot of result.shots) {
+      pending.push(shot.dart.label === "BULL25" ? "BULL" : shot.dart.label === "BULL50" ? "DBULL" : shot.dart.label);
+      if (pending.length === 3 || shot.bust || shot.finish) {
+        appendTrainingVisit(visitHistory, pending, { endedAt, bust: shot.bust, result: shot.finish ? "checkout" : shot.bust ? "bust" : null });
+        pending = [];
+      }
+    }
+    if (pending.length) appendTrainingVisit(visitHistory, pending, { endedAt });
+    const exactDarts = visitHistory.reduce((sum, row) => sum + row.darts.length, 0);
+    const playerId = participantId || "training-player";
+    const visits = visitHistory.map(row => ({ ...row, playerId, participantId: playerId }));
+    const seed = { id, mode: challenge ? "training_finish_challenge" : "training_finish_do", sport: "darts", players: [{ id: playerId }], visitHistory: visits, visits };
+    const telemetry = visits.length ? buildDartsTelemetry(seed, seed) : null;
     recordTrainingDetailedSession({
-      id: `finish-${attemptStart.current}-${endedAt}-${Math.random().toString(36).slice(2,8)}`,
+      id,
       modeId: challenge ? "training_finish_challenge" : "training_finish_do",
       participantId: participantId || null, participantType: "player", dartSet: attemptSet.current,
       startedAt: attemptStart.current, endedAt, durationMs: Math.max(0,endedAt-attemptStart.current),
@@ -252,8 +270,9 @@ export default function FinishDoTraining({ onExit, challenge = false, participan
       points: result.shots.reduce((sum,s)=>sum+s.dart.value,0),
       accuracyPct: result.darts ? hits/result.darts*100 : 0, success: result.won,
       config: {checkoutScore:result.score,finishDoubleOut:true},
-      metrics: {checkoutScore:result.score, checkoutSuccess:result.won, busts:result.shots.filter(s=>s.bust).length},
-      telemetryCoverage:"missing",
+      metrics: {checkoutScore:result.score, checkoutSuccess:result.won, busts:result.shots.filter(s=>s.bust).length, exactImpactDarts:exactDarts, unknownImpactDarts:Math.max(0,result.darts-exactDarts)},
+      visitHistory: visits, telemetry,
+      telemetryCoverage: exactDarts === 0 ? "missing" : exactDarts === result.darts ? "exact" : "partial",
     });
   };
 

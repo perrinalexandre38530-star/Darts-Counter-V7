@@ -8,7 +8,7 @@ import MssAwenaExplainButton from "../MssAwenaExplainButton";
  */
 export type ClassicConfigView = "guided" | "complete";
 export function MssClassicConfigFlow({
-  title, steps, step, view, accent, summary, onStep, onView, onHelp,
+  title, steps, step, view, accent, summary, onStep, onView, onHelp, progressiveSingleLine = false,
 }: {
   title: string;
   steps: string[];
@@ -19,10 +19,12 @@ export function MssClassicConfigFlow({
   onStep: (value: number) => void;
   onView: (value: ClassicConfigView) => void;
   onHelp: () => void;
+  progressiveSingleLine?: boolean;
 }) {
   const last = steps.length - 1;
   if (view === "guided") {
     return <MssGuidedConfigNav
+      progressiveSingleLine={progressiveSingleLine}
       compactLikeKiller
       steps={steps} step={step} selectionSummary={summary} accent={accent}
       onStepChange={(value) => onStep(Math.max(0, Math.min(last, value)))}

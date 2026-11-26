@@ -1,6 +1,9 @@
 // @ts-nocheck
 import React from "react";
 import MssGros6AwenaTip from "../components/config/MssGros6AwenaTip";
+import MssKillerQuickMatchSheet from "../components/config/MssKillerQuickMatchSheet";
+import teamGoldLogo from "../ui_assets/teams/team_gold.png";
+import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 import MssLivesHeartChoice from "../components/config/MssLivesHeartChoice";
 import MssGros6InputSelector from "../components/config/MssGros6InputSelector";
 import MssSelectorIconButton from "../components/MssSelectorIconButton";
@@ -185,7 +188,30 @@ export default function QuickIndependentDartsConfig({ modeId, onBack, go }: {mod
           <MssGros6InputSelector value={grosInput} onChange={setGrosInput} accent={golfAccent}/>
         </MssQuickPanel>}
         {grosQuickStep===4 && <MssQuickPanel title="MODE AUDIO"><MssGuidedAudioPanel accent={golfAccent} arcade={grosArcadeAudio} hits={grosHitsAudio} voice={grosVoiceAudio} onArcadeChange={setGrosArcadeAudio} onHitsChange={setGrosHitsAudio} onVoiceChange={setGrosVoiceAudio} voiceId={grosVoiceId} voices={[{id:"awena",label:"Awena · voix officielle"},{id:"default",label:"Défaut"},{id:"female",label:"Voix féminine"},{id:"male",label:"Voix masculine"}]} onVoiceIdChange={setGrosVoiceId}/></MssQuickPanel>}
-        {grosQuickStep===5 && <><MssQuickRecap entries={recapEntries}/><MssQuickStart onClick={launch}/><MssGros6AwenaTip mode="quick" /></>}
+        {grosQuickStep===5 && <>
+          <MssKillerQuickMatchSheet
+            accent={golfAccent}
+            players={players()}
+            teams={grosTeamMode === "teams" ? [
+              { id: "gold", name: "TEAM GOLD", color: "#f7c85c", logo: teamGoldLogo, members: players().filter((_, i) => i % 2 === 0) },
+              { id: "pink", name: "TEAM PINK", color: "#ff73bf", logo: teamPinkLogo, members: players().filter((_, i) => i % 2 === 1) },
+            ] : undefined}
+            formatLabel={grosTeamMode === "teams" ? "2 équipes · 2 membres / équipe" : `${count} joueurs · ${grosTeamMode === "duel" ? "Duel" : "Multi"}`}
+            ready={count >= 2 && (grosTeamMode !== "duel" || count === 2) && (grosTeamMode !== "teams" || count === 4)}
+            facts={[
+              ["Vies", `${lives} / joueur`],
+              ["Validation", grosStrict ? "S/D/T stricts" : "Valeur libre"],
+              ["BULL", grosBull ? "ON" : "OFF"],
+              ["Zones", grosZones ? "ON" : "OFF"],
+              ["Bonus D3", grosBonus ? `${grosBonusCount} fléchette${grosBonusCount > 1 ? "s" : ""}` : "OFF"],
+              ["Départ", getQuickStartLabel(order)],
+            ]}
+            input={grosInput.toUpperCase()}
+            audio={[grosArcadeAudio ? "Arcade" : null, grosHitsAudio ? "Bruitages" : null, grosVoiceAudio ? "Annonces" : null].filter(Boolean).join(" · ") || "OFF"}
+          />
+          <MssQuickStart onClick={launch}/>
+          <MssGros6AwenaTip mode="quick" />
+        </>}
       </> : modeId === "golf" ? <>
         <nav aria-label="Étapes de la partie rapide GOLF" style={{ border: `1px solid ${golfAccent}55`, background: "rgba(9,12,24,.94)", borderRadius: 18, padding: "12px 14px", display: "grid", gap: 11 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>

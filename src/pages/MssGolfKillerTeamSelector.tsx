@@ -286,8 +286,8 @@ export default function MssGolfKillerTeamSelector({
       </div>
     </div>, document.body);
 
-  return <div style={{ display:"grid",gap:12,minWidth:0 }}>
-    <div style={{ display:"flex",justifyContent:"center",alignItems:"center",gap:9,flexWrap:"nowrap" }}>
+  return <div style={{ display:"grid",gap:12,minWidth:0,position:"relative",zIndex:2 }}>
+    <div style={{ display:"flex",justifyContent:"center",alignItems:"center",gap:9,flexWrap:"nowrap",position:"relative",zIndex:3 }}>
       <MssSelectorIconButton icon="teams" label="Composition manuelle" accent={accent} active={open && tab === "manual"} onClick={() => openTab("manual")} />
       <MssSelectorIconButton icon="saved-teams" label="Équipes enregistrées" accent={accent} active={open && tab === "saved"} onClick={() => openTab("saved")} />
       <MssSelectorIconButton icon="shuffle" label="Brassage automatique" accent={accent} active={open && tab === "auto"} onClick={() => openTab("auto")} />
