@@ -1,3 +1,5 @@
+import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
+import { MssGolfInputMethodSelector, MssGolfAwenaTip } from "../components/config/MssGolfInputAndTips";
 import { MssQuickStartOrder, type QuickStartOrderMode } from "../components/config/MssGolfQuickControls";
 import { MssClassicConfigFlow, MssClassicOverview, MssClassicRecap, type ClassicConfigView } from "../components/config/MssClassicConfigFlow";
 // =============================================================
@@ -458,6 +460,7 @@ export default function GolfConfig(props: any) {
         {guided && configStep === 0 && <MssClassicOverview title="GOLF · AWENA VOUS EXPLIQUE" onHelp={() => setGolfHelpOpen(v => !v)}
           description="Choisis tes joueurs ou équipes, configure les trous et la pénalité, puis vérifie le récapitulatif avant de lancer."
           accent={primary} />}
+        {guided && configStep === 0 && <MssGolfAwenaTip step="intro" />}
         {golfHelpOpen && <div style={{ border: `1px solid ${primary}55`, borderRadius: 14,
           padding: 12, marginBottom: 12, fontSize: 12, color: "#bac4d9" }}>
           Un trou est joué en trois fléchettes maximum. Le score dépend du dernier tir validé :
@@ -815,6 +818,7 @@ export default function GolfConfig(props: any) {
         </Section>
         </div>
 
+        {(!guided || configStep === 1) && <MssGolfAwenaTip step="participants" />}
         <div hidden={guided && configStep !== 2}>
         <Section title="RÈGLES">
           <div
@@ -869,19 +873,14 @@ export default function GolfConfig(props: any) {
               />
             </OptionRow>
 
-            <OptionRow label="Afficher la grille des trous">
-              <OptionToggle value={showHoleGrid} onChange={setShowHoleGrid} />
-            </OptionRow>
-            <OptionRow label="Mode de saisie">
-              <OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: "CIBLE" }]} onChange={(v: any) => setScoreInputMethod(v === "dartboard" ? "dartboard" : "keypad")} />
-            </OptionRow>
-            <OptionRow label="Options audio">
-              <OptionSelect value={audioEnabled ? "on" : "off"} options={[{ value: "on", label: "Activé" }, { value: "off", label: "Silencieux" }]} onChange={(v: any) => setAudioEnabled(v !== "off")} />
-            </OptionRow>
+            <MssKillerBooleanToggle label="Grille des trous" checked={showHoleGrid} onChange={setShowHoleGrid} accent={primary} />
+            <MssGolfInputMethodSelector value={scoreInputMethod} onChange={setScoreInputMethod} accent={primary} />
+            <MssKillerBooleanToggle label="Options audio" checked={audioEnabled} onChange={setAudioEnabled} accent={primary} />
           </div>
         </Section>
         </div>
 
+        {(!guided || configStep === 2) && <MssGolfAwenaTip step="rules" />}
         {guided && configStep === 3 && <MssClassicRecap accent={primary} ready={canStart} entries={[
           ["Participants", `${selectedIds.length} joueurs / bots`],
           ["Équipes", teamsEnabled ? `${teamCount} équipes · ${teamNonEmptyCount} composées` : "Partie individuelle"],
@@ -893,6 +892,7 @@ export default function GolfConfig(props: any) {
           ["Audio", audioEnabled ? "Activé" : "Silencieux"],
         ]} />}
 
+        {guided && configStep === 3 && <MssGolfAwenaTip step="recap" />}
         {/* CTA collée au-dessus de la barre de nav (même design que X01/Killer) */}
         <div style={{ height: 96 }} />
         <div hidden={guided && configStep !== 3} style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>

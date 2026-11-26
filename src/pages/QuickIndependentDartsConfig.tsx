@@ -1,5 +1,8 @@
 // @ts-nocheck
 import React from "react";
+import { useTheme } from "../contexts/ThemeContext";
+import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
+import { MssGolfInputMethodSelector, MssGolfAwenaTip } from "../components/config/MssGolfInputAndTips";
 import { quickPartyAvatar } from "../lib/quickPartyAvatars";
 import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import { makeGros6Segment } from "../lib/gros6Engine";
@@ -30,6 +33,8 @@ function getQuickStartLabel(mode: QuickStartOrderMode) {
 }
 
 export default function QuickIndependentDartsConfig({ modeId, onBack, go }: {modeId:Mode;onBack:()=>void;go:(route:string,params?:any)=>void}) {
+  const { theme } = useTheme();
+  const golfAccent = theme?.primary || "#f5c257";
   const [session] = React.useState(() => `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`);
   const [count,setCount] = React.useState(2);
   const [names,setNames] = React.useState(Array.from({length:12},(_,i)=>`J${i+1}`));
@@ -115,6 +120,7 @@ export default function QuickIndependentDartsConfig({ modeId, onBack, go }: {mod
     <DartsQuickHeader modeId={modeId} title={title} onBack={onBack} />
     <main style={{ maxWidth: 760, margin: "auto", display: "grid", gap: 14 }}>
       <DartsQuickIntro title={title} />
+      {modeId === "golf" && <MssGolfAwenaTip step="intro" />}
       <MssQuickPlayers
         count={count}
         choices={Array.from({ length: max - 1 }, (_, i) => i + 2)}
@@ -129,6 +135,7 @@ export default function QuickIndependentDartsConfig({ modeId, onBack, go }: {mod
         onTeamCount={modeId === "golf" ? setGolfTeamCount : undefined}
         info={modeId === "warfare" ? "Répartition alternée des joueurs entre les armées TOP et BOTTOM." : undefined}
       />
+      {modeId === "golf" && <MssGolfAwenaTip step="participants" />}
       <MssQuickPanel title={`Règles · ${title}`}>
         {modeId === "gros_6" && <MssQuickChoices label="Vies" options={[3, 6, 9].map(n => ({ value: n, label: String(n) }))} value={lives} onChange={setLives} compact />}
         {modeId === "golf" && <>
@@ -136,9 +143,9 @@ export default function QuickIndependentDartsConfig({ modeId, onBack, go }: {mod
           <MssQuickChoices label="Ordre des objectifs de cible" options={[{ value: "chronological", label: "CHRONOLOGIQUE" }, { value: "random", label: "ALÉATOIRE" }]} value={golfHoleOrder} onChange={setGolfHoleOrder} />
           <MssQuickChoices label="Mode de scoring" options={[{ value: "strokes", label: "STROKES" }, { value: "points", label: "POINTS" }]} value={golfScoring} onChange={setGolfScoring} />
           <MssQuickChoices label="Pénalité MISS" options={[4,5,6,7,8].map(n => ({ value: n, label: String(n) }))} value={golfMissPenalty} onChange={setGolfMissPenalty} compact />
-          <MssQuickChoices label="Grille des trous" options={[{ value: true, label: "AFFICHER" }, { value: false, label: "MASQUER" }]} value={golfShowGrid} onChange={setGolfShowGrid} />
-          <MssQuickChoices label="Mode de saisie" options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: "CIBLE" }]} value={golfInput} onChange={setGolfInput} />
-          <MssQuickChoices label="Options audio" options={[{ value: true, label: "ACTIVÉ" }, { value: false, label: "SILENCIEUX" }]} value={golfAudio} onChange={setGolfAudio} />
+          <MssKillerBooleanToggle label="Grille des trous" checked={golfShowGrid} onChange={setGolfShowGrid} accent={golfAccent} />
+          <MssGolfInputMethodSelector value={golfInput} onChange={setGolfInput} accent={golfAccent} />
+          <MssKillerBooleanToggle label="Options audio" checked={golfAudio} onChange={setGolfAudio} accent={golfAccent} />
         </>}
         {modeId === "prisoner" && <MssQuickChoices label="Fléchettes" options={[3, 5, 7].map(n => ({ value: n, label: String(n) }))} value={darts} onChange={setDarts} compact />}
         {modeId === "warfare" && <MssQuickChoices label="Zones valides" options={[{ value: "ANY", label: "TOUTES" }, { value: "SINGLE_DOUBLE", label: "SIMPLE / DOUBLE" }, { value: "DOUBLE_ONLY", label: "DOUBLES" }]} value={zoneRule} onChange={setZoneRule} />}
@@ -148,10 +155,12 @@ export default function QuickIndependentDartsConfig({ modeId, onBack, go }: {mod
             ? <MssQuickChoices label="Ordre de départ" options={[{ value: "manual", label: "MANUEL" }, { value: "random", label: "ALÉATOIRE" }]} value={order} onChange={setOrder} />
             : null}
       </MssQuickPanel>
+      {modeId === "golf" && <MssGolfAwenaTip step="rules" />}
       <MssQuickRecap
         entries={recapEntries}
         footer={golfIsTeams ? "✓ Partie rapide · avatars MSS · équipes auto sans modification des profils" : undefined}
       />
+      {modeId === "golf" && <MssGolfAwenaTip step="recap" />}
       <MssQuickStart onClick={launch} />
     </main>
   </div>;
