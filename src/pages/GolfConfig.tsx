@@ -30,6 +30,7 @@ import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import MssKillerPlayersShared from "../components/config/MssKillerPlayersShared";
 import { MssKillerParticipantMode, MssKillerFormat } from "../components/config/MssKillerParticipantProtocol";
 import MssSelectorIconButton from "../components/MssSelectorIconButton";
 import MssGolfKillerTeamSelector from "./MssGolfKillerTeamSelector";
@@ -260,7 +261,8 @@ export default function GolfConfig(props: any) {
 
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
   const storeProfiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
-  const humanProfiles = storeProfiles.filter((p) => !isBotLike(p));
+  const [golfNewProfiles,setGolfNewProfiles] = React.useState<any[]>([]);
+  const humanProfiles = [...storeProfiles.filter((p) => !isBotLike(p)), ...golfNewProfiles];
 
   // Source normative : accent du thème actif, jamais de vert GOLF codé en dur.
   const primary = theme.primary;
@@ -703,24 +705,11 @@ export default function GolfConfig(props: any) {
                 })}
               />
             ) : (
-              <>
-                <PlayerPagedSelector
-                  usageMode="golf" profiles={humanProfiles} selectedIds={selectedIds}
-                  onToggle={togglePlayer} accent={primary} pageSize={9}
-                  modalTitle="Choisir des joueurs"
-                />
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 0" }}>
-                  <strong style={{ color: primary, fontSize: 12, letterSpacing: .6 }}>BOTS IA</strong>
-                  <MssSelectorIconButton icon="bots" label={botsEnabled ? "Masquer les bots IA" : "Activer les bots IA"} accent={primary} active={botsEnabled} onClick={() => setBotsEnabled(v => !v)} />
-                </div>
-                {botsEnabled && <>
-                  <OptionRow label="Difficulté IA">
-                    <OptionSelect value={botLevel} options={[{ value: "easy", label: "Easy" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Hard" }]} onChange={setBotLevel} />
-                  </OptionRow>
-                  <BotPagedSelector bots={userBots} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary}
-                    label="BOTS IA" modalTitle="Choisir des BOTS IA" showCheckbox={false} />
-                </>}
-              </>
+              <MssKillerPlayersShared usageMode="golf" profiles={humanProfiles} bots={userBots}
+                selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} maxSelection={playerFormat === "duel" ? 2 : 8}
+                onCreateProfile={(p:any)=>{setGolfNewProfiles(prev=>[...prev,p]);}}
+                onBotSelected={()=>setBotsEnabled(true)}
+                onCreateBot={(bot:any)=>{setBotsEnabled(true);setUserBots(prev=>[...prev,{...bot,isBot:true}]);}} />
             )}
           </div>
         </Section>
