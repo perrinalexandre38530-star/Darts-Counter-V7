@@ -47,6 +47,12 @@ import InfoDot from "../components/InfoDot";
 import DartboardClickable from "../components/DartboardClickable";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import BotPagedSelector from "../components/BotPagedSelector";
+import { MssClassicConfigFlow, MssClassicOverview } from "../components/config/MssClassicConfigFlow";
+import { MssKillerParticipantMode, MssKillerFormat } from "../components/config/MssKillerParticipantProtocol";
+import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
+import MssCricketAwenaTip from "../components/config/MssCricketAwenaTip";
+import MssSelectorIconButton from "../components/MssSelectorIconButton";
+import { MssInputMethodChoice } from "../components/config/MssPremiumConfig";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
@@ -457,9 +463,12 @@ export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
   // ---- Variante (2A): Cricket classique / Enculette-Vache ----
   const [variantId, setVariantId] = React.useState<CricketVariantId>("classic");
 
-  const [randomStart, setRandomStart] = React.useState<boolean>(false);
+  const [randomStart, setRandomStart] = React.useState<boolean>(() => isQuickParty && params?.quickRandomStart === true);
   const [teamMode, setTeamMode] = React.useState<boolean>(() => isQuickParty && params?.quickTeamMode === true);
   const [fillWithBots, setFillWithBots] = React.useState<boolean>(false);
+  const [mssCricketStep, setMssCricketStep] = React.useState(0);
+  const [mssCricketView, setMssCricketView] = React.useState<"guided" | "complete">("guided");
+  const [mssCricketFormat, setMssCricketFormat] = React.useState<"duel" | "multi">("duel");
 
   // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
   const dartSetId = String(params?.dartSetId ?? params?.config?.dartSetId ?? "").trim() || null;
@@ -491,7 +500,7 @@ export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
     if (preset && preset !== variantId) {
       setVariantId(preset);
     }
-  }, [params, variantId]);
+  }, [params]);
 
   // Preset Cut-Throat (route / registry)
   const isCutThroatRoute = (() => {
@@ -512,9 +521,9 @@ const legIdRef = React.useRef<string>(`cricket:${Date.now()}:${Math.random().toS
 const cricketRecorder = useCricketStatsRecorder(legIdRef.current);
 
 const scoringVariant = React.useMemo(() => {
-  if (isCutThroatRoute) return "cut-throat";
+  if (variantId === "cut_throat" || isCutThroatRoute) return "cut-throat";
   return scoreMode === "no-points" ? "no-points" : "points";
-}, [isCutThroatRoute, scoreMode]);
+}, [variantId, isCutThroatRoute, scoreMode]);
 
 // ---- Match en cours ----
 const [state, setState] = React.useState<CricketState | null>(null);
@@ -524,7 +533,7 @@ const [hitMode, setHitMode] = React.useState<HitMode>("S");
 type InputMethod = "keypad" | "dartboard";
 const [inputMethod, setInputMethod] = React.useState<InputMethod>(() => {
   try {
-    const v = localStorage.getItem(SCORE_INPUT_LS_KEY);
+    const v = isQuickParty && params?.quickInputMethod ? params.quickInputMethod : localStorage.getItem(SCORE_INPUT_LS_KEY);
     return v === "dartboard" ? "dartboard" : "keypad";
   } catch {
     return "keypad";
@@ -1071,7 +1080,7 @@ function renderAvatarCircle(
         copy.splice(idx, 1);
         return copy;
       }
-      if (prev.length >= 4) return prev;
+      if (prev.length + selectedBotIds.length >= 4) return prev;
       return [...prev, id];
     });
   }
@@ -1841,7 +1850,8 @@ return {
     const wantsTeamLocal = teamMode;
     const teamNeedsBotLocal = wantsTeamLocal && selectedCountLocal === 3 && fillWithBots;
     const teamValidCountLocal = wantsTeamLocal ? selectedCountLocal === 4 || teamNeedsBotLocal : true;
-    const canStartLocal = canStartBaseLocal && teamValidCountLocal;
+    const cricketFormatValidLocal = teamMode || isQuickParty || (mssCricketFormat === "duel" ? selectedCountLocal === 2 : selectedCountLocal >= 3);
+    const canStartLocal = canStartBaseLocal && teamValidCountLocal && cricketFormatValidLocal;
 
     const ArrowBtn = ({ dir, onClick }: { dir: "left" | "right"; onClick: () => void }) => (
       <button
@@ -1988,236 +1998,99 @@ return {
   </div>
 </div>
 
-        <DartsRelatedModesPanel gameId={variantId === "cut_throat" ? "cricket_cut_throat" : "cricket"}
-          accent={T.gold} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
-
-        {/* JOUEURS (HUMAINS) */}
-        <div
-          style={{
-            borderRadius: 18,
-            background: T.card,
-            border: `1px solid ${T.borderSoft}`,
-            padding: 14,
-            marginBottom: 14,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 13,
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
-              color: T.textSoft,
-              marginBottom: 4,
-              fontWeight: 950,
-            }}
-          >
-            Joueurs
-          </div>
-
-          <div style={{ fontSize: 12, color: T.textSoft, marginBottom: 10 }}>
-            Sélectionne <strong>2 à 4 joueurs</strong>. L’ordre est celui de la sélection{" "}
-            <span style={{ opacity: 0.75 }}>(sauf “départ aléatoire”).</span>
-          </div>
-
-          <PlayerPagedSelector
-                  usageMode="cricket"
-            profiles={allProfiles.filter((p: any) => !p?.isBot)}
-            selectedIds={selectedIds}
-            onToggle={toggleProfile}
-            accent={T.gold}
-            pageSize={9}
-            modalTitle="Choisir des joueurs"
+        <div style={{ maxWidth: 700, margin: "0 auto" }}>
+          <MssClassicConfigFlow
+            title="Cricket"
+            steps={["Awena vous explique", "Joueurs ou équipes", "Format", "Sélection", "Variante", "Scoring", "Manches", "Départ et options", "Récapitulatif"]}
+            step={mssCricketStep} view={mssCricketView} accent={T.gold}
+            summary={`${selectedCountLocal} joueurs · ${teamMode ? "2 équipes" : "individuel"}`}
+            onStep={setMssCricketStep} onView={setMssCricketView}
+            onHelp={() => setInfoOpen(true)}
           />
-        </div>
-
-        {/* BOTS IA */}
-        <div
-          style={{
-            borderRadius: 18,
-            background: T.card,
-            border: `1px solid ${T.borderSoft}`,
-            padding: 14,
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-              marginBottom: 8,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 13,
-                textTransform: "uppercase",
-                letterSpacing: 1.2,
-                color: "#22dfff",
-                fontWeight: 950,
-              }}
-            >
-              Bots IA
+          {(mssCricketView === "complete" || mssCricketStep === 0) && <>
+            <MssClassicOverview title="CRICKET · AWENA VOUS EXPLIQUE"
+              description="Ferme les secteurs 20 à 15 et le BULL en trois marques, puis utilise les points pour prendre l’avantage. Configure les participants avant de lancer."
+              accent={T.gold} onHelp={() => setInfoOpen(true)} />
+            <DartsRelatedModesPanel gameId={variantId === "cut_throat" ? "cricket_cut_throat" : "cricket"}
+              accent={T.gold} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
+          </>}
+          {(mssCricketView === "complete" || mssCricketStep === 1) && <SectionCard title="1. JOUEURS / ÉQUIPES">
+            <MssKillerParticipantMode mode={teamMode ? "teams" : "players"} accent={T.gold} onChange={v=>setTeamMode(v==="teams")} />
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === 2) && <SectionCard title="2. FORMAT">
+            <MssKillerFormat mode={teamMode ? "teams" : "players"} playerFormat={mssCricketFormat}
+              onPlayerFormat={setMssCricketFormat} teamCount={2} onTeamCount={()=>{}} teamSize={2}
+              onTeamSize={()=>{}} accent={T.gold} maxPlayers={4} />
+            {teamMode && <div style={{textAlign:"center",fontSize:12,color:T.textSoft,marginTop:12}}>Format du moteur CRICKET : deux équipes de deux participants (2v2).</div>}
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === 3) && <SectionCard title={teamMode ? "3. CHOIX ÉQUIPES" : "3. CHOIX JOUEURS"}>
+            <p style={{fontSize:12,color:T.textSoft,lineHeight:1.45,margin:"0 0 10px"}}>
+              {teamMode ? "Choisis quatre participants. Les équipes sont composées J1+J3 contre J2+J4, conformément au moteur Cricket actuel." : "Choisis deux à quatre joueurs ou bots, avec leurs avatars MSS."}
+            </p>
+            <PlayerPagedSelector usageMode="cricket" profiles={allProfiles.filter((p:any)=>!p?.isBot)}
+              selectedIds={selectedIds} onToggle={toggleProfile} accent={T.gold} pageSize={9}
+              modalTitle="Choisir des joueurs" />
+            {botProfiles?.length ? <div style={{ marginTop: 12 }}>
+              <BotPagedSelector bots={botProfiles} selectedIds={selectedBotIds} onToggle={toggleBot}
+                accent={T.gold} label="BOTS IA" modalTitle="Choisir des BOTS IA" pageSize={4} showCheckbox={false}/>
+            </div> : null}
+            <div style={{marginTop:9,textAlign:"center",fontSize:12,color:selectedCountLocal>=2?T.gold:"#ff929b"}}>
+              {selectedCountLocal}/4 sélectionnés · minimum 2 {teamMode ? "· 4 en équipes" : ""}
             </div>
-          </div>
-
-          <div style={{ fontSize: 12, color: T.textSoft, marginBottom: 10 }}>
-            Ajoute des bots pour compléter une partie (ils comptent dans les 2–4 joueurs).
-          </div>
-
-          {!botProfiles?.length ? (
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Aucun bot détecté.</div>
-          ) : (
-            <BotPagedSelector
-              bots={botProfiles}
-              selectedIds={selectedBotIds}
-              onToggle={toggleBot}
-              accent="#22dfff"
-              label="BOTS IA"
-              modalTitle="Choisir des BOTS IA"
-            />
-          )}
-        </div>
-
-        {/* PARAMÈTRES DE BASE */}
-        <SectionCard
-          title="Paramètres de base"
-          subtitle={
-            variantId === "enculette"
-              ? "Variante Enculette / Vache : même cibles (20..15 + Bull). La règle spécifique pourra être activée ensuite."
-              : "Mode Cricket standard : 20, 19, 18, 17, 16, 15 & Bull (3 marques pour fermer)."
-          }
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-            <div style={{ fontSize: 13, color: T.textSoft }}>Variante</div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                alignItems: "flex-end",
-              }}
-            >
-              <Pill tone="gold" active={variantId === "classic"} onClick={() => setVariantId("classic")}>
-                Cricket
-              </Pill>
-              <Pill tone="gold" active={variantId === "enculette"} onClick={() => setVariantId("enculette")}>
-                Enculette / Vache
-              </Pill>
-              <Pill tone="gold" active={variantId === "cut_throat"} onClick={() => setVariantId("cut_throat")}>
-                Cut-Throat
-              </Pill>
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === 4) && <SectionCard title="4. VARIANTE">
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
+              {([['classic','CRICKET',tickerCricket],['cut_throat','CUT-THROAT',tickerCutThroat],['enculette','ENCULETTE',tickerEnculette]] as const).map(([id,label,ticker])=><button key={id} type="button" aria-pressed={variantId===id} disabled={isCutThroatRoute && id !== 'cut_throat'} onClick={()=>{setVariantId(id);if(id==='cut_throat')setScoreMode('points');}}
+                style={{minWidth:0,borderRadius:14,padding:5,border:`1px solid ${variantId===id?T.gold:'#ffffff30'}`,background:variantId===id?'#f6c25622':'#ffffff08',color:variantId===id?T.gold:'#eee',cursor:isCutThroatRoute&&id!=='cut_throat'?'not-allowed':'pointer',opacity:variantId===id?1:.48,display:'grid',gap:7,alignContent:'start',textAlign:'center'}}>
+                <img src={ticker} alt="" style={{display:'block',width:'100%',aspectRatio:'16/8',objectFit:'cover',borderRadius:9}} />
+                <strong style={{fontSize:10,lineHeight:1.2,overflowWrap:'anywhere'}}>{label}</strong>
+              </button>)}
             </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 13, color: T.textSoft }}>Mode de score</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Pill tone="green" active={scoreMode === "points"} onClick={() => setScoreMode("points")}>
-                Points
-              </Pill>
-              <Pill tone="gray" active={scoreMode === "no-points"} onClick={() => setScoreMode("no-points")}>
-                Sans points
-              </Pill>
+            <div style={{marginTop:12,textAlign:'center',color:T.gold,fontWeight:950}}>{variantId==='classic'?'CRICKET CLASSIQUE':variantId==='cut_throat'?'CRICKET CUT-THROAT':'ENCULETTE / VACHE'}</div>
+            <p style={{fontSize:12,textAlign:'center',lineHeight:1.5,color:T.textSoft}}>{variantId==='classic'?'Ferme les cibles 15 à 20 et le Bull ; marque des points sur les secteurs encore ouverts chez les autres.':variantId==='cut_throat'?'Variante Cut-Throat : les points pénalisent les adversaires encore ouverts sur la cible.':'Variante du Cricket avec ses règles spécifiques. Consulte les règles avant de jouer.'}</p>
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === 5) && <SectionCard title="5. MODE DE SCORING">
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
+              {([['points','AVEC POINTS'],['no-points','SANS POINTS']] as const).map(([id,label])=><button key={id} type="button" disabled={(isCutThroatRoute||variantId==='cut_throat')&&id==='no-points'} aria-pressed={scoreMode===id} onClick={()=>setScoreMode(id)} style={{minHeight:70,borderRadius:15,border:`1px solid ${scoreMode===id?T.gold:'#ffffff30'}`,background:scoreMode===id?'#f6c25622':'#ffffff08',color:scoreMode===id?T.gold:'#fff',fontWeight:900,opacity:(isCutThroatRoute||variantId==='cut_throat')&&id==='no-points'?.35:1}}>{label}</button>)}
             </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 12,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-            }}
-          >
-            <div style={{ fontSize: 13, color: T.textSoft }}>Nombre max de manches</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {[10, 15, 20].map((n) => (
-                <Pill key={n} tone="gold" active={maxRounds === n} onClick={() => setMaxRounds(n)}>
-                  {n}
-                </Pill>
-              ))}
+            <p style={{color:T.textSoft,fontSize:12,textAlign:'center',lineHeight:1.5}}>{(isCutThroatRoute||variantId==='cut_throat')?'Cut-Throat impose le calcul des points.':scoreMode==='points'?'Les secteurs fermés peuvent rapporter des points tant qu’ils restent ouverts chez un adversaire.':'La victoire repose sur la fermeture des secteurs, sans comptabiliser de points.'}</p>
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === 6) && <SectionCard title="6. MANCHES MAXIMUM">
+            <div style={{display:'flex',justifyContent:'center',gap:12}}>{[10,15,20].map(n=><button key={n} type="button" aria-pressed={maxRounds===n} onClick={()=>setMaxRounds(n)} style={{width:62,height:55,borderRadius:15,border:`1px solid ${maxRounds===n?T.gold:'#ffffff30'}`,background:maxRounds===n?'#f6c25622':'#ffffff08',color:maxRounds===n?T.gold:'#fff',fontWeight:950,fontSize:17}}>{n}</button>)}</div>
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === 7) && <SectionCard title="7. DÉPART ET OPTIONS">
+            <div style={{display:'grid',gap:12}}>
+              <div style={{fontSize:12,fontWeight:900,color:T.gold}}>ORDRE DE DÉPART</div>
+              <div style={{display:'flex',justifyContent:'center',gap:10}}>
+                <MssSelectorIconButton icon="alternate-order" label="Ordre de sélection" accent={T.gold} active={!randomStart} onClick={()=>setRandomStart(false)}/>
+                <MssSelectorIconButton icon="random-order" label="Aléatoire" accent={T.gold} active={randomStart} onClick={()=>setRandomStart(true)}/>
+              </div>
+              <div style={{textAlign:'center',color:T.gold,fontWeight:950}}>{randomStart?'ALÉATOIRE':'ORDRE DE SÉLECTION'}</div>
+              <p style={{color:T.textSoft,fontSize:12,textAlign:'center',margin:0}}>{randomStart?'Les participants seront mélangés avant le départ.':'L’ordre actuel des profils sélectionnés est conservé.'}</p>
+              <MssKillerBooleanToggle label="ALTERNANCE DU PREMIER JOUEUR" checked={rotateFirstPlayer} accent={T.gold} onChange={setRotateFirstPlayer} />
+              {teamMode && <MssKillerBooleanToggle label="COMPLÉTER L’ÉQUIPE AVEC UN BOT" checked={fillWithBots} accent={T.gold} onChange={setFillWithBots} />}
+              <div style={{color:T.gold,fontSize:12,fontWeight:900}}>MODE DE SAISIE</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:6,maxWidth:340,width:'100%',margin:'0 auto'}}>
+                {(['keypad','dartboard','voice','camera','autodarts'] as const).map(method=><div key={method} style={{display:'grid',placeItems:'center'}}>
+                  <MssInputMethodChoice icon={method} label={method.toUpperCase()} active={inputMethod===method} accent={T.gold}
+                    disabled={method!=='keypad'&&method!=='dartboard'} onClick={()=>setInputMethod(method as InputMethod)}/>
+                </div>)}
+              </div>
+              <div style={{fontSize:12,color:T.gold,fontWeight:900,textAlign:'center'}}>{inputMethod==='keypad'?'KEYPAD':'CIBLE'}</div>
             </div>
-          </div>
-        </SectionCard>
-
-        {/* OPTIONS AVANCÉES */}
-        <SectionCard title="Options avancées">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 13, color: T.textSoft, lineHeight: 1.2 }}>
-              Premier joueur tourne{" "}
-              <span style={{ opacity: 0.7, fontSize: 12 }}>
-                (le lanceur 1 passe en dernier à chaque nouvelle manche)
-              </span>
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === 8) && <SectionCard title="8. FICHE DE PARTIE">
+            <div style={{display:'grid',gap:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><strong style={{color:T.gold}}>PARAMÈTRES DE LANCEMENT</strong><span style={{color:canStartLocal?T.gold:'#ff929b',fontSize:12,fontWeight:900}}>{canStartLocal?'✓ PRÊT':'À COMPLÉTER'}</span></div>
+              <div style={{color:T.gold,fontSize:12,fontWeight:950}}>JOUEURS EN JEU</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:7}}>{selectionOrder.map((id,i)=>{const player=allProfiles.find((p:any)=>p.id===id)||botProfiles.find((p:any)=>p.id===id);return <div key={id} style={{border:'1px solid #ffffff22',borderRadius:11,padding:7,display:'flex',gap:8,alignItems:'center',minWidth:0}}><ProfileAvatar profile={player as any} size={34}/><span style={{fontSize:12,fontWeight:800,overflow:'hidden',textOverflow:'ellipsis'}}>{(player as any)?.name||`J${i+1}`}</span></div>})}</div>
+              <div style={{color:T.gold,fontSize:12,fontWeight:950}}>RÈGLES ESSENTIELLES</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}}>{[['Format',teamMode?'2 équipes · 2v2':'Individuel'],['Variante',variantId==='classic'?'Classique':variantId==='cut_throat'?'Cut-Throat':'Enculette'],['Scoring',scoreMode==='points'?'Avec points':'Sans points'],['Tours max',String(maxRounds)],['Départ',randomStart?'Aléatoire':'Sélection'],['Rotation',rotateFirstPlayer?'Oui':'Non']].map(([label,v])=><div key={label} style={{border:'1px solid #ffffff21',background:'#ffffff06',borderRadius:11,padding:9}}><div style={{color:'#aab5cb',fontSize:10,fontWeight:900}}>{label.toUpperCase()}</div><strong style={{color:'#fff',fontSize:12}}>{v}</strong></div>)}</div>
+              <button type="button" disabled={!canStartLocal} onClick={handleStartMatch} style={{border:'none',borderRadius:999,padding:'13px 18px',background:canStartLocal?T.gold:'#555b67',color:canStartLocal?'#1a1408':'#eee',fontWeight:1000,fontSize:15,cursor:canStartLocal?'pointer':'not-allowed'}}>LANCER LE CRICKET</button>
+              {!canStartLocal&&<p style={{margin:0,fontSize:11,color:'#ff9c9c',textAlign:'center'}}>Sélectionne les participants nécessaires avant de lancer.</p>}
             </div>
-            <OnOff value={rotateFirstPlayer} onChange={setRotateFirstPlayer} />
-          </div>
-
-          <div style={{ height: 10 }} />
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 13, color: T.textSoft, lineHeight: 1.2 }}>
-              Ordre de départ aléatoire{" "}
-              <span style={{ opacity: 0.7, fontSize: 12 }}>(sinon = ordre de sélection)</span>
-            </div>
-            <OnOff value={randomStart} onChange={setRandomStart} />
-          </div>
-
-          <div style={{ height: 10 }} />
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 13, color: T.textSoft, lineHeight: 1.2 }}>
-              Mode équipe 2v2{" "}
-              <span style={{ opacity: 0.7, fontSize: 12 }}>(4 joueurs, équipes auto: J1+J3 vs J2+J4)</span>
-            </div>
-            <OnOff value={teamMode} onChange={setTeamMode} />
-          </div>
-
-          <div style={{ height: 10 }} />
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 13, color: T.textSoft, lineHeight: 1.2 }}>
-              Compléter avec bots{" "}
-              <span style={{ opacity: 0.7, fontSize: 12 }}>(si tu es 3 en 2v2 → ajoute 1 bot)</span>
-            </div>
-            <OnOff value={fillWithBots} onChange={setFillWithBots} disabled={!teamMode} />
-          </div>
-
-          {teamMode && selectedCountLocal > 0 && selectedCountLocal < 3 ? (
-            <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-              En 2v2 : sélectionne 4 joueurs (ou 3 + bots).
-            </div>
-          ) : null}
-        </SectionCard>
-
-        {/* BOUTON LANCER */}
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 80, padding: "0 16px" }}>
-          <button
-            type="button"
-            onClick={handleStartMatch}
-            disabled={!canStartLocal}
-            style={{
-              width: "100%",
-              padding: "12px 16px",
-              borderRadius: 999,
-              border: "none",
-              background: canStartLocal
-                ? "linear-gradient(135deg,#ffc63a,#ffaf00)"
-                : "linear-gradient(135deg,#6b7280,#4b5563)",
-              color: canStartLocal ? "#211500" : "#e5e7eb",
-              fontSize: 15,
-              fontWeight: 900,
-              textTransform: "uppercase",
-              letterSpacing: 1.4,
-              cursor: canStartLocal ? "pointer" : "not-allowed",
-              boxShadow: canStartLocal ? "0 0 20px rgba(240,177,42,.35)" : "none",
-            }}
-          >
-            Lancer la partie
-          </button>
+          </SectionCard>}
+          {mssCricketView === "guided" && mssCricketStep > 0 && <MssCricketAwenaTip step={mssCricketStep} />}
         </div>
 
 	        {/* INFO (Règles) */}
