@@ -38,6 +38,7 @@ import InfoDot from "../components/InfoDot";
 import GameDifficultyStars from "../components/GameDifficultyStars";
 import GameDifficultyFilter from "../components/GameDifficultyFilter";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { hasCricketVariantPreview } from "../components/MssCricketVariantPreview";
 import { dartsGameFamily, dartsGameRelatedIds, dartsGameHasAlliedFamilies, dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import { mssGameDifficulty } from "../lib/mssVisualCharter";
 import BackDot from "../components/BackDot";
@@ -300,6 +301,10 @@ function historyVariantRaw(rec: any): any {
 }
 
 function historyVariantGameId(rec: any): string | null {
+  // CRICKET MASTER utilise l'identifiant moteur "extended" tout en possédant sa carte Games dédiée.
+  if (normalizeHistoryToken(historyVariantRaw(rec)) === "extended" &&
+      normalizeHistoryToken(rec?.kind ?? rec?.modeId ?? rec?.mode ?? rec?.gameId) === "cricket" &&
+      VARIANT_GAME_IDS.has("cricket_tactics")) return "cricket_tactics";
   // Anciennes sauvegardes Cut-Throat n'ont parfois qu'un booléen dédié.
   const cutThroat =
     rec?.cutThroat === true ||
@@ -514,7 +519,12 @@ export default function Games({ setTab, params }: Props) {
       );
     }
 
-    const baseId = id === "mario_kart"
+    // Always prefer the correct artwork of each Cricket variant. When the
+    // dedicated artwork is not validated, use the generic Cricket backdrop,
+    // never another variant's named ticker (TACTICS != MASTER CRICKET).
+    const dedicatedCricket = hasCricketVariantPreview(id) ? findTickerById(id) : null;
+    if (dedicatedCricket) return dedicatedCricket;
+    const baseId = (hasCricketVariantPreview(id) || id === "cricket_master") ? (id === "cricket_master" ? "cricket_master" : "cricket") : id === "mario_kart"
       ? "darts_racer"
       : id === "fifty_one_by_five"
           ? "51_by_5"
@@ -1643,6 +1653,13 @@ export default function Games({ setTab, params }: Props) {
           }}
           draggable={false}
         />
+        {/* Nom de la variante sur fond de famille en attendant son ticker définitif. */}
+        {hasCricketVariantPreview(gameId) && !findTickerById(gameId) && <div style={{
+          position: "absolute", inset: 0, display: "grid", placeItems: "center", paddingLeft: 15,
+          background: "linear-gradient(90deg,transparent,rgba(0,0,0,.48))", color: "#ffd77b",
+          fontWeight: 1000, fontSize: 17, textAlign: "center", letterSpacing: .7,
+          textShadow: "0 1px 5px #000,0 0 8px #000", textTransform: "uppercase",
+        }}>{DARTS_GAMES.find(g => g.id === gameId)?.label || "CRICKET"}</div>}
         {/* légère couche pour fondre avec la carte */}
         <div
           style={{

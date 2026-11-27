@@ -19,7 +19,7 @@ export const DARTS_GAME_FAMILIES: readonly DartsGameFamily[] = [
   },
   {
     id: "cricket", mainId: "cricket",
-    variantIds: ["cricket_cut_throat", "scram", "shove_a_penny", "enculette"],
+    variantIds: ["cricket_tactics", "cricket_master", "cricket_cut_throat", "cricket_low_ball", "cricket_spanish", "cricket_random", "cricket_pick_it", "cricket_hidden", "cricket_quickie", "cricket_mickey_mouse", "cricket_wild_mouse", "cricket_wild_card", "cricket_sudden_death", "cricket_english", "scram", "shove_a_penny", "enculette"],
     note: "Fermeture de secteurs, stratégies de marques et jeux de pub apparentés. Chaque mode garde son propre barème.",
   },
   {
@@ -124,6 +124,11 @@ export function dartsFamilyGameNavigation(gameId: string): DartsGameNavigation |
   if (gameId === "top_10_training") return { tab: "top_10_config", params: { training: true } };
   if (gameId === "cricket") return { tab: "cricket", params: { launchMode: "arcade" } };
   if (gameId === "cricket_cut_throat") return { tab: "cricket", params: { launchMode: "arcade", variantId: "cut_throat" } };
+  if (gameId === "scram") return { tab: "scram_config", params: { launchMode: "arcade" } };
+  if (gameId === "cricket_tactics") return { tab: "cricket", params: { launchMode: "arcade", variantId: "tactics", gameId } };
+  if (["cricket_master", "cricket_low_ball", "cricket_spanish", "cricket_random", "cricket_pick_it", "cricket_hidden", "cricket_quickie", "cricket_mickey_mouse", "cricket_wild_mouse", "cricket_wild_card", "cricket_sudden_death", "cricket_english"].includes(gameId)) {
+    return { tab: "cricket", params: { launchMode: "arcade", variantId: String(DARTS_GAMES.find(g => g.id === gameId)?.variantId || "classic"), gameId } };
+  }
   if (gameId === "enculette") return { tab: "enculette_config", params: { launchMode: "arcade" } };
   if (gameId === "shanghai" || gameId === "battle_royale") return { tab: gameId, params: { launchMode: "arcade" } };
   if (gameId === "chase") return { tab: "five_lives_config", params: { launchMode: "arcade", variantId: "chase" } };

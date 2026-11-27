@@ -14,14 +14,17 @@ type Props = {
   darts: readonly Hit[];
   accent: string;
   onObjective: () => void;
+  /** Option générique : permet aux variantes Cricket d'utiliser exactement la carte SHOVE. */
+  objectiveTitle?: string;
+  objectiveSubtitle?: string;
 };
 
 /** MSS SHOVE : avatar crop à gauche, marques centrales et objectif entièrement cliquable. */
 export default function ShoveActivePlayerCard(p: Props) {
   const avatar = p.profile?.avatarDataUrl || p.profile?.avatarUrl || p.profile?.avatar || p.profile?.photoDataUrl || null;
   const traditional = p.ruleSet === 'traditional';
-  const objective = traditional ? '1 À 9' : '15 À BULL';
-  const objectiveSub = traditional ? 'ORDRE LIBRE' : 'DANS L’ORDRE';
+  const objective = p.objectiveTitle || (traditional ? '1 À 9' : '15 À BULL');
+  const objectiveSub = p.objectiveSubtitle || (traditional ? 'ORDRE LIBRE' : 'DANS L’ORDRE');
   const showRound = Number.isFinite(p.round) && Number.isFinite(p.maxRounds) && Number(p.maxRounds) > 0;
   return <section data-shove-active-player="mss-hero-v5" style={{position:'relative',isolation:'isolate',flex:'0 0 auto',minHeight:124,borderRadius:18,border:`1px solid ${p.accent}a8`,background:`linear-gradient(100deg,${p.accent}1b,rgba(9,13,22,.99) 65%)`,overflow:'hidden',boxShadow:`inset 0 1px 0 ${p.accent}a8, inset 0 0 24px ${p.accent}16`}}>
     {avatar ? <img src={avatar} alt="" aria-hidden="true" style={{position:'absolute',left:-38,top:-24,width:178,height:182,objectFit:'cover',objectPosition:'center',opacity:.21,filter:'saturate(.8)',pointerEvents:'none'}}/> : null}

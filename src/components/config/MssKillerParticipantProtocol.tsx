@@ -31,13 +31,13 @@ export function MssKillerParticipantMode({mode, onChange, accent}: {mode: MssPar
   </div>;
 }
 
-export function MssKillerFormat({ mode, playerFormat, onPlayerFormat, teamCount, onTeamCount, teamSize, onTeamSize, accent, maxPlayers = 20 }: {
+export function MssKillerFormat({ mode, playerFormat, onPlayerFormat, teamCount, onTeamCount, teamSize, onTeamSize, accent, maxPlayers = 20, unlimitedPlayers = false }: {
   mode:MssParticipantKind;playerFormat:"duel"|"multi";onPlayerFormat:(value:"duel"|"multi")=>void;
-  teamCount:number;onTeamCount:(value:number)=>void;teamSize:number;onTeamSize:(value:number)=>void;accent:string;maxPlayers?:number;
+  teamCount:number;onTeamCount:(value:number)=>void;teamSize:number;onTeamSize:(value:number)=>void;accent:string;maxPlayers?:number;unlimitedPlayers?:boolean;
 }) {
   const cardChoice=(n:number,selected:boolean,onClick:()=>void,disabled=false)=><button key={n} type="button" disabled={disabled} aria-pressed={selected} onClick={onClick} style={{padding:11,borderRadius:12,border:`1px solid ${selected?accent:`${accent}55`}`,background:selected?`${accent}28`:"rgba(255,255,255,.03)",color:selected?accent:"#fff",fontWeight:900,cursor:disabled?"not-allowed":"pointer",opacity:disabled?.35:1}}>{n}</button>;
   return mode==="players" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-    {([["duel","DUEL","2 joueurs"],["multi","MULTI",`2 à ${maxPlayers} joueurs`]] as const).map(([id,label,detail])=><button key={id} type="button" aria-pressed={playerFormat===id} onClick={()=>onPlayerFormat(id)} style={{minWidth:0,minHeight:79,borderRadius:14,background:playerFormat===id?`${accent}2c`:"rgba(255,255,255,.03)",border:`1px solid ${playerFormat===id?accent:`${accent}55`}`,color:playerFormat===id?accent:"#fff",cursor:"pointer",display:"grid",placeContent:"center",gap:4}}><strong style={{fontSize:16}}>{label}</strong><span style={{fontSize:11,opacity:.82}}>{detail}</span></button>)}
+    {([["duel","DUEL","2 joueurs"],["multi","MULTI",unlimitedPlayers ? "Nombre de joueurs illimité" : `2 à ${maxPlayers} joueurs`]] as const).map(([id,label,detail])=><button key={id} type="button" aria-pressed={playerFormat===id} onClick={()=>onPlayerFormat(id)} style={{minWidth:0,minHeight:79,borderRadius:14,background:playerFormat===id?`${accent}2c`:"rgba(255,255,255,.03)",border:`1px solid ${playerFormat===id?accent:`${accent}55`}`,color:playerFormat===id?accent:"#fff",cursor:"pointer",display:"grid",placeContent:"center",gap:4}}><strong style={{fontSize:16}}>{label}</strong><span style={{fontSize:11,opacity:.82}}>{detail}</span></button>)}
   </div> : <div style={{display:"grid",gap:14}}>
     <div style={{display:"grid",gap:8}}><div style={{color:"#e5e7f1",fontSize:12}}>Nombre d'équipes</div><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{[2,3,4].map(n=>cardChoice(n,teamCount===n,()=>onTeamCount(n),n*2>maxPlayers))}</div></div>
     <div style={{display:"grid",gap:8}}><div style={{color:"#e5e7f1",fontSize:12}}>Joueurs / bots par équipe</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>{[2,3,4,5].map(n=>cardChoice(n,teamSize===n,()=>onTeamSize(n),n*teamCount>maxPlayers))}</div></div>

@@ -37,6 +37,7 @@ const tickerAliases: Record<string, string> = {
   "territoires": "territories_fr",
   "territories": "territories_fr",
   "cricket_cut_throat": "cricket_cut_throat",
+  "cricket_no_score": "cricket",
   "cut_throat": "cricket_cut_throat",
   "enculette_vache": "enculette",
 };

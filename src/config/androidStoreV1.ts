@@ -13,6 +13,7 @@ export const ANDROID_STORE_V1_SPORT_IDS = ["darts", "babyfoot", "petanque", "run
 export const ANDROID_STORE_V1_DARTS_GAME_IDS = [
   "x01",
   "cricket",
+  "cricket_master",
   "killer",
   "darts_poker",
   "cargo",

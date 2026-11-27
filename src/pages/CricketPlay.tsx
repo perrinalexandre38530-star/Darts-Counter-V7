@@ -18,9 +18,9 @@
 // ============================================
 
 import React from "react";
+import { dartsQuickTicker } from "../components/DartsQuickHeader";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
 import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
-import DartsConfigGuideBoundary from "../components/DartsConfigGuideBoundary";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers, parseBotLevelValue } from "../lib/bots";
 import {
@@ -28,6 +28,7 @@ import {
   applyCricketHit,
   undoLastCricketHit,
   CRICKET_TARGETS,
+  CRICKET_EXTENDED_TARGETS,
   type CricketTarget,
   type Multiplier,
   type CricketState,
@@ -45,8 +46,7 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import DartboardClickable from "../components/DartboardClickable";
-import PlayerPagedSelector from "../components/PlayerPagedSelector";
-import BotPagedSelector from "../components/BotPagedSelector";
+import MssKillerPlayersShared from "../components/config/MssKillerPlayersShared";
 import { MssClassicConfigFlow, MssClassicOverview } from "../components/config/MssClassicConfigFlow";
 import { MssKillerParticipantMode, MssKillerFormat } from "../components/config/MssKillerParticipantProtocol";
 import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
@@ -80,6 +80,10 @@ import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
 import tickerCricket from "../assets/tickers/ticker_cricket.png";
 import tickerEnculette from "../assets/tickers/ticker_enculette.png";
 import tickerCutThroat from "../assets/tickers/ticker_cricket_cut_throat.png";
+import tickerMaster from "../assets/tickers/ticker_cricket_master.webp";
+import CricketMasterPlayStage from "../components/CricketMasterPlayStage";
+import EnglishCricketPlay from "./EnglishCricketPlay";
+import { CRICKET_VARIANT_RULES, configuredCricketTargets, type CricketRuleVariant } from "../lib/cricketVariantRules";
 
 const T = {
   bg: "#050712",
@@ -95,6 +99,7 @@ const ACCENTS = ["#fbbf24", "#f472b6", "#22c55e", "#38bdf8"];
 
 // Ordre d’affichage de la colonne centrale (croissant)
 const CRICKET_UI_TARGETS: CricketTarget[] = [15, 16, 17, 18, 19, 20, 25];
+const CRICKET_EXTENDED_UI_TARGETS: CricketTarget[] = [15, 16, 17, 18, 19, 20, 26, 27, 25];
 
 // Dégradé 15 → Bull
 const TARGET_COLORS: Record<number, string> = {
@@ -104,7 +109,9 @@ const TARGET_COLORS: Record<number, string> = {
   18: "#f97316",
   19: "#fb7185",
   20: "#ef4444",
-  25: "#b91c1c",
+  25: "#22c55e",
+  26: "#06b6d4", // DOUBLE MSS
+  27: "#d946ef", // TRIPLE MSS
 };
 
 function getTargetColor(target: CricketTarget): string {
@@ -287,13 +294,13 @@ function SectionCard({
 // Cricket end-by-round tie-break
 // --------------------------------------------------
 
-function marksTotal(p: any) {
+function marksTotal(p: any, extended = false, targets?: number[]) {
   const marks = p?.marks || {};
-  return CRICKET_TARGETS.reduce((acc: number, t: any) => acc + Number(marks[t] ?? 0), 0);
+  return (targets ?? (extended ? CRICKET_EXTENDED_TARGETS : CRICKET_TARGETS)).reduce((acc: number, t: any) => acc + Number(marks[t] ?? 0), 0);
 }
-function closedCount(p: any) {
+function closedCount(p: any, extended = false, targets?: number[]) {
   const marks = p?.marks || {};
-  return CRICKET_TARGETS.reduce((acc: number, t: any) => acc + (Number(marks[t] ?? 0) >= 3 ? 1 : 0), 0);
+  return (targets ?? (extended ? CRICKET_EXTENDED_TARGETS : CRICKET_TARGETS)).reduce((acc: number, t: any) => acc + (Number(marks[t] ?? 0) >= 3 ? 1 : 0), 0);
 }
 function scoreNum(p: any) {
   return Number(p?.score ?? 0);
@@ -309,12 +316,12 @@ function decideWinnerAtMaxRounds(state: CricketState, withPoints: boolean, teamM
     const teamA = [players[0], players[2]];
     const teamB = [players[1], players[3]];
 
-    const aClosed = teamA.reduce((acc: number, p: any) => acc + closedCount(p), 0);
-    const bClosed = teamB.reduce((acc: number, p: any) => acc + closedCount(p), 0);
+    const aClosed = teamA.reduce((acc: number, p: any) => acc + closedCount(p, !!state.extended, state.targets), 0);
+    const bClosed = teamB.reduce((acc: number, p: any) => acc + closedCount(p, !!state.extended, state.targets), 0);
     if (aClosed !== bClosed) return aClosed > bClosed ? teamA[0].id : teamB[0].id;
 
-    const aMarks = teamA.reduce((acc: number, p: any) => acc + marksTotal(p), 0);
-    const bMarks = teamB.reduce((acc: number, p: any) => acc + marksTotal(p), 0);
+    const aMarks = teamA.reduce((acc: number, p: any) => acc + marksTotal(p, !!state.extended, state.targets), 0);
+    const bMarks = teamB.reduce((acc: number, p: any) => acc + marksTotal(p, !!state.extended, state.targets), 0);
     if (aMarks !== bMarks) return aMarks > bMarks ? teamA[0].id : teamB[0].id;
 
     if (withPoints) {
@@ -329,8 +336,8 @@ function decideWinnerAtMaxRounds(state: CricketState, withPoints: boolean, teamM
   // solo mode: compare closed targets, then marks, then points (if enabled)
   const ranked = [...players].map((p: any) => ({
     id: p.id,
-    closed: closedCount(p),
-    marks: marksTotal(p),
+    closed: closedCount(p, !!state.extended, state.targets),
+    marks: marksTotal(p, !!state.extended, state.targets),
     score: scoreNum(p),
   }));
 
@@ -390,10 +397,12 @@ function pickCricketBotThrow(state: any, player: any, withPoints: boolean, quali
   const marks = player?.marks || {};
 
   // 1) Priorité: fermer les cibles pas encore fermées
-  const openTargets = CRICKET_TARGETS.filter((t: any) => Number(marks[t] ?? 0) < 3);
+  const openTargets = (state.targets ?? CRICKET_TARGETS).filter((t: any) => t < 26 && Number(marks[t] ?? 0) < 3);
+  if (state.extended && Number(marks[26] || 0) < 3) return { target: 20, mult: 2 };
+  if (state.extended && Number(marks[27] || 0) < 3) return { target: 20, mult: 3 };
 
   // 2) Si tout est fermé: chercher scoring (si points) sinon random “propre”
-  const scoringTargets = CRICKET_TARGETS.slice();
+  const scoringTargets = (state.targets ?? CRICKET_TARGETS).filter((t:number)=>t < 26).slice();
 
   // petite chance d’erreur (viser 0..14 => “bust” sfx)
   const doMistake = Math.random() > quality;
@@ -431,14 +440,16 @@ function pickCricketBotThrow(state: any, player: any, withPoints: boolean, quali
   return { target: Number(target), mult };
 }
 
-type CricketVariantId = "classic" | "enculette" | "cut_throat";
+type CricketVariantId = "classic" | "enculette" | "cut_throat" | "extended" | CricketRuleVariant;
 
-export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
+function CricketPlayCore({ profiles, params, onFinish, go }: Props) {
   const isQuickParty = params?.quickParty === true || String(params?.partyMode || "").toLowerCase() === "quick";
   const quickSafePlaySound = React.useCallback((name: any) => { if (!isQuickParty) playSound(name); }, [isQuickParty]);
   const [castStatusTick, setCastStatusTick] = React.useState(0);
   React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
-  const allProfiles = profiles ?? [];
+  const [cricketCreatedProfiles, setCricketCreatedProfiles] = React.useState<any[]>([]);
+  const [cricketCreatedBots, setCricketCreatedBots] = React.useState<any[]>([]);
+  const allProfiles = React.useMemo(() => [...(profiles ?? []), ...(isQuickParty && Array.isArray(params?.quickPlayers) ? params.quickPlayers : []), ...cricketCreatedProfiles], [profiles, params?.quickPlayers, isQuickParty, cricketCreatedProfiles]);
   const matchIdRef = React.useRef<string>(
     (params as any)?.matchId ?? `cricket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   );
@@ -452,23 +463,44 @@ export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
   const [phase, setPhase] = React.useState<Phase>("setup");
 
   // ---- Joueurs sélectionnés ----
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => isQuickParty && Array.isArray(params?.quickPlayers) ? params.quickPlayers.map((p: any) => String(p?.id || "")).filter(Boolean).slice(0, 4) : []);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => isQuickParty && Array.isArray(params?.quickPlayers) ? params.quickPlayers.map((p: any) => String(p?.id || "")).filter(Boolean) : []);
   const [selectedBotIds, setSelectedBotIds] = React.useState<string[]>([]);
 
   // ---- Paramètres ----
   const [scoreMode, setScoreMode] = React.useState<ScoreMode>(() => isQuickParty && params?.quickScoreMode === "no-points" ? "no-points" : "points");
-  const [maxRounds, setMaxRounds] = React.useState<number>(() => isQuickParty ? Math.max(1, Math.min(99, Number(params?.quickMaxRounds || 20))) : 20);
+  const [maxRounds, setMaxRounds] = React.useState<number>(() => isQuickParty ? Math.max(1, Math.min(99, Number(params?.quickMaxRounds || 20))) : String(params?.variantId || "").toLowerCase()==="quickie" ? 10 : 20);
   const [rotateFirstPlayer, setRotateFirstPlayer] = React.useState<boolean>(true);
 
   // ---- Variante (2A): Cricket classique / Enculette-Vache ----
-  const [variantId, setVariantId] = React.useState<CricketVariantId>("classic");
+  const [pendingBull50, setPendingBull50] = React.useState(false);
+  const [pendingWildMouse, setPendingWildMouse] = React.useState<{target:number;mult:Multiplier}|null>(null);
+  const [variantId, setVariantId] = React.useState<CricketVariantId>(() => isQuickParty && params?.quickExtended ? "tactics" : (String(params?.variantId || params?.presetVariantId || "classic") as CricketVariantId));
+  const isExtendedCricket = ["extended","tactics","mickey_mouse","wild_mouse"].includes(variantId);
+  const cricketRule: CricketRuleVariant = variantId === "wild_mouse" ? "wild_mouse" : variantId === "mickey_mouse" ? "mickey_mouse" : isExtendedCricket ? "tactics" : variantId in CRICKET_VARIANT_RULES ? variantId as CricketRuleVariant : "classic";
+  const cricketRuleData = CRICKET_VARIANT_RULES[cricketRule];
+  const [pickItNumbers, setPickItNumbers] = React.useState<number[]>(() => Array.isArray(params?.quickPickItNumbers) && params.quickPickItNumbers.length===6 ? params.quickPickItNumbers : [20,19,18,17,16,15]);
+  const [masterAllowsTriples, setMasterAllowsTriples] = React.useState(!!params?.quickMasterAllowsTriples);
+  const isNoScoreRoute = ["no_score", "no-score", "cricket_no_score"].includes(String((params as any)?.variantId ?? (params as any)?.presetVariantId ?? "").toLowerCase());
 
   const [randomStart, setRandomStart] = React.useState<boolean>(() => isQuickParty && params?.quickRandomStart === true);
   const [teamMode, setTeamMode] = React.useState<boolean>(() => isQuickParty && params?.quickTeamMode === true);
+  const cricketMaxParticipants = (isExtendedCricket || cricketRule !== "classic") && !teamMode ? Number.MAX_SAFE_INTEGER : 4;
   const [fillWithBots, setFillWithBots] = React.useState<boolean>(false);
   const [mssCricketStep, setMssCricketStep] = React.useState(0);
   const [mssCricketView, setMssCricketView] = React.useState<"guided" | "complete">("guided");
   const [mssCricketFormat, setMssCricketFormat] = React.useState<"duel" | "multi">("duel");
+  // MSS — étapes dédiées aux règles de chaque variante (sans dupliquer le moteur).
+  const hasVariantRulesStep = cricketRule !== "classic" || isNoScoreRoute || variantId === "enculette";
+  const cricketSteps = React.useMemo(() => [
+    "Awena vous explique", "Joueurs ou équipes", "Format", "Sélection",
+    ...(hasVariantRulesStep ? ["Règles de la variante"] : []),
+    "Scoring", "Manches", "Départ et saisie", "Récapitulatif",
+  ], [hasVariantRulesStep]);
+  const cricketStepIndex = (label: string) => cricketSteps.indexOf(label);
+  React.useEffect(() => {
+    setMssCricketStep(current => Math.min(current, cricketSteps.length - 1));
+  }, [cricketSteps.length]);
+
 
   // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
   const dartSetId = String(params?.dartSetId ?? params?.config?.dartSetId ?? "").trim() || null;
@@ -477,7 +509,7 @@ export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
   // - presetVariantId : ancienne clé utilisée par certaines cartes
   // - variantId       : clé standard (ex: enculette, cut_throat)
   React.useEffect(() => {
-    const raw = String((params as any)?.presetVariantId ?? (params as any)?.variantId ?? "")
+    const raw = String((isQuickParty && params?.quickExtended) ? "extended" : ((params as any)?.presetVariantId ?? (params as any)?.variantId ?? ""))
       .trim()
       .toLowerCase();
   
@@ -491,6 +523,9 @@ export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
       if (v === "enculette" || v === "enculette_vache" || v === "enculette-vache") return "enculette";
   
       // Classic
+      if (v === "extended" || v === "cricket_extended" || v === "cricket-extended" || v === "tactics" || v === "cricket_tactics") return "tactics";
+      if (v === "cricket_master" || v === "cricket-master" || v === "double_only" || v === "master") return "double_only";
+      if (v in CRICKET_VARIANT_RULES) return v as CricketRuleVariant;
       if (v === "classic" || v === "cricket") return "classic";
   
       return null;
@@ -508,11 +543,14 @@ export default function CricketPlay({ profiles, params, onFinish, go }: Props) {
     return v === "cut_throat" || v === "cut-throat";
   })();
   React.useEffect(() => {
-    if (isCutThroatRoute) {
+    if (isNoScoreRoute) setScoreMode("no-points");
+  }, [isNoScoreRoute]);
+  React.useEffect(() => {
+    if (isCutThroatRoute || cricketRule === "sudden_death") {
       setScoreMode('points'); // Cut-throat = points obligatoires
       // On garde variantId UI (classic/enculette) mais le moteur bascule en cut-throat via option.
     }
-  }, [isCutThroatRoute]);
+  }, [isCutThroatRoute, cricketRule]);
 
 
 
@@ -522,12 +560,14 @@ const cricketRecorder = useCricketStatsRecorder(legIdRef.current);
 
 const scoringVariant = React.useMemo(() => {
   if (variantId === "cut_throat" || isCutThroatRoute) return "cut-throat";
+  if (isNoScoreRoute) return "no-points";
   return scoreMode === "no-points" ? "no-points" : "points";
-}, [variantId, isCutThroatRoute, scoreMode]);
+}, [variantId, isCutThroatRoute, isNoScoreRoute, scoreMode]);
 
 // ---- Match en cours ----
 const [state, setState] = React.useState<CricketState | null>(null);
 const [hitMode, setHitMode] = React.useState<HitMode>("S");
+const [showMasterOtherSectors, setShowMasterOtherSectors] = React.useState(false);
 
 // --- Multi-input (KEYPAD / CIBLE) — persistant via SCORE_INPUT_LS_KEY
 type InputMethod = "keypad" | "dartboard";
@@ -727,8 +767,8 @@ const userBots: BotLite[] = React.useMemo(() => {
 // Liste finale affichée dans le carrousel bots
 const botProfiles = React.useMemo(() => {
   // PRO_BOTS ont avatarDataUrl (import image) => OK pour ProfileAvatar
-  return [...PRO_BOTS, ...userBots] as any[];
-}, [userBots]);
+  return [...PRO_BOTS, ...userBots, ...cricketCreatedBots] as any[];
+}, [userBots, cricketCreatedBots]);
 
 // Map ID -> profil utilisable partout (humains + bots)
 const profileById = React.useMemo(() => {
@@ -747,8 +787,8 @@ const profileById = React.useMemo(() => {
     });
   }
 
-  // user bots
-  for (const b of userBots) {
+  // user bots and locally created bots (preserve their avatars during launch)
+  for (const b of [...userBots, ...cricketCreatedBots]) {
     if (!b?.id) continue;
     m.set(String(b.id), {
       id: String(b.id),
@@ -760,7 +800,7 @@ const profileById = React.useMemo(() => {
   }
 
   return m;
-}, [allProfiles, userBots]);
+}, [allProfiles, userBots, cricketCreatedBots]);
 
 // --------------------------------------------------
 // ✅ BOT ENGINE (auto-play) — joue automatiquement quand c'est le tour d'un bot
@@ -826,11 +866,13 @@ React.useEffect(() => {
           Math.min(0.98, hitQuality - (Math.random() < mistake ? 0.25 : 0))
         );
 
-        const pick = pickCricketBotThrow(prev, cp, withPoints, paramsQuality);
+        const botNeedsBed = prev.exclusiveSpecial && Number(cp?.marks?.[28]||0)<3;
+        const pick = botNeedsBed ? {target:20,mult:1} : pickCricketBotThrow(prev, cp, withPoints, paramsQuality);
 
         let mult = pick.mult as any;
         if (mult > 1 && Math.random() > preferHighMult) mult = 1;
 
+        const botSpecialChoice = prev.exclusiveSpecial ? (botNeedsBed ? "bed" : (mult===2&&Number(cp.marks?.[26]||0)<3)||(mult===3&&Number(cp.marks?.[27]||0)<3) ? "special" : "number") : undefined;
         const before = prev as any;
 
         // ---- STATS recorder : log bot dart ----
@@ -838,7 +880,8 @@ React.useEffect(() => {
           const pid = String(before.players?.[before.currentPlayerIndex]?.id ?? "");
           const beforeP = before.players?.[before.currentPlayerIndex];
           const beforeScore = Number(beforeP?.score ?? 0);
-          const beforeMarksRaw = beforeP?.marks?.[pick.target] ?? 0;
+          const recordedGoal = before.extended && Number(pick.target) === 25 && mult === 2 && Number(beforeP?.marks?.[25] || 0) >= 3 ? 26 : Number(pick.target);
+          const beforeMarksRaw = beforeP?.marks?.[recordedGoal] ?? 0;
           const beforeMarks = Math.min(3, Number(beforeMarksRaw ?? 0));
 
           const hitsSoFar = extractHitsForPlayerFromState(before, pid).length;
@@ -858,14 +901,14 @@ React.useEffect(() => {
             else ring = "SB";
             marks = mult >= 2 ? 2 : 1;
             rawScore = (25 * (mult >= 2 ? 2 : 1));
-          } else if (rawTarget >= 15 && rawTarget <= 20) {
+          } else if (rawTarget >= 1 && rawTarget <= 20) {
             seg = rawTarget;
             ring = mult >= 3 ? "T" : mult >= 2 ? "D" : "S";
             marks = mult;
             rawScore = rawTarget * mult;
           }
 
-          let next = applyCricketHit(before as any, pick.target as any, mult) as any;
+          let next = applyCricketHit(before as any, pick.target as any, mult, undefined, botSpecialChoice as any) as any;
 
           const afterP = next.players?.[before.currentPlayerIndex];
           const afterScore = Number(afterP?.score ?? 0);
@@ -880,9 +923,9 @@ React.useEffect(() => {
             }
           }
 
-          const afterMarksRaw = (afterP?.marks?.[pick.target] ?? beforeMarksRaw);
+          const afterMarksRaw = (afterP?.marks?.[recordedGoal] ?? beforeMarksRaw);
           const afterMarks = Math.min(3, Number(afterMarksRaw ?? 0));
-          const closedSegmentNow = (rawTarget === 25 || (rawTarget >= 15 && rawTarget <= 20))
+          const closedSegmentNow = (recordedGoal === 26 || rawTarget === 25 || (rawTarget >= 15 && rawTarget <= 20))
             ? (beforeMarks < 3 && afterMarks >= 3)
             : false;
 
@@ -915,7 +958,7 @@ React.useEffect(() => {
 
           return next;
         } catch {
-          let next = applyCricketHit(prev as any, pick.target as any, mult) as any;
+          let next = applyCricketHit(prev as any, pick.target as any, mult, undefined, botSpecialChoice as any) as any;
 
           // SFX
           sfxForHit(pick.target, mult);
@@ -926,12 +969,6 @@ React.useEffect(() => {
           return next;
         }
 
-        sfxForHit(pick.target, mult);
-
-        // hard stop maxRounds
-        next = maybeApplyMaxRoundsHardStop(next);
-
-        return next;
       });
 
       // fin des 3 darts
@@ -1080,7 +1117,7 @@ function renderAvatarCircle(
         copy.splice(idx, 1);
         return copy;
       }
-      if (prev.length + selectedBotIds.length >= 4) return prev;
+      if (prev.length + selectedBotIds.length >= cricketMaxParticipants) return prev;
       return [...prev, id];
     });
   }
@@ -1093,7 +1130,7 @@ function renderAvatarCircle(
         copy.splice(idx, 1);
         return copy;
       }
-      if (selectedIds.length + prev.length >= 4) return prev;
+      if (selectedIds.length + prev.length >= cricketMaxParticipants) return prev;
       return [...prev, id];
     });
   }
@@ -1102,7 +1139,7 @@ function renderAvatarCircle(
   const selectedBotCount = selectedBotIds.length;
   const selectedCount = selectedHumanCount + selectedBotCount;
 
-  const canStartBase = selectedCount >= 2 && selectedCount <= 4;
+  const canStartBase = selectedCount >= 2 && selectedCount <= cricketMaxParticipants;
   const wantsTeam = teamMode;
   const teamNeedsBot = wantsTeam && selectedCount === 3 && fillWithBots;
   const teamValidCount = wantsTeam ? selectedCount === 4 || teamNeedsBot : true;
@@ -1148,7 +1185,7 @@ function renderAvatarCircle(
       }
     }
 
-    finalProfiles = finalProfiles.slice(0, 4);
+    finalProfiles = finalProfiles.slice(0, cricketMaxParticipants);
 
     let players = finalProfiles.map((p) => ({ id: p.id, name: p.name }));
 
@@ -1159,13 +1196,24 @@ function renderAvatarCircle(
     const match = createCricketMatch(players, {
       withPoints: (scoreMode === "points") || isCutThroatRoute,
       cutThroat: isCutThroatRoute,
-      maxRounds,
+      maxRounds: cricketRule === "quickie" ? 10 : maxRounds,
+      extended: isExtendedCricket,
+      targets: configuredCricketTargets(cricketRule, pickItNumbers),
+      doubleOnly: cricketRuleData.doubleOnly,
+      allowTripleMaster: masterAllowsTriples,
+      hiddenTargets: cricketRuleData.hidden,
+      sameBed: cricketRuleData.sameBed,
+      exclusiveSpecial: cricketRuleData.exclusiveSpecial,
+      wildCard: cricketRuleData.wildCard,
+      suddenDeathGap: cricketRuleData.suddenDeath,
     });
 
     // new legId + reset recorder
     legIdRef.current = `cricket:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
     cricketRecorder.resetLeg(legIdRef.current);
 
+    setPendingBull50(false);
+    setPendingWildMouse(null);
     setState(match);
     setPhase("play");
     setHitMode("S");
@@ -1186,7 +1234,7 @@ function renderAvatarCircle(
   // --------------------------------------------------
 
   function sfxForHit(target: number, mult: Multiplier) {
-    if (target >= 0 && target <= 14) {
+    if (target >= 0 && target <= 14 && !(state?.targets?.includes(target)) && !(isExtendedCricket && target > 0 && mult >= 2)) {
       quickSafePlaySound("bust");
       return;
     }
@@ -1212,7 +1260,9 @@ function renderAvatarCircle(
     const rn = clampRoundNumber(next);
     if (!rn) return next;
 
-    if (rn >= maxRounds) {
+    // Le moteur gère déjà la fin de la dernière volée. Ne jamais arrêter
+    // une partie au début de la dernière manche.
+    if (rn >= maxRounds && next.remainingDarts === 0) {
       const withPoints = scoreMode === "points";
       const winnerId = decideWinnerAtMaxRounds(next, withPoints, teamMode);
       if (winnerId) return { ...(next as any), winnerId } as any;
@@ -1223,15 +1273,33 @@ function renderAvatarCircle(
     return next;
   }
 
-  function registerHit(rawTarget: number, multOverride?: Multiplier) {
+  function registerHit(rawTarget: number, multOverride?: Multiplier, bull50Choice?: "bull" | "double", specialChoice?: "number" | "special" | "bed") {
     if (!state || !currentPlayer) return;
     if (state.winnerId) return;
     if ((state as any).forcedFinished) return;
+    if (pendingBull50 && !bull50Choice) return;
+    if (pendingWildMouse && !specialChoice) return;
 
     let mult: Multiplier = multOverride ?? 1;
     if (!multOverride) {
       if (hitMode === "D") mult = 2;
       if (hitMode === "T") mult = 3;
+    }
+
+    if (state.exclusiveSpecial && rawTarget>=1 && rawTarget<=20 && state.targets?.includes(rawTarget) && !specialChoice) {
+      setPendingWildMouse({target:rawTarget,mult});
+      return;
+    }
+
+    // Proposer le choix uniquement pour un DBULL50 humain en Cricket Étendu.
+    // BULL fermé : affectation automatique d'un impact à DOUBLE.
+    if (isExtendedCricket && rawTarget === 25 && mult === 2 && !bull50Choice) {
+      const activePlayer = state.players[state.currentPlayerIndex];
+      if (Number(activePlayer?.marks?.[25] || 0) < 3 && Number(activePlayer?.marks?.[26] || 0) < 3) {
+        setPendingBull50(true);
+        return;
+      }
+      bull50Choice = Number(activePlayer?.marks?.[25] || 0) >= 3 ? "double" : "bull";
     }
 
     const prev = state as any;
@@ -1242,7 +1310,8 @@ function renderAvatarCircle(
       const beforeP = prev.players?.[prev.currentPlayerIndex];
       const beforeScore = Number(beforeP?.score ?? 0);
 
-      const beforeMarksRaw = beforeP?.marks?.[rawTarget] ?? 0;
+      const recordedGoal = specialChoice === "bed" ? 28 : specialChoice === "special" && mult === 2 ? 26 : specialChoice === "special" && mult === 3 ? 27 : isExtendedCricket && rawTarget === 25 && mult === 2 && (bull50Choice === "double" || (Number(beforeP?.marks?.[25] || 0) >= 3)) ? 26 : rawTarget;
+      const beforeMarksRaw = beforeP?.marks?.[recordedGoal] ?? 0;
       const beforeMarks = Math.min(3, Number(beforeMarksRaw ?? 0));
 
       const hitsSoFar = extractHitsForPlayerFromState(prev, pid).length;
@@ -1258,16 +1327,16 @@ function renderAvatarCircle(
         seg = 25;
         if (mult >= 2) ring = "DB";
         else ring = "SB";
-        marks = mult >= 2 ? 2 : 1;
+        marks = recordedGoal === 26 ? 1 : mult >= 2 ? 2 : 1;
         rawScore = (25 * (mult >= 2 ? 2 : 1));
-      } else if (rawTarget >= 15 && rawTarget <= 20) {
+      } else if (rawTarget >= 1 && rawTarget <= 20) {
         seg = rawTarget;
         ring = mult >= 3 ? "T" : mult >= 2 ? "D" : "S";
         marks = mult;
         rawScore = rawTarget * mult;
       }
 
-      let nextTmp = applyCricketHit(prev, rawTarget as any, mult) as any;
+      let nextTmp = applyCricketHit(prev, rawTarget as any, mult, bull50Choice, specialChoice) as any;
 
       const afterP = nextTmp.players?.[nextTmp.history?.[nextTmp.history.length - 1]?.playerIndex ?? nextTmp.currentPlayerIndex] ?? nextTmp.players?.[prev.currentPlayerIndex];
       const afterScore = Number(afterP?.score ?? 0);
@@ -1283,7 +1352,7 @@ function renderAvatarCircle(
         }
       }
 
-      const afterMarksRaw = (afterP?.marks?.[rawTarget] ?? beforeMarksRaw);
+      const afterMarksRaw = (afterP?.marks?.[recordedGoal] ?? beforeMarksRaw);
       const afterMarks = Math.min(3, Number(afterMarksRaw ?? 0));
       const closedSegmentNow = (rawTarget === 25 || (rawTarget >= 15 && rawTarget <= 20))
         ? (beforeMarks < 3 && afterMarks >= 3)
@@ -1322,7 +1391,7 @@ function renderAvatarCircle(
       setState(nextTmp);
     } catch (e) {
       // fallback : si recorder fail, on applique juste le hit
-      let next = applyCricketHit(state, rawTarget as any, mult) as any;
+      let next = applyCricketHit(state, rawTarget as any, mult, bull50Choice, specialChoice) as any;
       sfxForHit(rawTarget, mult);
       next = maybeApplyMaxRoundsHardStop(next);
       setState(next);
@@ -1346,6 +1415,8 @@ function renderAvatarCircle(
   }
 
   function handleUndo() {
+    if (pendingBull50) { setPendingBull50(false); return; }
+    if (pendingWildMouse) { setPendingWildMouse(null); return; }
     if (!state) return;
     const next = undoLastCricketHit(state) as any;
     try { cricketRecorder.eventsRef.current.pop(); } catch {}
@@ -1368,7 +1439,16 @@ function renderAvatarCircle(
       {
         withPoints: scoreMode === "points",
         cutThroat: isCutThroatRoute,
-        maxRounds,
+        maxRounds: cricketRule === "quickie" ? 10 : maxRounds,
+        extended: isExtendedCricket,
+        targets: configuredCricketTargets(cricketRule, pickItNumbers),
+        doubleOnly: cricketRuleData.doubleOnly,
+        allowTripleMaster: masterAllowsTriples,
+        hiddenTargets: cricketRuleData.hidden,
+        sameBed: cricketRuleData.sameBed,
+        exclusiveSpecial: cricketRuleData.exclusiveSpecial,
+        wildCard: cricketRuleData.wildCard,
+        suddenDeathGap: cricketRuleData.suddenDeath,
       }
     );
 
@@ -1376,6 +1456,8 @@ function renderAvatarCircle(
     legIdRef.current = `cricket:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
     cricketRecorder.resetLeg(legIdRef.current);
 
+    setPendingBull50(false);
+    setPendingWildMouse(null);
     setState(match);
     setHitMode("S");
     setLegStartAt(Date.now());;
@@ -1384,6 +1466,7 @@ function renderAvatarCircle(
   }
 
   function handleQuitInternal() {
+    setPendingBull50(false);
     setState(null);
     setPhase("setup");
     setHitMode("S");
@@ -1837,7 +1920,7 @@ return {
   // --------------------------------------------------
 
   if (phase === "setup") {
-    const selectionOrder = [...selectedIds, ...selectedBotIds].slice(0, 4);
+    const selectionOrder = [...selectedIds, ...selectedBotIds].slice(0, cricketMaxParticipants);
 
     const labelForId = (id: string) => {
       const idx = selectionOrder.indexOf(id);
@@ -1846,11 +1929,11 @@ return {
 
     const selectedCountLocal = selectedIds.length + selectedBotIds.length;
 
-    const canStartBaseLocal = selectedCountLocal >= 2 && selectedCountLocal <= 4;
+    const canStartBaseLocal = selectedCountLocal >= 2 && selectedCountLocal <= cricketMaxParticipants && (!cricketRuleData.pick || pickItNumbers.length===6);
     const wantsTeamLocal = teamMode;
     const teamNeedsBotLocal = wantsTeamLocal && selectedCountLocal === 3 && fillWithBots;
     const teamValidCountLocal = wantsTeamLocal ? selectedCountLocal === 4 || teamNeedsBotLocal : true;
-    const cricketFormatValidLocal = teamMode || isQuickParty || (mssCricketFormat === "duel" ? selectedCountLocal === 2 : selectedCountLocal >= 3);
+    const cricketFormatValidLocal = teamMode || isQuickParty || (mssCricketFormat === "duel" ? selectedCountLocal === 2 : selectedCountLocal >= 2);
     const canStartLocal = canStartBaseLocal && teamValidCountLocal && cricketFormatValidLocal;
 
     const ArrowBtn = ({ dir, onClick }: { dir: "left" | "right"; onClick: () => void }) => (
@@ -1899,7 +1982,7 @@ return {
     );
 
     return (
-      <DartsConfigGuideBoundary route="cricket_config">
+      <React.Fragment>
       <div
         className="page cricket-config-setup"
         style={{
@@ -1931,31 +2014,21 @@ return {
     }}
   >
     <img
-      src={
-        variantId === "enculette"
-          ? tickerEnculette
-          : variantId === "cut_throat"
-          ? tickerCutThroat
-          : tickerCricket
-      }
-      alt={
-        variantId === "enculette"
-          ? "Cricket — Enculette"
-          : variantId === "cut_throat"
-          ? "Cricket — Cut-Throat"
-          : "Cricket"
-      }
+      src={dartsQuickTicker(cricketRule === "double_only" ? "cricket_master" : cricketRule === "classic" ? "cricket" : `cricket_${cricketRule}`) || (variantId === "enculette" ? tickerEnculette : cricketRule === "tactics" ? tickerMaster : cricketRule === "cut_throat" ? tickerCutThroat : tickerCricket)}
+      alt={`Configuration · ${cricketRuleData.label}`}
       draggable={false}
       style={{
         width: "100%",
-        height: 92,
-        objectFit: "cover",
+        height: "auto",
+        aspectRatio: "800 / 230",
+        objectFit: "contain",
         // ✅ si le titre du ticker est “coupé”, ajuste ce % (plus grand = montre plus bas)
         objectPosition: tickerObjectPosition,
         display: "block",
       }}
     />
 
+    {!['classic','cut_throat'].includes(cricketRule) && <div style={{position:'absolute',bottom:4,left:50,right:50,textAlign:'center',pointerEvents:'none'}}><span style={{fontSize:10,fontWeight:1000,letterSpacing:1.4,color:'#ffe6a1',background:'rgba(5,7,18,.87)',border:'1px solid #f6c25688',padding:'3px 12px',borderRadius:999,textShadow:'0 0 6px #000'}}>{cricketRuleData.label}</span></div>}
     {/* Overlay boutons */}
     <div
       style={{
@@ -2001,64 +2074,86 @@ return {
         <div style={{ maxWidth: 700, margin: "0 auto" }}>
           <MssClassicConfigFlow
             title="Cricket"
-            steps={["Awena vous explique", "Joueurs ou équipes", "Format", "Sélection", "Variante", "Scoring", "Manches", "Départ et options", "Récapitulatif"]}
-            step={mssCricketStep} view={mssCricketView} accent={T.gold}
+            steps={cricketSteps}
+            step={mssCricketStep} view={mssCricketView} accent={T.gold} progressiveSingleLine
             summary={`${selectedCountLocal} joueurs · ${teamMode ? "2 équipes" : "individuel"}`}
             onStep={setMssCricketStep} onView={setMssCricketView}
             onHelp={() => setInfoOpen(true)}
           />
-          {(mssCricketView === "complete" || mssCricketStep === 0) && <>
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Awena vous explique")) && <>
             <MssClassicOverview title="CRICKET · AWENA VOUS EXPLIQUE"
-              description="Ferme les secteurs 20 à 15 et le BULL en trois marques, puis utilise les points pour prendre l’avantage. Configure les participants avant de lancer."
+              description={isExtendedCricket ? "TACTICS : ferme 15 à 20, DOUBLE, TRIPLE et BULL (trois marques chacun)." : isNoScoreRoute ? "CRICKET SANS POINTS : ferme les sept cibles. Le score ne compte pas, seule la fermeture décide du classement." : cricketRuleData.description}
               accent={T.gold} onHelp={() => setInfoOpen(true)} />
-            <DartsRelatedModesPanel gameId={variantId === "cut_throat" ? "cricket_cut_throat" : "cricket"}
+            <DartsRelatedModesPanel gameId={isExtendedCricket ? "cricket_tactics" : variantId === "cut_throat" ? "cricket_cut_throat" : (params?.gameId || "cricket")}
               accent={T.gold} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
           </>}
-          {(mssCricketView === "complete" || mssCricketStep === 1) && <SectionCard title="1. JOUEURS / ÉQUIPES">
-            <MssKillerParticipantMode mode={teamMode ? "teams" : "players"} accent={T.gold} onChange={v=>setTeamMode(v==="teams")} />
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Joueurs ou équipes")) && <SectionCard title="1. JOUEURS / ÉQUIPES">
+            <MssKillerParticipantMode mode={teamMode ? "teams" : "players"} accent={T.gold} onChange={v=>{setTeamMode(v==="teams"); if(v==="teams"){setSelectedIds(prev=>prev.slice(0,4));setSelectedBotIds([]);}}} />
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === 2) && <SectionCard title="2. FORMAT">
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Format")) && <SectionCard title="2. FORMAT">
             <MssKillerFormat mode={teamMode ? "teams" : "players"} playerFormat={mssCricketFormat}
               onPlayerFormat={setMssCricketFormat} teamCount={2} onTeamCount={()=>{}} teamSize={2}
-              onTeamSize={()=>{}} accent={T.gold} maxPlayers={4} />
+              onTeamSize={()=>{}} accent={T.gold} maxPlayers={cricketMaxParticipants > 4 ? 999 : 4} unlimitedPlayers={cricketMaxParticipants > 4} />
             {teamMode && <div style={{textAlign:"center",fontSize:12,color:T.textSoft,marginTop:12}}>Format du moteur CRICKET : deux équipes de deux participants (2v2).</div>}
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === 3) && <SectionCard title={teamMode ? "3. CHOIX ÉQUIPES" : "3. CHOIX JOUEURS"}>
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Sélection")) && <SectionCard title={teamMode ? "3. CHOIX ÉQUIPES" : "3. CHOIX JOUEURS"}>
             <p style={{fontSize:12,color:T.textSoft,lineHeight:1.45,margin:"0 0 10px"}}>
-              {teamMode ? "Choisis quatre participants. Les équipes sont composées J1+J3 contre J2+J4, conformément au moteur Cricket actuel." : "Choisis deux à quatre joueurs ou bots, avec leurs avatars MSS."}
+              {teamMode ? "Choisis quatre participants. Équipes J1+J3 contre J2+J4." : cricketMaxParticipants > 4 ? "Nombre de joueurs illimité : ajoute les profils et bots nécessaires." : "Choisis deux à quatre joueurs ou bots, avec leurs avatars MSS."}
             </p>
-            <PlayerPagedSelector usageMode="cricket" profiles={allProfiles.filter((p:any)=>!p?.isBot)}
-              selectedIds={selectedIds} onToggle={toggleProfile} accent={T.gold} pageSize={9}
-              modalTitle="Choisir des joueurs" />
-            {botProfiles?.length ? <div style={{ marginTop: 12 }}>
-              <BotPagedSelector bots={botProfiles} selectedIds={selectedBotIds} onToggle={toggleBot}
-                accent={T.gold} label="BOTS IA" modalTitle="Choisir des BOTS IA" pageSize={4} showCheckbox={false}/>
-            </div> : null}
+            <MssKillerPlayersShared
+              usageMode="cricket"
+              profiles={allProfiles.filter((p:any)=>!p?.isBot)}
+              bots={botProfiles}
+              selectedIds={[...selectedIds, ...selectedBotIds]}
+              onToggle={(id:string) => {
+                if (String(id).startsWith("mss-bot-") || botProfiles.some((b:any) => String(b.id) === String(id))) toggleBot(id);
+                else toggleProfile(id);
+              }}
+              accent={T.gold}
+              maxSelection={cricketMaxParticipants}
+              onCreateProfile={(profile:any) => {
+                setCricketCreatedProfiles(prev => [...prev, profile]);
+              }}
+              onCreateBot={(bot:any) => {
+                setCricketCreatedBots(prev => [...prev, { ...bot, isBot: true }]);
+              }}
+            />
             <div style={{marginTop:9,textAlign:"center",fontSize:12,color:selectedCountLocal>=2?T.gold:"#ff929b"}}>
-              {selectedCountLocal}/4 sélectionnés · minimum 2 {teamMode ? "· 4 en équipes" : ""}
+              {selectedCountLocal}{cricketMaxParticipants > 4 ? "" : "/4"} sélectionnés · minimum 2 {teamMode ? "· 4 en équipes" : ""}
             </div>
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === 4) && <SectionCard title="4. VARIANTE">
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
-              {([['classic','CRICKET',tickerCricket],['cut_throat','CUT-THROAT',tickerCutThroat],['enculette','ENCULETTE',tickerEnculette]] as const).map(([id,label,ticker])=><button key={id} type="button" aria-pressed={variantId===id} disabled={isCutThroatRoute && id !== 'cut_throat'} onClick={()=>{setVariantId(id);if(id==='cut_throat')setScoreMode('points');}}
-                style={{minWidth:0,borderRadius:14,padding:5,border:`1px solid ${variantId===id?T.gold:'#ffffff30'}`,background:variantId===id?'#f6c25622':'#ffffff08',color:variantId===id?T.gold:'#eee',cursor:isCutThroatRoute&&id!=='cut_throat'?'not-allowed':'pointer',opacity:variantId===id?1:.48,display:'grid',gap:7,alignContent:'start',textAlign:'center'}}>
-                <img src={ticker} alt="" style={{display:'block',width:'100%',aspectRatio:'16/8',objectFit:'cover',borderRadius:9}} />
-                <strong style={{fontSize:10,lineHeight:1.2,overflowWrap:'anywhere'}}>{label}</strong>
-              </button>)}
-            </div>
-            <div style={{marginTop:12,textAlign:'center',color:T.gold,fontWeight:950}}>{variantId==='classic'?'CRICKET CLASSIQUE':variantId==='cut_throat'?'CRICKET CUT-THROAT':'ENCULETTE / VACHE'}</div>
-            <p style={{fontSize:12,textAlign:'center',lineHeight:1.5,color:T.textSoft}}>{variantId==='classic'?'Ferme les cibles 15 à 20 et le Bull ; marque des points sur les secteurs encore ouverts chez les autres.':variantId==='cut_throat'?'Variante Cut-Throat : les points pénalisent les adversaires encore ouverts sur la cible.':'Variante du Cricket avec ses règles spécifiques. Consulte les règles avant de jouer.'}</p>
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Règles de la variante")) && cricketRuleData.pick && <SectionCard title="CIBLES · PICK-IT">
+            <p style={{fontSize:12,color:T.textSoft}}>Sélectionne exactement six numéros de 1 à 20. Le BULL est ajouté automatiquement.</p>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:7}}>{Array.from({length:20},(_,i)=>i+1).map(n=><button key={n} type="button" aria-pressed={pickItNumbers.includes(n)} onClick={()=>setPickItNumbers(prev=>prev.includes(n) ? prev.filter(k=>k!==n) : prev.length<6 ? [...prev,n] : prev)} style={{minHeight:40,borderRadius:10,border:`1px solid ${pickItNumbers.includes(n)?T.gold:'#ffffff36'}`,background:pickItNumbers.includes(n)?'#f6c25624':'#ffffff08',color:pickItNumbers.includes(n)?T.gold:'#fff',fontWeight:900}}>{n}</button>)}</div>
+            <div style={{textAlign:'center',fontSize:12,color:T.gold}}>{pickItNumbers.length}/6 numéros sélectionnés</div>
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === 5) && <SectionCard title="5. MODE DE SCORING">
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Règles de la variante")) && cricketRuleData.doubleOnly && <SectionCard title="MASTER · VALIDATION">
+            <MssKillerBooleanToggle label="AUTORISER AUSSI LES TRIPLES" checked={masterAllowsTriples} accent={T.gold} onChange={setMasterAllowsTriples} />
+            <p style={{fontSize:12,color:T.textSoft}}>Doubles obligatoires par défaut. Lorsque l'option est activée, les triples comptent aussi. Chaque impact valide une marque.</p>
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Règles de la variante")) && (cricketRuleData.random || cricketRuleData.hidden) && <SectionCard title="CIBLES ALÉATOIRES">
+            <p style={{fontSize:12,color:T.textSoft}}>{cricketRuleData.hidden ? 'Les six numéros secrets sont tirés au lancement et révélés quand un joueur les touche.' : 'Six numéros sont tirés au lancement, plus BULL.'}</p>
+          </SectionCard>}
+          {hasVariantRulesStep && (mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Règles de la variante")) && <SectionCard title={`RÈGLES · ${isNoScoreRoute ? "SANS POINTS" : cricketRuleData.label}`}>
+            <p style={{fontSize:13,color:T.textSoft,lineHeight:1.55,margin:"0 0 8px"}}>{isNoScoreRoute ? "Sans points : le premier à fermer toutes les cibles remporte la partie." : cricketRuleData.description}</p>
+            {cricketRuleData.extended && <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,marginTop:10}}>
+              {(["DOUBLE", "TRIPLE", "BULL", ...(cricketRuleData.sameBed ? ["3 DANS UN LIT"] : [])]).map(item=><div key={item} style={{border:`1px solid ${T.gold}55`,borderRadius:12,padding:"10px 3px",textAlign:"center",color:item==="DOUBLE"?"#29caff":item==="TRIPLE"?"#ee5de9":T.gold,fontWeight:900,fontSize:11}}>{item}</div>)}
+            </div>}
+            {cricketRuleData.exclusiveSpecial && <p style={{color:T.textSoft,fontSize:12,lineHeight:1.5}}>WILD MOUSE : chaque impact valide une seule condition, à choisir lors du lancer. Il n'est jamais compté deux fois.</p>}
+            {cricketRuleData.wildCard && <p style={{color:T.textSoft,fontSize:12}}>JOKER : la cible bonus évolue à chaque manche et accorde une marque supplémentaire.</p>}
+            {cricketRuleData.suddenDeath != null && <div style={{color:T.gold,fontWeight:900,textAlign:"center",marginTop:8}}>ÉLIMINATION : {cricketRuleData.suddenDeath} POINTS DE RETARD</div>}
+            {cricketRuleData.maxRounds != null && <p style={{color:T.gold,fontWeight:900,textAlign:"center"}}>LIMITE : {cricketRuleData.maxRounds} MANCHES</p>}
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Scoring")) && <SectionCard title="MODE DE SCORING">
             <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
-              {([['points','AVEC POINTS'],['no-points','SANS POINTS']] as const).map(([id,label])=><button key={id} type="button" disabled={(isCutThroatRoute||variantId==='cut_throat')&&id==='no-points'} aria-pressed={scoreMode===id} onClick={()=>setScoreMode(id)} style={{minHeight:70,borderRadius:15,border:`1px solid ${scoreMode===id?T.gold:'#ffffff30'}`,background:scoreMode===id?'#f6c25622':'#ffffff08',color:scoreMode===id?T.gold:'#fff',fontWeight:900,opacity:(isCutThroatRoute||variantId==='cut_throat')&&id==='no-points'?.35:1}}>{label}</button>)}
+              {([['points','AVEC POINTS'],['no-points','SANS POINTS']] as const).map(([id,label])=><button key={id} type="button" disabled={((isCutThroatRoute||variantId==='cut_throat'||cricketRule==='sudden_death')&&id==='no-points') || (isNoScoreRoute&&id==='points')} aria-pressed={scoreMode===id} onClick={()=>setScoreMode(id)} style={{minHeight:70,borderRadius:15,border:`1px solid ${scoreMode===id?T.gold:'#ffffff30'}`,background:scoreMode===id?'#f6c25622':'#ffffff08',color:scoreMode===id?T.gold:'#fff',fontWeight:900,opacity:(((isCutThroatRoute||variantId==='cut_throat'||cricketRule==='sudden_death')&&id==='no-points')||(isNoScoreRoute&&id==='points'))?.35:1}}>{label}</button>)}
             </div>
-            <p style={{color:T.textSoft,fontSize:12,textAlign:'center',lineHeight:1.5}}>{(isCutThroatRoute||variantId==='cut_throat')?'Cut-Throat impose le calcul des points.':scoreMode==='points'?'Les secteurs fermés peuvent rapporter des points tant qu’ils restent ouverts chez un adversaire.':'La victoire repose sur la fermeture des secteurs, sans comptabiliser de points.'}</p>
+            <p style={{color:T.textSoft,fontSize:12,textAlign:'center',lineHeight:1.5}}>{isNoScoreRoute?'Cricket sans points : la victoire dépend uniquement de la fermeture des objectifs.':(isCutThroatRoute||variantId==='cut_throat')?'Cut-Throat impose le calcul des points.':scoreMode==='points'?'Les secteurs fermés peuvent rapporter des points tant qu’ils restent ouverts chez un adversaire.':'La victoire repose sur la fermeture des secteurs, sans comptabiliser de points.'}</p>
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === 6) && <SectionCard title="6. MANCHES MAXIMUM">
-            <div style={{display:'flex',justifyContent:'center',gap:12}}>{[10,15,20].map(n=><button key={n} type="button" aria-pressed={maxRounds===n} onClick={()=>setMaxRounds(n)} style={{width:62,height:55,borderRadius:15,border:`1px solid ${maxRounds===n?T.gold:'#ffffff30'}`,background:maxRounds===n?'#f6c25622':'#ffffff08',color:maxRounds===n?T.gold:'#fff',fontWeight:950,fontSize:17}}>{n}</button>)}</div>
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Manches")) && <SectionCard title="MANCHES MAXIMUM">
+            <div style={{display:'flex',justifyContent:'center',gap:12}}>{(cricketRule === "quickie" ? [10] : [10,15,20]).map(n=><button key={n} type="button" aria-pressed={maxRounds===n} onClick={()=>setMaxRounds(n)} style={{width:62,height:55,borderRadius:15,border:`1px solid ${maxRounds===n?T.gold:'#ffffff30'}`,background:maxRounds===n?'#f6c25622':'#ffffff08',color:maxRounds===n?T.gold:'#fff',fontWeight:950,fontSize:17}}>{n}</button>)}</div>
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === 7) && <SectionCard title="7. DÉPART ET OPTIONS">
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Départ et saisie")) && <SectionCard title="DÉPART ET SAISIE">
             <div style={{display:'grid',gap:12}}>
               <div style={{fontSize:12,fontWeight:900,color:T.gold}}>ORDRE DE DÉPART</div>
               <div style={{display:'flex',justifyContent:'center',gap:10}}>
@@ -2079,18 +2174,18 @@ return {
               <div style={{fontSize:12,color:T.gold,fontWeight:900,textAlign:'center'}}>{inputMethod==='keypad'?'KEYPAD':'CIBLE'}</div>
             </div>
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === 8) && <SectionCard title="8. FICHE DE PARTIE">
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Récapitulatif")) && <SectionCard title="FICHE DE PARTIE">
             <div style={{display:'grid',gap:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><strong style={{color:T.gold}}>PARAMÈTRES DE LANCEMENT</strong><span style={{color:canStartLocal?T.gold:'#ff929b',fontSize:12,fontWeight:900}}>{canStartLocal?'✓ PRÊT':'À COMPLÉTER'}</span></div>
               <div style={{color:T.gold,fontSize:12,fontWeight:950}}>JOUEURS EN JEU</div>
               <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:7}}>{selectionOrder.map((id,i)=>{const player=allProfiles.find((p:any)=>p.id===id)||botProfiles.find((p:any)=>p.id===id);return <div key={id} style={{border:'1px solid #ffffff22',borderRadius:11,padding:7,display:'flex',gap:8,alignItems:'center',minWidth:0}}><ProfileAvatar profile={player as any} size={34}/><span style={{fontSize:12,fontWeight:800,overflow:'hidden',textOverflow:'ellipsis'}}>{(player as any)?.name||`J${i+1}`}</span></div>})}</div>
               <div style={{color:T.gold,fontSize:12,fontWeight:950}}>RÈGLES ESSENTIELLES</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}}>{[['Format',teamMode?'2 équipes · 2v2':'Individuel'],['Variante',variantId==='classic'?'Classique':variantId==='cut_throat'?'Cut-Throat':'Enculette'],['Scoring',scoreMode==='points'?'Avec points':'Sans points'],['Tours max',String(maxRounds)],['Départ',randomStart?'Aléatoire':'Sélection'],['Rotation',rotateFirstPlayer?'Oui':'Non']].map(([label,v])=><div key={label} style={{border:'1px solid #ffffff21',background:'#ffffff06',borderRadius:11,padding:9}}><div style={{color:'#aab5cb',fontSize:10,fontWeight:900}}>{label.toUpperCase()}</div><strong style={{color:'#fff',fontSize:12}}>{v}</strong></div>)}</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}}>{[['Format',teamMode?'2 équipes · 2v2':'Individuel'],['Variante',isNoScoreRoute?'Sans points':variantId==='classic'?'Classique':variantId==='cut_throat'?'Cut-Throat':isExtendedCricket?'Tactics':cricketRuleData.label],['Scoring',scoreMode==='points'?'Avec points':'Sans points'],['Tours max',String(cricketRule === 'quickie' ? 10 : maxRounds)],['Départ',randomStart?'Aléatoire':'Sélection'],['Rotation',rotateFirstPlayer?'Oui':'Non']].map(([label,v])=><div key={label} style={{border:'1px solid #ffffff21',background:'#ffffff06',borderRadius:11,padding:9}}><div style={{color:'#aab5cb',fontSize:10,fontWeight:900}}>{label.toUpperCase()}</div><strong style={{color:'#fff',fontSize:12}}>{v}</strong></div>)}</div>
               <button type="button" disabled={!canStartLocal} onClick={handleStartMatch} style={{border:'none',borderRadius:999,padding:'13px 18px',background:canStartLocal?T.gold:'#555b67',color:canStartLocal?'#1a1408':'#eee',fontWeight:1000,fontSize:15,cursor:canStartLocal?'pointer':'not-allowed'}}>LANCER LE CRICKET</button>
               {!canStartLocal&&<p style={{margin:0,fontSize:11,color:'#ff9c9c',textAlign:'center'}}>Sélectionne les participants nécessaires avant de lancer.</p>}
             </div>
           </SectionCard>}
-          {mssCricketView === "guided" && mssCricketStep > 0 && <MssCricketAwenaTip step={mssCricketStep} />}
+          {mssCricketView === "guided" && mssCricketStep > 0 && <MssCricketAwenaTip step={mssCricketStep} stepName={cricketSteps[mssCricketStep]} variant={isNoScoreRoute ? "no_score" : cricketRule} />}
         </div>
 
 	        {/* INFO (Règles) */}
@@ -2165,7 +2260,7 @@ return {
 	          </div>
 	        )}
       </div>
-      </DartsConfigGuideBoundary>
+      </React.Fragment>
     );
   }
 
@@ -2293,6 +2388,41 @@ return {
         boxSizing: "border-box",
       }}
     >
+      {pendingWildMouse && state.exclusiveSpecial && (
+        <div role="dialog" aria-modal="true" aria-label="Affectation Wild Mouse" style={{position:'fixed',inset:0,zIndex:3200,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.8)',padding:15}}>
+          <div style={{maxWidth:440,width:'100%',background:'#0b1020',border:`1px solid ${T.gold}`,borderRadius:20,padding:16,display:'grid',gap:10}}>
+            <div style={{color:T.gold,fontSize:18,fontWeight:1000,textAlign:'center'}}>WILD MOUSE · CHOISIR L'OBJECTIF</div>
+            <p style={{fontSize:12,color:'#c9d2e6',lineHeight:1.5,textAlign:'center',margin:0}}>Une fléchette ne peut compter que pour une seule condition. Trois fléchettes affectées à BED dans le même lit pendant une volée ajoutent une marque BED.</p>
+            {([['number',String(pendingWildMouse.target),`Une marque sur ${pendingWildMouse.target}`],...(pendingWildMouse.mult>1?[['special',pendingWildMouse.mult===2?'DOUBLE':'TRIPLE','Une marque sur la ligne spéciale']]:[]),['bed','BED · TROIS-DANS-UN-LIT','Garder cet impact pour une série de trois identiques']] as string[][]).map(([choice,label,desc])=><button key={choice} type="button" onClick={()=>{const pending=pendingWildMouse;setPendingWildMouse(null);registerHit(pending.target,pending.mult,undefined,choice as 'number'|'special'|'bed');}} style={{border:'1px solid #f6c25688',borderRadius:12,padding:11,background:'#151b2b',color:'#fff',display:'grid',gap:3,cursor:'pointer'}}><strong style={{color:T.gold}}>{label}</strong><small style={{color:'#bac5dc'}}>{desc}</small></button>)}
+            <button type="button" style={{border:'1px solid #ffffff33',borderRadius:11,padding:11,background:'#101521',color:'#fff'}} onClick={()=>setPendingWildMouse(null)}>ANNULER</button>
+          </div>
+        </div>
+      )}
+      {pendingBull50 && isExtendedCricket && (
+        <div role="dialog" aria-modal="true" aria-label="Choix impact BULL50" style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,.78)", backdropFilter: "blur(6px)", display: "flex", justifyContent: "center", alignItems: "center", padding: 16 }}>
+          <div style={{ width: "100%", maxWidth: 440, background: "#0b1020", border: `1px solid ${T.gold}`, borderRadius: 20, padding: 18, display: "grid", gap: 14, boxShadow: "0 25px 70px rgba(0,0,0,.7)" }}>
+            <div style={{ textAlign: "center", color: T.gold, fontWeight: 950, fontSize: 20 }}>DBULL50 · CHOISIR L’OBJECTIF</div>
+            <div style={{ textAlign: "center", color: "#c9d2e6", fontSize: 13 }}>Affecte ton impact au BULL ou au DOUBLE. Une seule option sera comptabilisée.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <button type="button" onClick={() => { setPendingBull50(false); registerHit(25, 2, "bull"); }} style={{ border: "1px solid #22c55e", background: "rgba(34,197,94,.12)", borderRadius: 16, padding: 14, color: "#86efac", cursor: "pointer", minHeight: 100, display: "grid", gap: 8, justifyItems: "center" }}>
+                <strong style={{ fontSize: 18 }}>BULL</strong><span style={{ fontSize: 13 }}>+2 marques</span>
+              </button>
+              <button type="button" onClick={() => { setPendingBull50(false); registerHit(25, 2, "double"); }} style={{ border: "1px solid #06b6d4", background: "rgba(6,182,212,.12)", borderRadius: 16, padding: 14, color: "#67e8f9", cursor: "pointer", minHeight: 100, display: "grid", gap: 8, justifyItems: "center" }}>
+                <strong style={{ fontSize: 18 }}>DOUBLE</strong><span style={{ fontSize: 13 }}>+1 marque</span>
+              </button>
+            </div>
+            <button type="button" onClick={() => setPendingBull50(false)} style={{ border: "1px solid #ffffff33", background: "#161c2c", borderRadius: 12, padding: 11, color: "#fff", fontWeight: 800, cursor: "pointer" }}>ANNULER</button>
+          </div>
+        </div>
+      )}
+      {state.wildCard != null && <div style={{textAlign:'center',color:T.gold,background:'#f6c2561a',border:'1px solid #f6c25666',borderRadius:10,padding:9,fontWeight:900,fontSize:13,marginBottom:8}}>🃏 JOKER DE LA MANCHE : {state.wildCard} · +1 MARQUE</div>}
+      {(state.eliminatedIds?.length||0)>0 && <div style={{fontSize:12,color:'#ff8a93',marginBottom:8}}>ÉLIMINÉS : {state.players.filter(p=>state.eliminatedIds?.includes(p.id)).map(p=>p.name).join(' · ')}</div>}
+      {state.extended ? <div style={{marginBottom:9,position:'relative',borderRadius:8,overflow:'hidden'}}>
+        <img src={cricketRule === "tactics" ? tickerMaster : tickerCricket} alt={cricketRuleData.label} style={{width:'100%',height:'auto',aspectRatio:'800/230',objectFit:'contain',display:'block'}} />
+        <button type="button" aria-label="Actions et quitter" onClick={() => setShowEnd(true)} style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',border:'1px solid #ffbd49',borderRadius:99,background:'#080b12bd',color:'#ffbd49',width:30,height:30,fontSize:19,fontWeight:900,cursor:'pointer'}}>←</button>
+        <button type="button" aria-label="Règles Cricket Master" onClick={() => setShowHelp(true)} style={{position:'absolute',right:8,top:8,border:'1px solid #ffbd49',borderRadius:99,background:'#080b12bd',color:'#ffbd49',width:28,height:28,fontWeight:900}}>i</button>
+      </div> : null}
+      {!state.extended ? <>
       {/* HEADER */}
       <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -2353,6 +2483,7 @@ return {
         </div>
       </div>
 
+      </> : null}
       {/* MODAL AIDE */}
       {showHelp && (
         <div
@@ -2509,8 +2640,8 @@ return {
 
               {state.players.map((p, idx) => {
                 const accent = ACCENTS[idx % ACCENTS.length];
-                const mTotal = marksTotal(p);
-                const cCount = closedCount(p);
+                const mTotal = marksTotal(p, !!state.extended, state.targets);
+                const cCount = closedCount(p, !!state.extended, state.targets);
                 const winner = p.id === state.winnerId;
                 return (
                   <div
@@ -2622,8 +2753,21 @@ return {
         </div>
       )}
 
+      {state.extended ? <CricketMasterPlayStage
+        targets={state.targets}
+        gameLabel={cricketRuleData.label}
+        players={state.players as any[]}
+        activePlayerId={currentPlayer.id}
+        profiles={[...allProfiles, ...botProfiles]}
+        dartsThrown={thrown}
+        round={Math.max(1, clampRoundNumber(state) || 1)}
+        maxRounds={maxRounds}
+        withPoints={state.withPoints}
+        onObjective={() => setShowHelp(true)}
+        onActions={() => setShowEnd(true)}
+      /> : <>
       {/* CARTES JOUEURS */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 5 }}>
         {state.players.map((p, idx) => {
           const isActive = p.id === currentPlayer.id;
           const isWinnerPlayer = p.id === state.winnerId;
@@ -2644,13 +2788,14 @@ return {
 
           const totalPlayers = state.players.length;
           const avatarSize = totalPlayers === 2 ? 58 : totalPlayers === 4 ? 40 : 48;
-          const layout4Players = totalPlayers === 4;
+          const layout4Players = totalPlayers >= 4;
 
           return (
             <div
               key={p.id}
               style={{
-                flex: 1,
+                flex: totalPlayers > 4 ? "0 0 102px" : 1,
+                minWidth: totalPlayers > 4 ? 102 : 0,
                 padding: layout4Players ? "8px 6px" : "10px",
                 borderRadius: 16,
                 background: bg,
@@ -2690,7 +2835,20 @@ return {
     marginBottom: 12,
   }}
 >
-  {state.players.length === 2 ? (
+  {state.extended || !!state.targets || state.players.length > 4 ? (
+    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div style={{minWidth:Math.max(360,state.players.length*68+68)}}>
+        <div style={{display:"grid",gridTemplateColumns:`68px repeat(${state.players.length}, minmax(68px,1fr))`,gap:4,marginBottom:8}}>
+          <strong style={{color:T.gold,fontSize:10,textAlign:"center"}}>CIBLE</strong>
+          {state.players.map((p:any)=><strong key={p.id} title={p.name} style={{fontSize:10,textAlign:"center",whiteSpace:"nowrap",textOverflow:"ellipsis",overflow:"hidden",color:p.id===currentPlayer.id?T.gold:"#bdc6d6"}}>{p.name}</strong>)}
+        </div>
+        {(state.targets ?? (state.extended?CRICKET_EXTENDED_UI_TARGETS:CRICKET_UI_TARGETS)).map(target=><div key={target} style={{display:"grid",gridTemplateColumns:`68px repeat(${state.players.length}, minmax(68px,1fr))`,alignItems:"center",gap:4,borderTop:"1px solid #ffffff12",minHeight:43}}>
+          <strong style={{fontSize:target===26||target===27?11:15,color:getTargetColor(target),textAlign:"center"}}>{state.hiddenTargets && target!==25 && !state.players.some(p=>Number(p.marks[target]||0)>0) ? "?" : target===25?"BULL":target===26?"DOUBLE":target===27?"TRIPLE":target}</strong>
+          {state.players.map((p:any,idx:number)=><MarkCell key={p.id} marks={Number(p.marks[target]||0)} playerIndex={idx} isActive={p.id===currentPlayer.id}/>)}
+        </div>)}
+      </div>
+    </div>
+  ) : state.players.length === 2 ? (
     <>
       {CRICKET_UI_TARGETS.map((target) => {
         const label = target === 25 ? "Bull" : String(target);
@@ -2845,6 +3003,8 @@ return {
 
 
 
+      </>}
+
 {/* Cricket — méthode de saisie */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
   <button
@@ -2913,6 +3073,29 @@ return {
   </div>
 ) : null}
 
+{state.extended ? (
+  <section aria-label="Saisie Cricket Master" style={{marginTop:10,marginBottom:10,background:'#070a13',border:'1px solid #ffbf4655',borderRadius:18,padding:9,display:'grid',gap:8}}>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
+      {(['S','D','T'] as const).map(mode=>{
+        const selected=hitMode===mode;
+        const color=mode==='D'?'#06b6d4':mode==='T'?'#d946ef':'#aab1ba';
+        return <button key={mode} type="button" aria-pressed={selected} disabled={finishedFlag||botThinking} onClick={()=>setHitMode(mode)} style={{minHeight:39,borderRadius:12,border:`1px solid ${color}`,background:selected?`${color}36`:'#111521',boxShadow:selected?`0 0 11px ${color}55`:'none',color:mode==='S'?'#ffffff':'#ffffff',fontWeight:950,cursor:'pointer'}}>{mode==='S'?'SIMPLE':mode==='D'?'DOUBLE':'TRIPLE'}</button>;
+      })}
+    </div>
+    {inputMethod === 'keypad' ? <>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
+        {[15,16,17,18,19,20].map(value=><button type="button" key={value} disabled={finishedFlag||botThinking} onClick={()=>registerHit(value)} style={{minHeight:53,borderRadius:13,border:'1px solid #ffb93380',background:'linear-gradient(160deg,#35200c,#120f10)',color:'#ffbf46',fontSize:25,fontWeight:1000,cursor:'pointer'}}>{value}</button>)}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
+        <button type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(25,1)} style={{minHeight:42,borderRadius:12,border:'1px solid #22c55e',background:'#064e3b',color:'#fff',fontWeight:950,cursor:'pointer'}}>BULL25</button>
+        <button type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(25,2)} style={{minHeight:42,borderRadius:12,border:'1px solid #ef4444',background:'#991b1b',color:'#fff',fontWeight:950,cursor:'pointer'}}>DBULL50</button>
+        <button type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(0,1)} style={{minHeight:42,borderRadius:12,border:'1px solid #d58a18',background:'#b97720',color:'#382008',fontWeight:950,cursor:'pointer'}}>MISS</button>
+      </div>
+      <button type="button" aria-expanded={showMasterOtherSectors} onClick={()=>setShowMasterOtherSectors(v=>!v)} style={{fontSize:11,letterSpacing:.3,color:'#b7bfce',border:'1px solid #ffffff26',background:'#101521',borderRadius:10,minHeight:34,cursor:'pointer'}}>AUTRES SECTEURS (1–14) · {showMasterOtherSectors?'MASQUER':'AFFICHER'}</button>
+      {showMasterOtherSectors && <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:5}}>{Array.from({length:14},(_,index)=>index+1).map(value=><button key={value} type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(value)} style={{border:'1px solid #ffffff27',borderRadius:9,background:'#141a27',minHeight:38,fontWeight:900,color:'#fff',cursor:'pointer'}}>{value}</button>)}</div>}
+    </> : <div style={{textAlign:'center',fontSize:11,color:'#b1bacd'}}>Touche directement la cible pour enregistrer un impact.</div>}
+  </section>
+) : <>
 {/* DOUBLE / TRIPLE / BULL */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
   <button
@@ -3035,6 +3218,8 @@ return {
 </div>
 ) : null}
 
+</>}
+
 {/* BAS : ANNULER / RESUME */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
   <button
@@ -3083,4 +3268,11 @@ return {
 </div>
     </div>
   );
+}
+
+/** English Cricket uses a separate innings/wickets engine, never the Cricket marks engine. */
+export default function CricketPlay(props: Props) {
+  const variant = String(props.params?.variantId ?? props.params?.presetVariantId ?? '').toLowerCase();
+  if (variant === 'english') return <EnglishCricketPlay {...props} />;
+  return <CricketPlayCore {...props} />;
 }

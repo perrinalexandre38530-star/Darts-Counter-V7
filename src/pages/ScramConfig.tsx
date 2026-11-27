@@ -7,6 +7,10 @@ import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 
 import React from "react";
 import DartsRelatedModesPanel from "../components/DartsRelatedModesPanel";
+import { MssClassicConfigFlow, MssClassicOverview } from "../components/config/MssClassicConfigFlow";
+import MssKillerPlayersShared from "../components/config/MssKillerPlayersShared";
+import { MssKillerParticipantMode } from "../components/config/MssKillerParticipantProtocol";
+import MssScramAwenaTip from "../components/config/MssScramAwenaTip";
 import { dartsFamilyGameNavigation } from "../games/dartsGameFamilies";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
@@ -179,6 +183,11 @@ export default function ScramConfig(props: any) {
   const humanProfiles = React.useMemo(() => storeProfiles.filter((profile) => !isBotLike(profile)), [storeProfiles]);
 
   const [participantMode, setParticipantMode] = React.useState<ParticipantMode>(saved.participantMode === "teams" ? "teams" : "players");
+  const [scramStep, setScramStep] = React.useState(0);
+  const [scramHelpOpen, setScramHelpOpen] = React.useState(false);
+  const [scramView, setScramView] = React.useState<"guided" | "complete">("guided");
+  const [scramCreatedProfiles, setScramCreatedProfiles] = React.useState<any[]>([]);
+  const [scramCreatedBots, setScramCreatedBots] = React.useState<any[]>([]);
   const [teamsSourceMode, setTeamsSourceMode] = React.useState<TeamsSourceMode>(
     saved.teamsSourceMode === "saved" || saved.teamsSourceMode === "auto" ? saved.teamsSourceMode : "manual"
   );
@@ -276,8 +285,8 @@ export default function ScramConfig(props: any) {
   ]);
 
   const allProfiles = React.useMemo(
-    () => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))],
-    [humanProfiles, botProfiles]
+    () => [...humanProfiles, ...scramCreatedProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true })), ...scramCreatedBots.map((bot) => ({ ...bot, isBot: true }))],
+    [humanProfiles, scramCreatedProfiles, botProfiles, scramCreatedBots]
   );
   const byId = React.useMemo(
     () => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])),
@@ -685,8 +694,17 @@ export default function ScramConfig(props: any) {
         }
       />
 
-      <DartsRelatedModesPanel gameId="scram" accent={GOLD} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
       <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "12px 12px 0", overflowX: "hidden" }}>
+        <MssClassicConfigFlow title="SCRAM" steps={["Awena vous explique", "Participants", "Règles", "Fiche de partie"]}
+          step={scramStep} view={scramView} accent={primary} progressiveSingleLine summary={`${selectedIds.length} joueur(s) · ${participantMode === "teams" ? "équipes" : "individuel"}`}
+          onStep={setScramStep} onView={setScramView} onHelp={() => setScramHelpOpen(true)} progressiveSingleLine />
+        {(scramView === "complete" || scramStep === 0) && <>
+          <MssClassicOverview title="SCRAM · AWENA VOUS EXPLIQUE"
+            description="SCRAM est une variante à rôles : un camp ferme les cibles (bloqueur), l'autre marque (scoreur). À la deuxième phase, les rôles s'inversent."
+            accent={primary} onHelp={() => setScramHelpOpen(true)} />
+          <DartsRelatedModesPanel gameId="scram" accent={primary} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab, target.params); }} />
+        </>}
+        {(scramView === "complete" || scramStep === 1) && <>
         <section style={selectorCard}>
           <div
             style={{
@@ -701,46 +719,19 @@ export default function ScramConfig(props: any) {
             Participants
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-            <PillButton
-              label="Joueurs"
-              active={participantMode === "players"}
-              onClick={() => setParticipantMode("players")}
-              primary={primary}
-              primarySoft={primarySoft}
-            />
-            <PillButton
-              label="Équipes"
-              active={participantMode === "teams"}
-              onClick={() => setParticipantMode("teams")}
-              primary={primary}
-              primarySoft={primarySoft}
-            />
-          </div>
+          <MssKillerParticipantMode mode={participantMode} accent={primary} onChange={setParticipantMode} />
+          <div style={{height:12}} />
 
           {participantMode === "players" ? (
             <>
-              <SelectedParticipantsCompactBlock
-                items={selectedParticipantItems}
-                accent={primary}
-                onRemove={togglePlayer}
-                allProfiles={humanProfiles}
-              />
-              <PlayerPagedSelector
-                usageMode="scram"
-                profiles={humanProfiles}
-                selectedIds={selectedIds}
-                onToggle={togglePlayer}
-                accent={primary}
-                pageSize={9}
-                modalTitle="Choisir des joueurs"
-                showSelectedSummary={false}
-              />
-              <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
-                2 joueurs = duel solo. 4, 6 ou 8 joueurs = deux camps équilibrés.
+              <MssKillerPlayersShared usageMode="scram" profiles={[...humanProfiles,...scramCreatedProfiles]} bots={[...botProfiles,...scramCreatedBots]}
+                selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} maxSelection={8}
+                onCreateProfile={(profile:any) => setScramCreatedProfiles((prev:any[]) => [...prev,profile])}
+                onCreateBot={(bot:any) => setScramCreatedBots((prev:any[]) => [...prev,{...bot,isBot:true}])} />
+              <p style={{ fontSize: 11, color: "#aeb8c9", textAlign: "center", marginBottom: 0 }}>
+                Duel : 2 joueurs · MULTI : 4, 6 ou 8 joueurs en deux camps.
               </p>
-            </>
-          ) : (
+            </>          ) : (
             <TeamsSection
               profiles={teamProfiles}
               selectableProfiles={humanProfiles}
@@ -770,95 +761,7 @@ export default function ScramConfig(props: any) {
           )}
         </section>
 
-        {participantMode === "players" ? (
-          <section
-            style={{
-              width: "100%",
-              maxWidth: "100%",
-              minWidth: 0,
-              boxSizing: "border-box",
-              overflow: "hidden",
-              background: "rgba(10, 12, 24, 0.96)",
-              borderRadius: 18,
-              padding: 12,
-              marginBottom: 16,
-              boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-              border: "1px solid rgba(255,255,255,0.04)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, margin: 0 }}>
-                Bots IA
-              </h3>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  aria-pressed={botsPanelEnabled}
-                  onClick={() => setBotsPanelEnabled((value) => !value)}
-                  style={{
-                    padding: "7px 11px",
-                    borderRadius: 999,
-                    border: `1px solid ${primary}88`,
-                    background: botsPanelEnabled ? `${primary}18` : "rgba(255,255,255,0.04)",
-                    color: primary,
-                    fontWeight: 900,
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    cursor: "pointer",
-                  }}
-                >
-                  {botsPanelEnabled ? "☑ ON" : "☐ OFF"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => typeof go === "function" && go("profiles_bots")}
-                  style={{
-                    padding: "7px 11px",
-                    borderRadius: 999,
-                    border: `1px solid ${primary}`,
-                    background: "rgba(255,255,255,0.04)",
-                    color: primary,
-                    fontWeight: 900,
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    cursor: "pointer",
-                  }}
-                >
-                  Gérer les BOTS
-                </button>
-              </div>
-            </div>
-            <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-              Ajoute les mêmes BOTS IA prédéfinis ou personnels que dans X01.
-            </p>
-            {botsPanelEnabled ? (
-              <BotPagedSelector
-                bots={botProfiles as any}
-                selectedIds={selectedIds}
-                onToggle={togglePlayer}
-                accent={primary}
-                label="BOTS IA"
-                showCheckbox={false}
-                showSelectedSummary={false}
-              />
-            ) : null}
-            {selectedBotCount > 0 ? (
-              <div style={{ marginTop: 10 }}>
-                <OptionRow label="Difficulté IA Scram">
-                  <OptionSelect
-                    value={botLevel}
-                    options={[
-                      { value: "easy", label: "Facile" },
-                      { value: "normal", label: "Normal" },
-                      { value: "hard", label: "Difficile" },
-                    ]}
-                    onChange={setBotLevel}
-                  />
-                </OptionRow>
-              </div>
-            ) : null}
-          </section>
-        ) : teamsSourceMode !== "auto" ? (
+        {participantMode === "players" ? null : teamsSourceMode !== "auto" ? (
           <BotTeamsSection
             botTeams={botDartsTeams}
             selectedBotTeamIds={selectedBotTeamIds}
@@ -875,7 +778,9 @@ export default function ScramConfig(props: any) {
           />
         ) : null}
 
-        <Section title="RÈGLES">
+        </>}
+
+        {(scramView === "complete" || scramStep === 2) && <Section title="RÈGLES">
           <div style={panel}>
             <OptionRow label="Bull inclus">
               <OptionToggle value={useBull} onChange={setUseBull} />
@@ -915,9 +820,9 @@ export default function ScramConfig(props: any) {
               En duel solo, les noms des deux joueurs remplacent automatiquement les libellés d’équipe. La méthode de saisie choisie ici ne change plus dans l’écran Play.
             </div>
           </div>
-        </Section>
+        </Section>}
 
-        <div
+        {(scramView === "complete" || scramStep === 3) && <div
           style={{
             position: "relative",
             zIndex: 2,
@@ -965,10 +870,15 @@ export default function ScramConfig(props: any) {
               </div>
             ) : null}
           </div>
-        </div>
+        </div>}
+        {scramView === "guided" && scramStep > 0 && <MssScramAwenaTip step={scramStep} />}
+        {scramHelpOpen && <div onClick={() => setScramHelpOpen(false)} style={{position:"fixed",inset:0,zIndex:999999,background:"rgba(0,0,0,.72)",display:"grid",placeItems:"center",padding:16}}>
+          <div onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Awena vous explique le SCRAM" style={{maxWidth:520,width:"100%",maxHeight:"min(80dvh,760px)",overflowY:"auto",border:`1px solid ${primary}88`,borderRadius:18,background:"#090d1b",padding:16,display:"grid",gap:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><strong style={{color:primary}}>SCRAM · AWENA VOUS EXPLIQUE</strong><button type="button" aria-label="Fermer" onClick={() => setScramHelpOpen(false)} style={{background:"transparent",color:primary,border:`1px solid ${primary}88`,borderRadius:10,padding:8}}>×</button></div>
+            <RulesContent />
+          </div>
+        </div>}
       </div>
-    
-      
       </div>
   );
 }

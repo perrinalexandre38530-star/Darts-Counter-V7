@@ -67,6 +67,7 @@
 // ============================================
 
 import * as React from "react";
+import { DARTS_GAMES } from "./games/dartsGameRegistry";
 import { useViewerInteractiveBridge } from "./lib/viewer/useViewerInteractiveBridge";
 import { isSamsungTvNativeAppMode, readSamsungTvNativeAppBoot } from "./tv/samsung/tvNativeAppBridge";
 import { installViewerPhoneAudioRelay } from "./lib/viewer/viewerAudioBridge";
@@ -6865,7 +6866,7 @@ case "babyfoot_team_edit":
       case "cricket": {
         const cricketLaunchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick_play" : (routeParams?.resume || routeParams?.rec || routeParams?.snapshot ? "arcade" : "")));
         if (cricketLaunchMode === "quick") {
-          page = <QuickPartyModeConfig modeId="cricket" title="CRICKET" params={routeParams} onBack={() => go("cricket")} onStart={(result) => go(result.route, result.params)} />;
+          page = <QuickPartyModeConfig modeId="cricket" title={DARTS_GAMES.find(g => g.tab === "cricket" && String(g.variantId || "") === String(routeParams?.variantId || ""))?.label?.toUpperCase() || (String(routeParams?.variantId || "").toLowerCase() === "extended" ? "TACTICS" : "CRICKET")} params={{ ...routeParams, quickExtended: String(routeParams?.variantId || "").toLowerCase() === "extended" }} onBack={() => go("cricket")} onStart={(result) => go(result.route, result.params)} />;
         } else if (cricketLaunchMode === "arcade" || cricketLaunchMode === "quick_play") {
           page = (
             <CricketPlay
@@ -6876,7 +6877,9 @@ case "babyfoot_team_edit":
             />
           );
         } else {
-          page = <GameModeEntryChoice title={String(routeParams?.variantId || "").toLowerCase() === "cut_throat" ? "CRICKET CUT-THROAT" : "CRICKET"} tickerId={String(routeParams?.variantId || "").toLowerCase() === "cut_throat" ? "cricket_cut_throat" : "cricket"} gameId={String(routeParams?.variantId || "").toLowerCase() === "cut_throat" ? "cricket_cut_throat" : "cricket"} onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("cricket", { ...routeParams, launchMode: "quick" })} onArcade={() => go("cricket", { ...routeParams, launchMode: "arcade" })} />;
+          const requestedCricketGame = DARTS_GAMES.find((g) => g.tab === "cricket" && g.variantId && String(g.variantId) === String(routeParams?.variantId || ""));
+          const cricketChoiceId = requestedCricketGame?.id || "cricket";
+          page = <GameModeEntryChoice title={requestedCricketGame?.label?.toUpperCase() || "CRICKET"} tickerId={cricketChoiceId} gameId={cricketChoiceId} onOpenRelatedGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go(target.tab as Tab,target.params); }} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("cricket", { ...routeParams, launchMode: "quick" })} onArcade={() => go("cricket", { ...routeParams, launchMode: "arcade" })} />;
         }
         break;
       }
@@ -8237,7 +8240,7 @@ case "babyfoot_team_edit":
   // Règle paysage globale : la BottomNav devient normalement une rail verticale pendant PLAY.
   // P’TIT 1 fait exception : son écran de jeu exploite toute la largeur disponible en paysage,
   // comme en portrait, afin de préserver le couple panneau joueur + keypad sans débordement.
-  const forceFullscreenPlay = tab === "ptit_hun_play" || (tab === "bss_king_play" && isLandscapeViewport);
+  const forceFullscreenPlay = tab === "ptit_hun_play" || (tab === "cricket" && ["arcade", "quick_play"].includes(String(routeParams?.launchMode || "")) && (String(routeParams?.variantId || "").toLowerCase() === "extended" || routeParams?.quickExtended === true)) || (tab === "bss_king_play" && isLandscapeViewport);
   const showBottomNav = tab !== "live" && appChromeAllowed && !forceFullscreenPlay &&
     !(isSamsungTvNativeApp && isGamePlayRoute) &&
     (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));

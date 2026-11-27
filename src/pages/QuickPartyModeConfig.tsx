@@ -13,6 +13,8 @@ import MssKillerQuickSettings, { DEFAULT_KILLER_QUICK_RULES } from "../component
 import MssKillerQuickAwenaTip from "../components/config/MssKillerQuickAwenaTip";
 import MssFiveLivesQuickAwenaTip from "../components/config/MssFiveLivesQuickAwenaTip";
 import MssCricketAwenaTip from "../components/config/MssCricketAwenaTip";
+import { CRICKET_VARIANT_RULES } from "../lib/cricketVariantRules";
+import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
 import { MssInputMethodChoice } from "../components/config/MssPremiumConfig";
 
 type ModeId = "cricket" | "killer" | "five_lives" | "shanghai" | "halve_it" | "shooter" | "bowling" | "baseball" | "president";
@@ -84,18 +86,27 @@ function quickMeta() {
 
 export default function QuickPartyModeConfig({ modeId, title, params, onBack, onStart }: Props) {
   const { theme } = useTheme();
-  const spec = SPECS[modeId];
+  const isMasterQuick = modeId === "cricket" && (params?.quickExtended === true || ["extended", "tactics"].includes(String(params?.variantId || "").toLowerCase()));
+  const isNoScoreQuick = false; // Désormais option du CRICKET classique, jamais une carte distincte.
+  const isCutThroatQuick = modeId === "cricket" && ["cut_throat", "cut-throat", "cutthroat"].includes(String(params?.variantId || "").toLowerCase());
+  const quickMustScore = isCutThroatQuick || String(params?.variantId||"").toLowerCase()==="sudden_death";
+  const quickVariantId = String(params?.variantId || "classic");
+  const isFlexibleCricket = modeId === "cricket" && !["classic","cut_throat"].includes(quickVariantId);
+  const spec = isFlexibleCricket ? { ...SPECS.cricket, title: String(params?.gameId || quickVariantId).replace(/^cricket_/,"CRICKET ").replace(/_/g," ").toUpperCase(), maxPlayers: 999, maxQuickPlayers: 999, allowTeams: false } : SPECS[modeId];
   const accent = theme?.primary || "#55e6ff";
   const [layout, setLayout] = React.useState<LayoutMode>(spec.minPlayers > 2 ? "multi" : "duel");
   const [multiCount, setMultiCount] = React.useState(spec.defaultPlayers || 2);
-  const [names, setNames] = React.useState<string[]>(() => Array.from({ length: 20 }, (_, i) => `J${i + 1}`));
+  const [names, setNames] = React.useState<string[]>(() => Array.from({ length: 999 }, (_, i) => `J${i + 1}`));
   const [quickSessionId] = React.useState(() => `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
   const [killerRules, setKillerRules] = React.useState(DEFAULT_KILLER_QUICK_RULES);
   const [killerQuickStep, setKillerQuickStep] = React.useState(0);
   const isKillerQuick = modeId === "killer";
   const isCricketQuick = modeId === "cricket";
   const [cricketQuickStep,setCricketQuickStep] = React.useState(0);
-  const cricketQuickSteps = ["Participants","Scoring","Manches","Départ et saisie","Récapitulatif"];
+  const cricketQuickRule = CRICKET_VARIANT_RULES[(quickVariantId in CRICKET_VARIANT_RULES ? quickVariantId : isMasterQuick ? "tactics" : "classic") as keyof typeof CRICKET_VARIANT_RULES];
+  const cricketQuickHasVariantStep = isCricketQuick && (quickVariantId !== "classic" || isMasterQuick);
+  const cricketQuickSteps = ["Participants", ...(cricketQuickHasVariantStep ? ["Règles de la variante"] : []), "Scoring", "Manches", "Départ et saisie", "Récapitulatif"];
+  const cricketQuickStepFor = (label:string) => cricketQuickSteps.indexOf(label);
   const changeCricketQuickStep = (next:number) => {
     setCricketQuickStep(Math.max(0,Math.min(cricketQuickSteps.length-1,next)));
     try { window.scrollTo({top:0,behavior:"auto"}); } catch {}
@@ -118,8 +129,10 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
   const [fiveAllowEqualScore, setFiveAllowEqualScore] = React.useState(false);
   const [fiveStartOrder, setFiveStartOrder] = React.useState<"random" | "alternate" | "manual" | "bull">("random");
   const [shanghaiRounds, setShanghaiRounds] = React.useState(20);
-  const [cricketPoints, setCricketPoints] = React.useState(true);
+  const [cricketPoints, setCricketPoints] = React.useState(!isNoScoreQuick);
   const [cricketRounds, setCricketRounds] = React.useState(20);
+  const [cricketPickNumbers, setCricketPickNumbers] = React.useState<number[]>([20,19,18,17,16,15]);
+  const [cricketQuickMasterTriples, setCricketQuickMasterTriples] = React.useState(false);
   const [halvePreset, setHalvePreset] = React.useState<"classic7" | "numbers7" | "extended9" | "expert12">("classic7");
   const [shooterMarks, setShooterMarks] = React.useState(3);
   const [bowlingSets, setBowlingSets] = React.useState(1);
@@ -169,7 +182,8 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     ] : undefined;
 
     if (modeId === "cricket") {
-      onStart({ route: "cricket", params: { ...params, ...meta, launchMode: "quick_play", quickPlayers: players, quickPartyPlayers: players, autoQuickStart: true, quickTeamMode: layout === "teams", quickScoreMode: cricketPoints ? "points" : "no-points", quickMaxRounds: cricketRounds, quickRandomStart: cricketQuickOrder === "random", quickInputMethod: cricketQuickInput } });
+      if (quickVariantId === "pick_it" && cricketPickNumbers.length!==6) return;
+      onStart({ route: "cricket", params: { ...params, ...meta, launchMode: "quick_play", quickPlayers: players, quickPartyPlayers: players, quickExtended: isMasterQuick, quickPickItNumbers: cricketPickNumbers, quickMasterAllowsTriples: cricketQuickMasterTriples, variantId: isMasterQuick ? "tactics" : params?.variantId, autoQuickStart: true, quickTeamMode: layout === "teams", quickScoreMode: (quickMustScore || (cricketPoints && !isNoScoreQuick)) ? "points" : "no-points", quickMaxRounds: quickVariantId === "quickie" ? 10 : cricketRounds, quickRandomStart: cricketQuickOrder === "random", quickInputMethod: cricketQuickInput } });
       return;
     }
 
@@ -308,14 +322,27 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     </MssQuickPanel>
   ) : modeId === "cricket" ? (
     <>
-      {cricketQuickStep === 1 && <MssQuickPanel title="Mode de scoring">
-        <MssQuickChoices label="Score" options={[{value:true,label:"AVEC POINTS"},{value:false,label:"SANS POINTS"}]} value={cricketPoints} onChange={setCricketPoints} />
+      {cricketQuickStep === cricketQuickStepFor("Règles de la variante") && quickVariantId === "pick_it" && <MssQuickPanel title="CIBLES · PICK-IT">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:6}}>{Array.from({length:20},(_,i)=>i+1).map(n=><button key={n} type="button" aria-pressed={cricketPickNumbers.includes(n)} onClick={()=>setCricketPickNumbers(prev=>prev.includes(n)?prev.filter(v=>v!==n):prev.length<6?[...prev,n]:prev)} style={{border:`1px solid ${cricketPickNumbers.includes(n)?accent:'#ffffff33'}`,background:cricketPickNumbers.includes(n)?`${accent}26`:'#ffffff08',color:cricketPickNumbers.includes(n)?accent:'#fff',borderRadius:10,minHeight:38,fontWeight:900}}>{n}</button>)}</div>
+        <p style={{fontSize:12,color:'#bcc5d8',textAlign:'center'}}>{cricketPickNumbers.length}/6 numéros à fermer · BULL ajouté automatiquement.</p>
+      </MssQuickPanel>}
+      {cricketQuickHasVariantStep && cricketQuickStep === cricketQuickStepFor("Règles de la variante") && <MssQuickPanel title={`Règles · ${cricketQuickRule.label}`}>
+        <p style={{fontSize:12,color:"#c4cde0",lineHeight:1.55}}>{cricketQuickRule.description}</p>
+        {cricketQuickRule.doubleOnly && <MssKillerBooleanToggle label="AUTORISER AUSSI LES TRIPLES" checked={cricketQuickMasterTriples} onChange={setCricketQuickMasterTriples} accent={accent}/>}
+        {cricketQuickRule.extended && <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center"}}>{["DOUBLE","TRIPLE","BULL",...(cricketQuickRule.sameBed?["3 DANS UN LIT"]:[])].map(v=><span key={v} style={{border:`1px solid ${accent}88`,borderRadius:12,padding:"9px 12px",fontWeight:850,color:v==="DOUBLE"?"#24c9f5":v==="TRIPLE"?"#ec61df":accent}}>{v}</span>)}</div>}
+        {cricketQuickRule.exclusiveSpecial && <p style={{fontSize:12,color:"#bcc5d8"}}>Une fléchette valide une seule condition à la fois.</p>}
+        {cricketQuickRule.suddenDeath && <p style={{fontWeight:900,color:accent}}>Élimination à {cricketQuickRule.suddenDeath} points de retard.</p>}
+        {cricketQuickRule.wildCard && <p style={{fontSize:12,color:"#bcc5d8"}}>Le joker change à chaque manche.</p>}
+        {cricketQuickRule.random && <p style={{fontSize:12,color:"#bcc5d8"}}>{cricketQuickRule.hidden?"Les numéros restent secrets jusqu'à leur découverte.":"Les numéros sont tirés au sort au lancement."}</p>}
+      </MssQuickPanel>}
+      {cricketQuickStep === cricketQuickStepFor("Scoring") && <MssQuickPanel title="Mode de scoring">
+        {isNoScoreQuick || quickMustScore ? <div style={{textAlign:"center",color:accent,fontWeight:950}}>{isNoScoreQuick ? "SANS POINTS · règle du mode" : "AVEC POINTS · RÈGLE OBLIGATOIRE"}</div> : <MssQuickChoices label="Score" options={[{value:true,label:"AVEC POINTS"},{value:false,label:"SANS POINTS"}]} value={cricketPoints} onChange={setCricketPoints} />}
         <p style={{fontSize:12,textAlign:"center",color:"#aeb8cf",lineHeight:1.5}}>{cricketPoints?"Les cibles fermées permettent de marquer si elles sont encore ouvertes chez un adversaire.":"Seules les fermetures des secteurs comptent ; aucun point supplémentaire."}</p>
       </MssQuickPanel>}
-      {cricketQuickStep === 2 && <MssQuickPanel title="Limite de manches">
-        <MssQuickChoices label="Nombre maximum de manches" options={[10,15,20].map(value => ({value,label:String(value)}))} value={cricketRounds} onChange={setCricketRounds} compact />
+      {cricketQuickStep === cricketQuickStepFor("Manches") && <MssQuickPanel title="Limite de manches">
+        <MssQuickChoices label="Nombre maximum de manches" options={(quickVariantId==="quickie"?[10]:[10,15,20]).map(value => ({value,label:String(value)}))} value={cricketRounds} onChange={setCricketRounds} compact />
       </MssQuickPanel>}
-      {cricketQuickStep === 3 && <MssQuickPanel title="Départ et saisie">
+      {cricketQuickStep === cricketQuickStepFor("Départ et saisie") && <MssQuickPanel title="Départ et saisie">
         <div style={{display:"grid",gap:12}}>
           <div style={{fontSize:12,fontWeight:950,color:accent}}>ORDRE DE DÉPART</div>
           <div style={{display:"flex",justifyContent:"center",gap:10}}>
@@ -368,7 +395,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     ["Saisie", killerRules.inputMode.toUpperCase()],
   ] : modeId === "five_lives" ? [["Variante", fiveAllowEqualScore ? "Relais" : "Classique"], ["Vies", fiveLives], ["Départ", fiveStartOrder === "random" ? "Aléatoire" : fiveStartOrder === "alternate" ? "Alterné" : fiveStartOrder === "manual" ? "Manuel" : "Bull"]]
     : modeId === "shanghai" ? [["Manches", shanghaiRounds]]
-    : modeId === "cricket" ? [["Score", cricketPoints ? "Avec points" : "Sans points"], ["Manches", cricketRounds], ["Départ", cricketQuickOrder === "random" ? "Aléatoire" : "Sélection"], ["Saisie", cricketQuickInput === "keypad" ? "KEYPAD" : "CIBLE"]]
+    : modeId === "cricket" ? [["Score", cricketPoints ? "Avec points" : "Sans points"], ["Manches", quickVariantId==="quickie"?10:cricketRounds], ["Départ", cricketQuickOrder === "random" ? "Aléatoire" : "Sélection"], ["Saisie", cricketQuickInput === "keypad" ? "KEYPAD" : "CIBLE"]]
     : modeId === "shooter" ? [["Marques", shooterMarks]]
     : modeId === "bowling" ? [["Format", `BO${bowlingSets * 2 - 1}`]]
     : modeId === "baseball" ? [["Manches", baseballInnings]]
@@ -377,9 +404,9 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
 
   return (
     <div style={{ color: "#fff", minHeight: "100%", padding: "10px 12px 100px", display: "grid", gap: 12, alignContent: "start" }}>
-      <DartsQuickHeader modeId={modeId} title={title || spec.title} onBack={onBack} />
+      <DartsQuickHeader modeId={isCricketQuick ? (quickVariantId === "double_only" ? "cricket_master" : quickVariantId === "classic" ? "cricket" : `cricket_${quickVariantId}`) : modeId} title={isCricketQuick ? (title || spec.title) : (isMasterQuick || isNoScoreQuick ? spec.title : (title || spec.title))} onBack={onBack} />
       <div style={{ maxWidth: 760, width: "100%", margin: "0 auto", display: "grid", gap: 12 }}>
-        <DartsQuickIntro title={title || spec.title} />
+        <DartsQuickIntro title={isCricketQuick ? (title || spec.title) : (isMasterQuick || isNoScoreQuick ? spec.title : (title || spec.title))} />
         {isKillerQuick && <section aria-label="Étapes de la partie rapide KILLER" style={{ borderRadius: 18, border: `1px solid ${accent}66`, padding: "12px 13px", background: "rgba(9,12,24,.95)", display: "grid", gap: 11 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <strong style={{ fontSize: 13, fontWeight: 950, letterSpacing: .6, color: accent }}>PARTIE RAPIDE · KILLER</strong>
@@ -396,11 +423,11 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
           </div>
         </section>}
         {isCricketQuick && <section aria-label="Étapes partie rapide Cricket" style={{borderRadius:18,border:`1px solid ${accent}66`,padding:"12px 13px",background:"rgba(9,12,24,.95)",display:"grid",gap:11}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:7,alignItems:"center"}}><strong style={{color:accent,fontSize:13}}>PARTIE RAPIDE · CRICKET</strong><span style={{color:"#b9c3d4",fontSize:11}}>Étape {cricketQuickStep+1}/5</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",gap:7,alignItems:"center"}}><strong style={{color:accent,fontSize:13}}>PARTIE RAPIDE · {title || spec.title}</strong><span style={{color:"#b9c3d4",fontSize:11}}>Étape {cricketQuickStep+1}/{cricketQuickSteps.length}</span></div>
           <div style={{fontWeight:800,fontSize:12}}>{cricketQuickSteps[cricketQuickStep]}</div>
           <div style={{display:"flex",gap:8,justifyContent:"center"}}>{cricketQuickSteps.map((name,i)=><button key={name} type="button" onClick={()=>changeCricketQuickStep(i)} aria-label={`Étape ${i+1} : ${name}`} aria-current={cricketQuickStep===i?"step":undefined} style={{width:33,height:33,borderRadius:11,border:`1px solid ${cricketQuickStep===i?accent:"#ffffff2a"}`,background:cricketQuickStep===i?`${accent}22`:"#ffffff07",color:cricketQuickStep===i?accent:"#b4bdd0",fontWeight:900}}>{i+1}</button>)}</div>
-          <div style={{height:4,background:"#ffffff1c",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${(cricketQuickStep+1)*20}%`,background:accent}}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><button type="button" disabled={cricketQuickStep===0} onClick={()=>changeCricketQuickStep(cricketQuickStep-1)} style={{...chip(false),opacity:cricketQuickStep===0?.35:1}}>← Précédent</button><button type="button" disabled={cricketQuickStep===4} onClick={()=>changeCricketQuickStep(cricketQuickStep+1)} style={{...chip(cricketQuickStep<4),opacity:cricketQuickStep===4?.35:1}}>Suivant →</button></div>
+          <div style={{height:4,background:"#ffffff1c",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${(cricketQuickStep+1)*100/cricketQuickSteps.length}%`,background:accent}}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><button type="button" disabled={cricketQuickStep===0} onClick={()=>changeCricketQuickStep(cricketQuickStep-1)} style={{...chip(false),opacity:cricketQuickStep===0?.35:1}}>← Précédent</button><button type="button" disabled={cricketQuickStep===cricketQuickSteps.length-1} onClick={()=>changeCricketQuickStep(cricketQuickStep+1)} style={{...chip(cricketQuickStep<cricketQuickSteps.length-1),opacity:cricketQuickStep===cricketQuickSteps.length-1?.35:1}}>Suivant →</button></div>
         </section>}
         {isFiveLivesQuick && <section aria-label="Étapes partie rapide 5 Vies" style={{borderRadius:18,border:`1px solid ${accent}66`,padding:"12px 13px",background:"rgba(9,12,24,.95)",display:"grid",gap:11}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:7,alignItems:"center"}}><strong style={{color:accent,fontSize:13}}>PARTIE RAPIDE · 5 VIES</strong><span style={{color:"#b9c3d4",fontSize:11}}>Étape {fiveQuickStep+1}/{fiveStepNames.length}</span></div>
@@ -409,7 +436,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
           <div style={{height:4,background:"#ffffff1c",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${(fiveQuickStep+1)*100/fiveStepNames.length}%`,background:accent}}/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><button type="button" disabled={fiveQuickStep===0} onClick={()=>changeFiveQuickStep(fiveQuickStep-1)} style={{...chip(false),opacity:fiveQuickStep===0?.35:1}}>← Précédent</button><button type="button" disabled={fiveQuickStep===fiveStepNames.length-1} onClick={()=>changeFiveQuickStep(fiveQuickStep+1)} style={{...chip(fiveQuickStep<fiveStepNames.length-1),opacity:fiveQuickStep===fiveStepNames.length-1?.35:1}}>Suivant →</button></div>
         </section>}
-        {(!isKillerQuick || killerQuickStep === 0) && (!isFiveLivesQuick || fiveQuickStep === 0) && (!isCricketQuick || cricketQuickStep === 0) && <MssQuickPanel title="Participants">
+        {(!isKillerQuick || killerQuickStep === 0) && (!isFiveLivesQuick || fiveQuickStep === 0) && (!isCricketQuick || cricketQuickStep === cricketQuickStepFor("Participants")) && <MssQuickPanel title="Participants">
           <div role="group" aria-label="Format des participants" style={{ display: "grid", gridTemplateColumns: `repeat(${choices.length === 4 ? 2 : Math.min(3, choices.length)},minmax(0,1fr))`, gap: 8 }}>
             {choices.map(([key, text]) => {
               const active = key === layout;
@@ -498,15 +525,15 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
           </div>
         </MssQuickPanel>}
         {(!isKillerQuick || killerQuickStep === 1 || killerQuickStep === 2 || killerQuickStep === 3) && (!isFiveLivesQuick) && modeOptions}
-        {(!isKillerQuick || killerQuickStep === 4) && (!isFiveLivesQuick || fiveQuickStep === 4) && (!isCricketQuick || cricketQuickStep === 4) && <MssQuickRecap entries={[
+        {(!isKillerQuick || killerQuickStep === 4) && (!isFiveLivesQuick || fiveQuickStep === 4) && (!isCricketQuick || cricketQuickStep === cricketQuickSteps.length-1) && <MssQuickRecap entries={[
           ["Mode", title || spec.title],
           ["Participants", layout === "teams" ? "2 équipes · 2 joueurs" : `${playerCount} joueur${playerCount > 1 ? "s" : ""} · ${layout.toUpperCase()}`],
           ...ruleOverview,
           ...(modeId === "killer" ? [["Variantes", [killerRules.selfHitWhileKiller && "auto-pénalité", killerRules.lifeSteal && "vol de vies", killerRules.bullSplash && "dégâts BULL", killerRules.bullHeal && "soins", killerRules.bullHealFull && "soins max", killerRules.shieldOnDBull && "bouclier", killerRules.disarmOnDBull && "désarmement", killerRules.resurrectionMode !== "off" && "résurrection"].filter(Boolean).join(" · ") || "Aucune"] as [string,string]] : []),
         ]} />}
-        {(!isKillerQuick || killerQuickStep === 4) && (!isFiveLivesQuick || fiveQuickStep === 4) && (!isCricketQuick || cricketQuickStep === 4) && <MssQuickStart onClick={start} />}
+        {(!isKillerQuick || killerQuickStep === 4) && (!isFiveLivesQuick || fiveQuickStep === 4) && (!isCricketQuick || cricketQuickStep === cricketQuickSteps.length-1) && <MssQuickStart onClick={start} />}
         {isFiveLivesQuick && fiveQuickStep === 4 && <MssFiveLivesQuickAwenaTip />}
-        {isCricketQuick && cricketQuickStep === 4 && <MssCricketAwenaTip quick />}
+        {isCricketQuick && cricketQuickStep === cricketQuickSteps.length-1 && <MssCricketAwenaTip quick variant={quickVariantId} />}
         {isKillerQuick && killerQuickStep === 4 && <MssKillerQuickAwenaTip />}
       </div>
     </div>

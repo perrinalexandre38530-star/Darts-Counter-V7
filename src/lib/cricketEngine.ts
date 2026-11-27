@@ -8,7 +8,8 @@
 // - ✅ NEW: maxRounds stoppe vraiment la partie à la fin du dernier round
 // ============================================
 
-export type CricketTarget = 15 | 16 | 17 | 18 | 19 | 20 | 25;
+export type CricketTarget = number;
+/** Cibles virtuelles du Cricket Étendu : 26 = DOUBLE, 27 = TRIPLE. */
 export type Multiplier = 1 | 2 | 3;
 
 export type CricketVariant = "classic" | "enculette";
@@ -34,6 +35,10 @@ export type CricketHistoryEntry = {
   prevWinnerId: string | null;
   prevRoundNumber: number; // ✅ NEW
   prevTurnPoints: number; // ✅ NEW (enculette)
+  prevExtraMarks?: { double: number; triple: number; bed?: number };
+  prevEliminatedIds?: string[];
+  prevWildCard?: number | null;
+  specialChoice?: "number" | "special" | "bed";
 };
 
 export type CricketState = {
@@ -48,12 +53,25 @@ export type CricketState = {
   winnerId: string | null;
   withPoints: boolean;
   cutThroat: boolean;
+  extended: boolean;
+  /** Cibles du match, gelées au lancement (numéros réels + BULL et éventuels objectifs). */
+  targets?: CricketTarget[];
+  doubleOnly?: boolean;
+  allowTripleMaster?: boolean;
+  hiddenTargets?: boolean;
+  sameBed?: boolean;
+  exclusiveSpecial?: boolean;
+  wildCard?: number | null;
+  suddenDeathGap?: number;
+  eliminatedIds?: string[];
   maxRounds: number;
   roundNumber: number;
   history: CricketHistoryEntry[];
 };
 
 export const CRICKET_TARGETS: CricketTarget[] = [20, 19, 18, 17, 16, 15, 25];
+export const CRICKET_EXTENDED_TARGETS: CricketTarget[] = [...CRICKET_TARGETS, 26, 27];
+export function cricketTargets(state: Pick<CricketState,"extended"|"targets">): CricketTarget[] { return state.targets?.length ? state.targets : (state.extended ? CRICKET_EXTENDED_TARGETS : CRICKET_TARGETS); }
 
 function isClosed(marks: number): boolean {
   return marks >= 3;
@@ -67,19 +85,20 @@ function cloneState(state: CricketState): CricketState {
       marks: { ...p.marks },
     })),
     history: [...state.history],
+    eliminatedIds: [...(state.eliminatedIds || [])],
   };
 }
 
 function isTargetValid(t: RawTarget): t is CricketTarget {
-  return CRICKET_TARGETS.includes(t as CricketTarget);
+  return Number.isInteger(t) && ((t >= 1 && t <= 20) || t === 25 || t === 26 || t === 27 || t === 28);
 }
 
-function sumMarks(p: CricketPlayerState): number {
-  return CRICKET_TARGETS.reduce((acc, t) => acc + (p.marks[t] ?? 0), 0);
+function sumMarks(p: CricketPlayerState, extended = false, targets?: CricketTarget[]): number {
+  return (targets ?? (extended ? CRICKET_EXTENDED_TARGETS : CRICKET_TARGETS)).reduce((acc, t) => acc + (p.marks[t] ?? 0), 0);
 }
 
-function closedCount(p: CricketPlayerState): number {
-  return CRICKET_TARGETS.reduce((acc, t) => acc + (isClosed(p.marks[t] ?? 0) ? 1 : 0), 0);
+function closedCount(p: CricketPlayerState, extended = false, targets?: CricketTarget[]): number {
+  return (targets ?? (extended ? CRICKET_EXTENDED_TARGETS : CRICKET_TARGETS)).reduce((acc, t) => acc + (isClosed(p.marks[t] ?? 0) ? 1 : 0), 0);
 }
 
 // ---------- Création match ----------
@@ -90,6 +109,15 @@ export type CreateCricketMatchOptions = {
   cutThroat?: boolean;
   variant?: CricketVariant;
   objective?: number;
+  extended?: boolean;
+  targets?: CricketTarget[];
+  doubleOnly?: boolean;
+  allowTripleMaster?: boolean;
+  hiddenTargets?: boolean;
+  sameBed?: boolean;
+  exclusiveSpecial?: boolean;
+  wildCard?: boolean;
+  suddenDeathGap?: number;
 };
 
 export function createCricketMatch(
@@ -101,6 +129,7 @@ export function createCricketMatch(
   const maxRounds = opts.maxRounds ?? 20;
 
   const baseMarks: Record<CricketTarget, number> = {
+    ...Object.fromEntries(Array.from({ length:20 }, (_,i)=>[i+1,0])),
     15: 0,
     16: 0,
     17: 0,
@@ -108,6 +137,9 @@ export function createCricketMatch(
     19: 0,
     20: 0,
     25: 0,
+    26: 0,
+    27: 0,
+    28: 0,
   };
 
   const playerStates: CricketPlayerState[] = players.map((p) => ({
@@ -127,6 +159,16 @@ export function createCricketMatch(
     winnerId: null,
     withPoints,
     cutThroat,
+    extended: !!opts.extended,
+    targets: opts.targets?.length ? [...opts.targets] : undefined,
+    doubleOnly: !!opts.doubleOnly,
+    allowTripleMaster: !!opts.allowTripleMaster,
+    hiddenTargets: !!opts.hiddenTargets,
+    sameBed: !!opts.sameBed,
+    exclusiveSpecial: !!opts.exclusiveSpecial,
+    wildCard: opts.wildCard ? (opts.targets || CRICKET_TARGETS).filter(t => t<=20)[Math.floor(Math.random()*(opts.targets || CRICKET_TARGETS).filter(t=>t<=20).length)] : null,
+    suddenDeathGap: opts.suddenDeathGap || 0,
+    eliminatedIds: [],
     maxRounds,
     roundNumber: 1,
     history: [],
@@ -138,7 +180,7 @@ export function createCricketMatch(
 function checkWinner(state: CricketState): string | null {
   // tous les joueurs qui ont tout fermé
   const closedPlayers = state.players.filter((p) =>
-    CRICKET_TARGETS.every((t) => isClosed(p.marks[t] ?? 0))
+    cricketTargets(state).every((t) => isClosed(p.marks[t] ?? 0))
   );
   if (closedPlayers.length === 0) return null;
 
@@ -180,20 +222,20 @@ function checkWinner(state: CricketState): string | null {
 function winnerOnMaxRounds(state: CricketState): string | null {
   if (!state.players.length) return null;
 
-  const ranked = [...state.players].sort((a, b) => {
+  const ranked = state.players.filter(p=>!(state.eliminatedIds||[]).includes(p.id)).sort((a, b) => {
     // 1) si points -> score
     if (state.withPoints && b.score !== a.score) {
       return state.cutThroat ? (a.score - b.score) : (b.score - a.score);
     }
 
     // 2) nb de cibles fermées
-    const bc = closedCount(b);
-    const ac = closedCount(a);
+    const bc = closedCount(b, state.extended, state.targets);
+    const ac = closedCount(a, state.extended, state.targets);
     if (bc !== ac) return bc - ac;
 
     // 3) total marks
-    const bm = sumMarks(b);
-    const am = sumMarks(a);
+    const bm = sumMarks(b, state.extended, state.targets);
+    const am = sumMarks(a, state.extended, state.targets);
     if (bm !== am) return bm - am;
 
     // 4) stable
@@ -208,20 +250,24 @@ function winnerOnMaxRounds(state: CricketState): string | null {
 export function applyCricketHit(
   state: CricketState,
   target: RawTarget,
-  mult: Multiplier
+  mult: Multiplier,
+  bull50Choice?: "bull" | "double",
+  specialChoice?: "number" | "special" | "bed"
 ): CricketState {
   if (state.winnerId) return state;
+  if ((state.eliminatedIds||[]).includes(state.players[state.currentPlayerIndex]?.id)) return state;
 
   const next = cloneState(state);
   const playerIndex = next.currentPlayerIndex;
   const player = next.players[playerIndex];
 
-  const isValid = isTargetValid(target);
+  const isValid = cricketTargets(state).includes(Number(target));
   const cricketTarget = isValid ? (target as CricketTarget) : null;
 
   const beforeMarks = cricketTarget ? player.marks[cricketTarget] ?? 0 : 0;
   const beforeScore = player.score;
   const beforeTurnPoints = next.turnPoints ?? 0;
+  const beforeExtraMarks = state.extended ? { double: Number(player.marks[26] || 0), triple: Number(player.marks[27] || 0), bed: Number(player.marks[28] || 0) } : undefined;
 
   // ==================================================
   // VARIANTE ENCULETTE / VACHE
@@ -250,6 +296,10 @@ export function applyCricketHit(
       prevWinnerId: state.winnerId,
       prevRoundNumber: state.roundNumber,
       prevTurnPoints: beforeTurnPoints,
+      prevExtraMarks: beforeExtraMarks,
+      prevEliminatedIds: [...(state.eliminatedIds||[])],
+      prevWildCard: state.wildCard,
+      specialChoice,
     });
 
     next.turnPoints = beforeTurnPoints + dartPts;
@@ -297,9 +347,24 @@ export function applyCricketHit(
   }
 
 
+  // DBULL50 dans le Cricket Étendu : choix exclusif entre
+  // 2 marques BULL et 1 marque DOUBLE (3 doubles pour fermer DOUBLE).
+  // Si BULL est fermé, attribution automatique à DOUBLE.
+  const dbullExtended = next.extended && Number(target) === 25 && mult === 2;
+  const bullAlreadyClosed = Number(player.marks[25] || 0) >= 3;
+  const dbullToDouble = dbullExtended && (bullAlreadyClosed || bull50Choice === "double");
+
   // --- Marks + points seulement si cible Cricket (15..20 / Bull) ---
-  if (cricketTarget) {
-    let newMarks = beforeMarks + mult;
+  if (cricketTarget && !dbullToDouble) {
+    // CRICKET ÉTENDU : chaque objectif 15..20 et BULL demande
+    // TROIS impacts distincts (une marque par fléchette réussie).
+    // S20, D20 et T20 apportent chacun UNE marque au 20 ; D20/T20
+    // ajoutent également UNE marque à DOUBLE/TRIPLE respectivement.
+    // BULL25 rapporte 1 marque ; DBULL50 en rapporte 2 si choisi BULL.
+    // Le CRICKET classique conserve ses multiplicateurs de marques.
+    const acceptable = !next.doubleOnly || Number(target) === 25 || mult === 2 || (next.allowTripleMaster && mult === 3);
+    const hitMarks = !acceptable || (next.exclusiveSpecial && specialChoice && specialChoice!=="number") ? 0 : next.doubleOnly ? 1 : next.extended ? (dbullExtended ? 2 : 1) : (next.wildCard === cricketTarget ? mult + 1 : mult);
+    let newMarks = beforeMarks + hitMarks;
     if (newMarks < 0) newMarks = 0;
     player.marks[cricketTarget] = newMarks;
 
@@ -334,6 +399,18 @@ export function applyCricketHit(
   }
   // si 0..14 : on ne touche à rien, ce sera un MISS "pur"
 
+  // Cricket Étendu : chaque DOUBLE ou TRIPLE sur les secteurs 1..20
+  // ajoute UNE marque à son objectif dédié. DBULL peut être attribué à DOUBLE.
+  // Sur 15..20 la cible numérique progresse en parallèle.
+  if (next.extended) {
+    if ((Number(target) >= 1 && Number(target) <= 20 && mult === 2 && (!next.exclusiveSpecial || specialChoice==="special")) || dbullToDouble) {
+      player.marks[26] = Math.min(3, Number(player.marks[26] || 0) + 1);
+    }
+    if (Number(target) >= 1 && Number(target) <= 20 && mult === 3 && (!next.exclusiveSpecial || specialChoice==="special")) {
+      player.marks[27] = Math.min(3, Number(player.marks[27] || 0) + 1);
+    }
+  }
+
   // --- Historique pour Undo (y compris MISS) ---
   next.history.push({
     playerIndex,
@@ -346,7 +423,28 @@ export function applyCricketHit(
     prevWinnerId: state.winnerId,
     prevRoundNumber: state.roundNumber, // ✅ NEW
     prevTurnPoints: beforeTurnPoints,
+    prevExtraMarks: beforeExtraMarks,
+      prevEliminatedIds: [...(state.eliminatedIds||[])],
+      prevWildCard: state.wildCard,
+      specialChoice,
   });
+
+  // MICKEY MOUSE : 3 fléchettes dans le même lit (numéro ET anneau)
+  // pendant une volée complète ajoutent une marque à la ligne BED.
+  if (next.sameBed && next.remainingDarts === 1) {
+    const visit = next.history.slice(-3);
+    if (visit.length === 3 && visit.every(h => h.playerIndex===playerIndex && h.target===target && h.mult===mult && (!next.exclusiveSpecial || h.specialChoice==='bed'))
+      && Number(target)>=1 && Number(target)<=20) {
+      player.marks[28] = Math.min(3,Number(player.marks[28]||0)+1);
+    }
+  }
+  // Mort subite : l'écart de score élimine le joueur distancé.
+  if ((next.suddenDeathGap||0)>0 && next.withPoints) {
+    const leader = Math.max(...next.players.filter(p=>!(next.eliminatedIds||[]).includes(p.id)).map(p=>p.score));
+    for(const p of next.players) if(!(next.eliminatedIds||[]).includes(p.id) && leader - p.score >= (next.suddenDeathGap||100)) next.eliminatedIds!.push(p.id);
+    const survivors = next.players.filter(p=>!next.eliminatedIds!.includes(p.id));
+    if(survivors.length===1){next.winnerId=survivors[0].id;next.remainingDarts=0;return next;}
+  }
 
   // --- Consommation fléchette + passage joueur / round ---
   next.remainingDarts -= 1;
@@ -359,11 +457,17 @@ export function applyCricketHit(
 
     // passage joueur
     next.currentPlayerIndex = (next.currentPlayerIndex + 1) % next.players.length;
+    for(let i=0;i<next.players.length && next.eliminatedIds?.includes(next.players[next.currentPlayerIndex].id);i++)
+      next.currentPlayerIndex=(next.currentPlayerIndex+1)%next.players.length;
     next.remainingDarts = 3;
 
     // si on boucle (dernier joueur -> premier), on incrémente le round (sans dépasser max)
     if (wasLastPlayer) {
       next.roundNumber = Math.min(next.roundNumber + 1, next.maxRounds);
+      if(next.wildCard!=null) {
+        const candidates=cricketTargets(next).filter(t=>t>=1&&t<=20);
+        next.wildCard=candidates[Math.floor(Math.random()*candidates.length)] ?? null;
+      }
     }
 
     // ✅ FIN FORCÉE: fin du dernier round (dernier joueur vient de jouer sa 3e fléchette)
@@ -376,7 +480,7 @@ export function applyCricketHit(
   }
 
   // --- Vérifier victoire seulement si cible valide ---
-  if (cricketTarget) {
+  if (cricketTarget || dbullToDouble || (next.extended && Number(target) >= 1 && Number(target) <= 20 && (mult === 2 || mult === 3))) {
     const winner = checkWinner(next);
     if (winner) {
       next.winnerId = winner;
@@ -399,8 +503,13 @@ export function undoLastCricketHit(state: CricketState): CricketState {
   const player = next.players[entry.playerIndex];
 
   // si la cible était valide, on peut restaurer les marks
-  if (isTargetValid(entry.target)) {
+  if (isTargetValid(entry.target) && cricketTargets(next).includes(Number(entry.target))) {
     player.marks[entry.target] = entry.prevMarks;
+  }
+  if (entry.prevExtraMarks) {
+    player.marks[26] = entry.prevExtraMarks.double;
+    player.marks[27] = entry.prevExtraMarks.triple;
+    if(entry.prevExtraMarks.bed != null) player.marks[28]=entry.prevExtraMarks.bed;
   }
   player.score = entry.prevScore;
 
@@ -409,6 +518,8 @@ export function undoLastCricketHit(state: CricketState): CricketState {
   next.winnerId = entry.prevWinnerId;
   next.roundNumber = entry.prevRoundNumber; // ✅ NEW
   next.turnPoints = entry.prevTurnPoints ?? 0;
+  if(entry.prevEliminatedIds) next.eliminatedIds = [...entry.prevEliminatedIds];
+  next.wildCard = entry.prevWildCard ?? null;
 
   return next;
 }

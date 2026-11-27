@@ -405,6 +405,60 @@ const rawDartsGameRegistry: DartsGameDef[] = [
       "Mode score sur X rounds. Chaque volée ajoute ses points. Si tu fais 0 : pénalité -50. Objectif optionnel : premier à l'atteindre gagne. Si objectif = 0 : meilleur total en fin de rounds.",
   },
 
+  // Configurations jouables du moteur Cricket commun (chacune possède son preset).
+  {
+    id: "cricket_tactics", label: "Tactics", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "tactics", presetVariantId: "tactics",
+    popularityRank: 19, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:tactics", infoTitle: "TACTICS", infoBody: "Ferme 15 à 20, DOUBLE, TRIPLE et BULL : trois impacts par objectif. DBULL50 peut être affecté à BULL (+2) ou à DOUBLE (+1).",
+  },
+  {
+    id: "cricket_master", label: "Master Cricket", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "double_only", presetVariantId: "double_only",
+    popularityRank: 20, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:double_only", infoTitle: "MASTER CRICKET", infoBody: "Ferme 15 à 20 et BULL uniquement avec des impacts en DOUBLE. Option Arcade : autoriser aussi les TRIPLES.",
+  },
+  {
+    id: "cricket_low_ball", label: "Low-Ball Cricket", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "low_ball", presetVariantId: "low_ball",
+    popularityRank: 21, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:low_ball", infoTitle: "LOW-BALL CRICKET", infoBody: "Ferme les petits chiffres 1 à 6 et BULL en trois marques par objectif.",
+  },
+  {
+    id: "cricket_spanish", label: "Spanish Cricket", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "spanish", presetVariantId: "spanish",
+    popularityRank: 22, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:spanish", infoTitle: "SPANISH CRICKET", infoBody: "Ferme 11 à 20 et BULL. Nombreuses cibles, partie plus longue.",
+  },
+  {
+    id: "cricket_random", label: "Random Cricket", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "random", presetVariantId: "random",
+    popularityRank: 23, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:random", infoTitle: "RANDOM CRICKET", infoBody: "Six numéros parmi 1 à 20 sont tirés au sort au départ ; BULL est obligatoire.",
+  },
+  {
+    id: "cricket_pick_it", label: "Pick-It Cricket", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "pick_it", presetVariantId: "pick_it",
+    popularityRank: 24, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:pick_it", infoTitle: "PICK-IT CRICKET", infoBody: "Sélectionne six numéros de 1 à 20 avant de lancer ; BULL reste obligatoire.",
+  },
+  {
+    id: "cricket_hidden", label: "Hidden Cricket", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "hidden", presetVariantId: "hidden",
+    popularityRank: 25, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:hidden", infoTitle: "HIDDEN CRICKET", infoBody: "Six cibles secrètes sont tirées avant le match : les joueurs doivent les découvrir.",
+  },
+  {
+    id: "cricket_quickie", label: "Quickie Cricket", category: "variant", entry: "games", tab: "cricket",
+    baseGame: "cricket", variantId: "quickie", presetVariantId: "quickie",
+    popularityRank: 26, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true,
+    statsKey: "game:cricket:quickie", infoTitle: "QUICKIE CRICKET", infoBody: "Partie limitée à dix manches ; classement selon points, cibles fermées et marques.",
+  },
+  { id: "cricket_mickey_mouse", label: "Mickey Mouse", category: "variant", entry: "games", tab: "cricket", baseGame: "cricket", variantId: "mickey_mouse", presetVariantId: "mickey_mouse", popularityRank: 27, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true, statsKey: "game:cricket:mickey_mouse", infoTitle: "MICKEY MOUSE", infoBody: "Ferme 15 à 20, BULL, DOUBLE, TRIPLE et trois-dans-un-lit. Trois fléchettes dans le même lit pendant une volée ajoutent une marque à BED ; trois marques sont nécessaires." },
+  { id: "cricket_wild_mouse", label: "Wild Mouse", category: "variant", entry: "games", tab: "cricket", baseGame: "cricket", variantId: "wild_mouse", presetVariantId: "wild_mouse", popularityRank: 28, ready: true, maxPlayers: 999, supportsTeams: false, supportsBots: true, statsKey: "game:cricket:wild_mouse", infoTitle: "WILD MOUSE (MINNESOTA CRICKET)", infoBody: "Même grille que Mickey Mouse, mais chaque fléchette doit être affectée à une seule condition. Les fléchettes BED doivent former une série de trois impacts identiques sur une volée." },
+  { id: "cricket_wild_card", label: "Wild Card Cricket", category: "variant", entry: "games", tab: "cricket", baseGame: "cricket", variantId: "wild_card", presetVariantId: "wild_card", popularityRank: 28, ready: true, maxPlayers: 999, supportsTeams: true, supportsBots: true, statsKey: "game:cricket:wild_card", infoTitle: "WILD CARD CRICKET", infoBody: "Un numéro joker change aléatoirement à chaque manche. Le toucher ajoute une marque supplémentaire à sa fermeture." },
+  { id: "cricket_sudden_death", label: "Sudden Death Cricket", category: "variant", entry: "games", tab: "cricket", baseGame: "cricket", variantId: "sudden_death", presetVariantId: "sudden_death", popularityRank: 29, ready: true, maxPlayers: 999, supportsTeams: false, supportsBots: true, statsKey: "game:cricket:sudden_death", infoTitle: "SUDDEN DEATH CRICKET", infoBody: "Elimination immédiate lorsqu'un joueur est distancé d'au moins 100 points. Le dernier joueur restant gagne. Mode avec points obligatoire." },
+  { id: "cricket_english", label: "English Cricket", category: "variant", entry: "games", tab: "cricket", baseGame: "cricket", variantId: "english", presetVariantId: "english", popularityRank: 30, ready: true, maxPlayers: 2, supportsTeams: false, supportsBots: false, statsKey: "game:cricket:english", infoTitle: "ENGLISH CRICKET", infoBody: "Deux participants s'échangent les rôles de batteur et de lanceur. Le batteur marque les points au-delà de 40 par volée ; le lanceur retire 1 guichet sur BULL25, 2 sur DBULL50. Après dix guichets, les rôles s'inversent." },
   // ✅ (4) CUT-THROAT CRICKET (variante)
   {
     id: "cricket_cut_throat",
@@ -1636,6 +1690,19 @@ const READY_IDS = new Set<string>([
   "training_time_attack",
   "cricket",
   "cricket_cut_throat", // preset actif du moteur Cricket
+  "cricket_master", // Master Cricket : doubles obligatoires
+  "cricket_tactics", // neuf objectifs du Cricket étendu
+  "cricket_low_ball",
+  "cricket_spanish",
+  "cricket_random",
+  "cricket_pick_it",
+  "cricket_hidden",
+  "cricket_quickie",
+  "cricket_mickey_mouse",
+  "cricket_wild_mouse",
+  "cricket_wild_card",
+  "cricket_sudden_death",
+  "cricket_english",
   "enculette", // jeu associé avec sa propre configuration
   "darts_poker",
   "cargo",
