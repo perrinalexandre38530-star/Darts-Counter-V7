@@ -378,6 +378,28 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDo
   const proceduralPrompt = proceduralRoute ? awenaProcedurePromptForRoute(String(route || runtime.route || "")) : "";
 
   const isGameSelectRoute = String(route || runtime.route || "") === "gameSelect";
+  // Pendant une partie CRICKET, le lanceur vocal unique remplace le bouton
+  // d'information historique, directement au bord droit du ticker.
+  const cricketPlayDock = String(route) === "cricket" && inGame;
+  const [cricketDock, setCricketDock] = React.useState<{ top: number; right: number } | null>(null);
+  React.useEffect(() => {
+    if (!cricketPlayDock) { setCricketDock(null); return; }
+    const update = () => {
+      const band = document.querySelector<HTMLElement>(".mss-cricket-play-root .mss-cricket-header-band");
+      if (!band) return;
+      const r = band.getBoundingClientRect();
+      // Le bouton de 58 px occupe le coin bas droit du conteneur de 74 px.
+      // Son centre doit se situer à 30 px du bord droit, au milieu du ticker.
+      const right = Math.max(0, Math.round(window.innerWidth - r.right + 1));
+      const top = Math.max(0, Math.round(r.top + r.height / 2 - 45));
+      setCricketDock(prev => prev?.top === top && prev?.right === right ? prev : { top, right });
+    };
+    const raf = window.requestAnimationFrame(update);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("orientationchange", update);
+    return () => { window.cancelAnimationFrame(raf); window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); window.removeEventListener("orientationchange", update); };
+  }, [cricketPlayDock]);
   const awenaLauncherBottom = !inGame && isGameSelectRoute
     ? "calc(env(safe-area-inset-bottom, 0px) + 18px)"
     : 96;
@@ -411,14 +433,16 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDo
 
   return (
     <>
-      {!inGame && (
+      {(!inGame || cricketPlayDock) && (
         <div
           data-mss-floating-control="awena-launcher"
           data-mss-header-docked={landscapeHeaderDocked ? "1" : undefined}
           style={{
             position: "fixed",
-            right: 16,
-            bottom: awenaLauncherBottom,
+            right: cricketPlayDock && cricketDock ? cricketDock.right : 16,
+            bottom: cricketPlayDock ? "auto" : awenaLauncherBottom,
+            top: cricketPlayDock && cricketDock ? cricketDock.top : undefined,
+            visibility: cricketPlayDock && !cricketDock ? "hidden" : "visible",
             width: 74,
             height: 74,
             zIndex: 30040,

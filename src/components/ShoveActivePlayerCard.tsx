@@ -17,6 +17,9 @@ type Props = {
   /** Option générique : permet aux variantes Cricket d'utiliser exactement la carte SHOVE. */
   objectiveTitle?: string;
   objectiveSubtitle?: string;
+  /** Points affichés dans le modèle SHOVE pour les modes Cricket avec scoring. */
+  score?: number;
+  dartsPlayed?: number;
 };
 
 /** MSS SHOVE : avatar crop à gauche, marques centrales et objectif entièrement cliquable. */
@@ -25,6 +28,7 @@ export default function ShoveActivePlayerCard(p: Props) {
   const traditional = p.ruleSet === 'traditional';
   const objective = p.objectiveTitle || (traditional ? '1 À 9' : '15 À BULL');
   const objectiveSub = p.objectiveSubtitle || (traditional ? 'ORDRE LIBRE' : 'DANS L’ORDRE');
+  const displayedDarts = typeof p.dartsPlayed === "number" ? Math.min(3, Math.max(0, p.dartsPlayed)) : p.darts.length;
   const showRound = Number.isFinite(p.round) && Number.isFinite(p.maxRounds) && Number(p.maxRounds) > 0;
   return <section data-shove-active-player="mss-hero-v5" style={{position:'relative',isolation:'isolate',flex:'0 0 auto',minHeight:124,borderRadius:18,border:`1px solid ${p.accent}a8`,background:`linear-gradient(100deg,${p.accent}1b,rgba(9,13,22,.99) 65%)`,overflow:'hidden',boxShadow:`inset 0 1px 0 ${p.accent}a8, inset 0 0 24px ${p.accent}16`}}>
     {avatar ? <img src={avatar} alt="" aria-hidden="true" style={{position:'absolute',left:-38,top:-24,width:178,height:182,objectFit:'cover',objectPosition:'center',opacity:.21,filter:'saturate(.8)',pointerEvents:'none'}}/> : null}
@@ -33,11 +37,13 @@ export default function ShoveActivePlayerCard(p: Props) {
       <div style={{minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',gap:2,textAlign:'center',paddingLeft:12}}>
         <strong style={{color:p.accent,fontSize:'clamp(14px,3.1vw,19px)',fontWeight:1000,textTransform:'uppercase',letterSpacing:.55,maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</strong>
         <div aria-label={`${p.closedCases} case${p.closedCases>1?'s':''} fermée${p.closedCases>1?'s':''} sur ${p.totalCases}`} style={{color:p.accent,fontWeight:1000,letterSpacing:-1.5,fontSize:'clamp(38px,10vw,53px)',lineHeight:1.0,textShadow:`0 0 18px ${p.accent}40`}}>{p.closedCases}<span style={{fontWeight:850,letterSpacing:0,fontSize:15,color:'#bdc8d9'}}>/{p.totalCases}</span></div>
-        <div data-shove-darts="cricket-svg" aria-label={`${p.darts.length} fléchette(s) jouée(s) sur 3`} style={{display:'flex',gap:7,alignItems:'center',justifyContent:'center',paddingTop:4}}>
+        {typeof p.score === "number" ? <span style={{fontSize:10,fontWeight:950,color:"#dbe4f2"}}>SCORE <strong style={{fontSize:15,color:p.accent}}>{p.score}</strong></span> : null}
+        <div data-shove-darts="cricket-svg" aria-label={`${displayedDarts} fléchette(s) jouée(s) sur 3`} style={{display:'flex',gap:7,alignItems:'center',justifyContent:'center',paddingTop:4}}>
           {Array.from({length:3},(_,i)=>{
             const dart = p.darts[i];
+            const played = i < displayedDarts;
             return <span key={i} title={dart ? `Fléchette ${i+1} enregistrée` : `Fléchette ${i+1} à jouer`}
-              style={{width:30,height:21,display:'inline-block',flex:'0 0 auto',backgroundColor:dart ? mssHitColor(dart) : MSS_HIT.empty,opacity:dart?1:.35,WebkitMaskImage:`url(${cricketDartSvg})`,maskImage:`url(${cricketDartSvg})`,WebkitMaskRepeat:'no-repeat',maskRepeat:'no-repeat',WebkitMaskSize:'contain',maskSize:'contain',WebkitMaskPosition:'center',maskPosition:'center',filter:dart?`drop-shadow(0 0 5px ${mssHitColor(dart)})`:'none',transform:'rotate(-20deg)'}}/>;
+              style={{width:30,height:21,display:'inline-block',flex:'0 0 auto',backgroundColor:dart ? mssHitColor(dart) : played ? p.accent : MSS_HIT.empty,opacity:dart||played?1:.35,WebkitMaskImage:`url(${cricketDartSvg})`,maskImage:`url(${cricketDartSvg})`,WebkitMaskRepeat:'no-repeat',maskRepeat:'no-repeat',WebkitMaskSize:'contain',maskSize:'contain',WebkitMaskPosition:'center',maskPosition:'center',filter:dart?`drop-shadow(0 0 5px ${mssHitColor(dart)})`:'none',transform:'rotate(-20deg)'}}/>;
           })}
         </div>
       </div>

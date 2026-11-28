@@ -1,4 +1,5 @@
 import React from 'react';
+import BackDot from '../components/BackDot';
 import type {Profile} from '../lib/types';
 import ProfileAvatar from '../components/ProfileAvatar';
 import MssKillerPlayersShared from '../components/config/MssKillerPlayersShared';
@@ -26,7 +27,7 @@ export default function EnglishCricketPlay({profiles=[],params,go}:Props){
  const hit=(sector:number,multiplier:1|2|3=mult)=>{setState(prev=>prev?englishCricketThrow(prev,{sector,multiplier}):prev);setMult(1);};
  const title=(s:string)=><strong style={{color:gold,letterSpacing:.6,fontWeight:1000}}>{s}</strong>;
  return <div style={{minHeight:'100%',background:'#050712',color:'#fff',padding:'12px 12px 28px',display:'grid',gap:13,alignContent:'start'}}>
- <div style={{position:'relative',overflow:'hidden',borderRadius:12}}><img src={tickerCricket} alt="English Cricket" style={{display:'block',width:'100%',aspectRatio:'800/230',objectFit:'cover'}}/><button type="button" onClick={()=>go?.('games')} style={{position:'absolute',top:12,left:9,...choice(false),padding:7}}>←</button></div>
+ <div style={{position:'relative',overflow:'hidden',borderRadius:12}}><img src={tickerCricket} alt="English Cricket" style={{display:'block',width:'100%',aspectRatio:'800/230',objectFit:'cover'}}/><div style={{position:'absolute',left:9,top:'50%',transform:'translateY(-50%)',zIndex:4}}><BackDot size={36} color={gold} glow="rgba(246,194,86,.55)" title="Retour" onClick={()=>{if(phase==='play'){setPhase('setup');setState(null);setMult(1);}else if(typeof go==='function'){go('games');}else{window.history.back();}}}/></div></div>
  {phase==='setup'?<>
   <MssClassicConfigFlow title="English Cricket" steps={steps} step={setupStep} view={view} accent={gold} progressiveSingleLine summary={`${chosen.length}/2 joueurs`} onStep={setSetupStep} onView={setView} onHelp={()=>setSetupStep(0)}/>
   {(view==='complete'||setupStep===0)&&<section style={pane}>{title('ENGLISH CRICKET · AWENA VOUS EXPLIQUE')}<p style={{fontSize:13,lineHeight:1.6,color:'#c8d0e5',margin:0}}>Un joueur bat, l'autre lance. Le batteur ne gagne des runs que sur les points au-dessus de 40 par volée de trois fléchettes. Le lanceur vise BULL25 (un guichet) et DBULL50 (deux guichets). À zéro guichet, on échange les rôles et on compare les runs.</p></section>}

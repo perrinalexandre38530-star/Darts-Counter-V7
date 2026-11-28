@@ -2950,7 +2950,7 @@ export default function KillerConfigPage(props: Props) {
                   <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
                     <strong style={{ fontSize: 14, fontWeight: 1000, letterSpacing: .65, color: primary }}>FICHE DE PARTIE</strong>
                     <span style={{ color: "#afb8cb", fontSize: 11 }}>
-                      {participantMode === "teams" ? `${activeTeamGroups.length} équipes · ${teamSize} membres / équipe` : `${selectedIds.length} joueurs · ${playerFormat === "duel" ? "Duel" : "Multi"}`}
+                      {participantMode === "teams" ? `${activeTeamGroups.length} équipes · ${teamSize} membres / équipe` : playerFormat === "duel" ? "Sélectionne 2 participants" : `Sélection : ${selectedIds.length} participants · MULTI`}
                     </span>
                   </div>
                   <span role="status" style={{ border: `1px solid ${canStart ? primary : "#fb7185"}55`, borderRadius: 20, padding: "5px 9px", fontWeight: 950, fontSize: 10, whiteSpace: "nowrap", color: canStart ? primary : "#fb7185" }}>

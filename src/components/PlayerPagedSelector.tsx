@@ -493,6 +493,7 @@ export default function PlayerPagedSelector({
   profiles,
   selectedIds,
   onToggle,
+  maxSelection,
   accent = "#22dfff",
   pageSize = 9,
   modalTitle = "Choisir des joueurs",
@@ -657,13 +658,15 @@ export default function PlayerPagedSelector({
     const key = String(id ?? "");
     const wasSelected = selectedIdSet.has(key);
     const willBeSelected = !wasSelected;
+    // Shared MSS guard: count human profiles and CPU bots in the same selection.
+    if (willBeSelected && Number.isFinite(maxSelection) && selectedIdSet.size >= maxSelection) return;
     onToggle?.(id);
     onAfterToggle?.(id, { selected: willBeSelected, wasSelected });
     if (closeOnSelect) {
       closePicker();
       setListOpen(false);
     }
-  }, [onToggle, onAfterToggle, closeOnSelect, closePicker, selectedIdSet]);
+  }, [onToggle, onAfterToggle, closeOnSelect, closePicker, selectedIdSet, maxSelection]);
 
   return (
     <div style={{ display: "grid", gap: 12 }}>

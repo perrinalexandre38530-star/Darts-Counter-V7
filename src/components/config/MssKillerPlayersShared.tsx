@@ -37,13 +37,17 @@ export default function MssKillerPlayersShared({ usageMode, profiles, bots, sele
         avatarDataUrl:avatar,isBot:createKind==='bot',botLevel:level};
       const add=createKind==='bot'?onCreateBot:onCreateProfile;
       if(!add)throw Error('La création de ce type de participant est indisponible.');
+      if (selectedIds.length >= maxSelection) {
+        setError(`Ce format autorise ${maxSelection} participant(s) maximum.`);
+        return;
+      }
       await add(participant);
-      onToggle(participant.id);
+      handleToggle(participant.id);
       setDialogOpen(false);setName('');setCountry('');setAvatar(null);setError('');
     }catch(err:any){setError(String(err?.message||err));}finally{setBusy(false);}
   };
   return <>
-    <PlayerPagedSelector usageMode={usageMode} profiles={profiles} selectedIds={selectedIds}
+    <PlayerPagedSelector usageMode={usageMode} profiles={profiles} selectedIds={selectedIds} maxSelection={maxSelection}
       onToggle={handleToggle} accent={accent} pageSize={9} modalTitle="Choisir des joueurs"
       toolbarExtra={<>
         <MssSelectorIconButton icon="bots" label="Choisir des bots IA" accent={accent} active={botsOpen} onClick={()=>setBotsOpen(true)} />
@@ -52,7 +56,7 @@ export default function MssKillerPlayersShared({ usageMode, profiles, bots, sele
       modalHeaderExtra={<MssSelectorIconButton icon="plus" label="Créer un joueur ou un bot CPU" accent={accent} onClick={()=>setCreateOpen(true)} />}
       summaryExtra={selectedIds.some((id:string)=>bots.some((b:any)=>String(b.id)===String(id))) ? <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10,marginTop:12}}>{bots.filter((b:any)=>selectedIds.includes(String(b.id))).map((b:any)=><div key={b.id} style={{position:'relative',display:'grid',justifyItems:'center',gap:5,padding:8,border:`1px solid ${accent}44`,borderRadius:12}}><img src={b.avatarDataUrl||b.avatarUrl||b.avatar||''} alt="" style={{width:64,height:64,borderRadius:'50%',objectFit:'cover'}}/><strong style={{fontSize:11}}>{b.name}</strong><button type="button" aria-label={`Retirer ${b.name}`} onClick={()=>handleToggle(String(b.id))} style={{position:'absolute',right:4,top:4,color:accent,background:'#070b17',border:`1px solid ${accent}`,borderRadius:'50%',cursor:'pointer'}}>×</button></div>)}</div>:null}
     />
-    <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={handleToggle} accent={accent} label="BOTS IA" pageSize={4} showCheckbox={false} showSelectedSummary={false} hideToolbar controlledOpen={botsOpen} onControlledOpenChange={setBotsOpen} />
+    <BotPagedSelector bots={bots} selectedIds={selectedIds} maxSelection={maxSelection} onToggle={handleToggle} accent={accent} label="BOTS IA" pageSize={4} showCheckbox={false} showSelectedSummary={false} hideToolbar controlledOpen={botsOpen} onControlledOpenChange={setBotsOpen} />
     <MssKillerCreateMenu open={createOpen} accent={accent} withTeams={false} onClose={()=>setCreateOpen(false)} onChoose={(kind)=>{setCreateOpen(false);setCreateKind(kind==='bot'?'bot':'profile');setDialogOpen(true);setError('');}} />
     <MssKillerCreateParticipantDialog open={dialogOpen} kind={createKind} accent={accent} name={name} country={country} avatar={avatar} level={level} busy={busy} error={error} onClose={()=>setDialogOpen(false)} onSubmit={newParticipant} onName={setName} onCountry={setCountry} onAvatar={async(file)=>{const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file);});setAvatar(data);}} onLevel={setLevel}/>
   </>;

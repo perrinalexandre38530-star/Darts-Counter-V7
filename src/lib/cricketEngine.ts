@@ -38,6 +38,7 @@ export type CricketHistoryEntry = {
   prevExtraMarks?: { double: number; triple: number; bed?: number };
   prevEliminatedIds?: string[];
   prevWildCard?: number | null;
+  prevFinishOrder?: string[];
   specialChoice?: "number" | "special" | "bed";
 };
 
@@ -65,6 +66,9 @@ export type CricketState = {
   suddenDeathGap?: number;
   eliminatedIds?: string[];
   maxRounds: number;
+  /** Continue après le premier vainqueur pour établir un classement complet. */
+  continueToLast: boolean;
+  finishOrder: string[];
   roundNumber: number;
   history: CricketHistoryEntry[];
 };
@@ -86,6 +90,7 @@ function cloneState(state: CricketState): CricketState {
     })),
     history: [...state.history],
     eliminatedIds: [...(state.eliminatedIds || [])],
+    finishOrder: [...(state.finishOrder || [])],
   };
 }
 
@@ -106,6 +111,7 @@ function closedCount(p: CricketPlayerState, extended = false, targets?: CricketT
 export type CreateCricketMatchOptions = {
   withPoints?: boolean;
   maxRounds?: number;
+  continueToLast?: boolean;
   cutThroat?: boolean;
   variant?: CricketVariant;
   objective?: number;
@@ -170,6 +176,8 @@ export function createCricketMatch(
     suddenDeathGap: opts.suddenDeathGap || 0,
     eliminatedIds: [],
     maxRounds,
+    continueToLast: !!opts.continueToLast,
+    finishOrder: [],
     roundNumber: 1,
     history: [],
   };
@@ -179,7 +187,8 @@ export function createCricketMatch(
 
 function checkWinner(state: CricketState): string | null {
   // tous les joueurs qui ont tout fermé
-  const closedPlayers = state.players.filter((p) =>
+  const activePlayers = state.players.filter(p => !(state.finishOrder || []).includes(p.id));
+  const closedPlayers = activePlayers.filter((p) =>
     cricketTargets(state).every((t) => isClosed(p.marks[t] ?? 0))
   );
   if (closedPlayers.length === 0) return null;
@@ -192,7 +201,7 @@ function checkWinner(state: CricketState): string | null {
   // avec points : règles selon variante
   const bestCandidate = closedPlayers.reduce<CricketPlayerState | null>(
     (best, player) => {
-      const otherScores = state.players
+      const otherScores = activePlayers
         .filter((p) => p.id !== player.id)
         .map((p) => p.score);
       const maxOther = otherScores.length ? Math.max(...otherScores) : Number.NEGATIVE_INFINITY;
@@ -256,6 +265,7 @@ export function applyCricketHit(
 ): CricketState {
   if (state.winnerId) return state;
   if ((state.eliminatedIds||[]).includes(state.players[state.currentPlayerIndex]?.id)) return state;
+  if ((state.finishOrder||[]).includes(state.players[state.currentPlayerIndex]?.id)) return state;
 
   const next = cloneState(state);
   const playerIndex = next.currentPlayerIndex;
@@ -299,6 +309,7 @@ export function applyCricketHit(
       prevExtraMarks: beforeExtraMarks,
       prevEliminatedIds: [...(state.eliminatedIds||[])],
       prevWildCard: state.wildCard,
+      prevFinishOrder: [...(state.finishOrder || [])],
       specialChoice,
     });
 
@@ -319,13 +330,13 @@ export function applyCricketHit(
       }
 
       const wasLastPlayer = next.currentPlayerIndex === next.players.length - 1;
-      const wasLastRound = next.roundNumber >= next.maxRounds;
+      const wasLastRound = next.maxRounds > 0 && next.roundNumber >= next.maxRounds;
 
       next.currentPlayerIndex = (next.currentPlayerIndex + 1) % next.players.length;
       next.remainingDarts = 3;
 
       if (wasLastPlayer) {
-        next.roundNumber = Math.min(next.roundNumber + 1, next.maxRounds);
+        next.roundNumber = next.maxRounds > 0 ? Math.min(next.roundNumber + 1, next.maxRounds) : next.roundNumber + 1;
       }
 
       if (wasLastPlayer && wasLastRound) {
@@ -426,6 +437,7 @@ export function applyCricketHit(
     prevExtraMarks: beforeExtraMarks,
       prevEliminatedIds: [...(state.eliminatedIds||[])],
       prevWildCard: state.wildCard,
+      prevFinishOrder: [...(state.finishOrder || [])],
       specialChoice,
   });
 
@@ -453,17 +465,17 @@ export function applyCricketHit(
 
   if (endOfTurn && !next.winnerId) {
     const wasLastPlayer = next.currentPlayerIndex === next.players.length - 1;
-    const wasLastRound = next.roundNumber >= next.maxRounds;
+    const wasLastRound = next.maxRounds > 0 && next.roundNumber >= next.maxRounds;
 
     // passage joueur
     next.currentPlayerIndex = (next.currentPlayerIndex + 1) % next.players.length;
-    for(let i=0;i<next.players.length && next.eliminatedIds?.includes(next.players[next.currentPlayerIndex].id);i++)
+    for(let i=0;i<next.players.length && (next.eliminatedIds?.includes(next.players[next.currentPlayerIndex].id) || next.finishOrder?.includes(next.players[next.currentPlayerIndex].id));i++)
       next.currentPlayerIndex=(next.currentPlayerIndex+1)%next.players.length;
     next.remainingDarts = 3;
 
     // si on boucle (dernier joueur -> premier), on incrémente le round (sans dépasser max)
     if (wasLastPlayer) {
-      next.roundNumber = Math.min(next.roundNumber + 1, next.maxRounds);
+      next.roundNumber = next.maxRounds > 0 ? Math.min(next.roundNumber + 1, next.maxRounds) : next.roundNumber + 1;
       if(next.wildCard!=null) {
         const candidates=cricketTargets(next).filter(t=>t>=1&&t<=20);
         next.wildCard=candidates[Math.floor(Math.random()*candidates.length)] ?? null;
@@ -483,8 +495,28 @@ export function applyCricketHit(
   if (cricketTarget || dbullToDouble || (next.extended && Number(target) >= 1 && Number(target) <= 20 && (mult === 2 || mult === 3))) {
     const winner = checkWinner(next);
     if (winner) {
-      next.winnerId = winner;
-      next.remainingDarts = 0;
+      if (next.continueToLast && next.variant !== "enculette") {
+        if (!next.finishOrder.includes(winner)) next.finishOrder.push(winner);
+        if (next.finishOrder.length === next.players.length) {
+          next.winnerId = next.finishOrder[0] || winner;
+          next.remainingDarts = 0;
+        } else {
+          // Le joueur classé quitte la rotation, les autres continuent.
+          const previousIndex = next.currentPlayerIndex;
+          // En fin de volée, le moteur a déjà avancé au participant suivant.
+          if (endOfTurn) next.currentPlayerIndex = (next.currentPlayerIndex + next.players.length - 1) % next.players.length;
+          for (let i = 0; i < next.players.length; i++) {
+            next.currentPlayerIndex = (next.currentPlayerIndex + 1) % next.players.length;
+            if (!next.finishOrder.includes(next.players[next.currentPlayerIndex].id)
+              && !(next.eliminatedIds || []).includes(next.players[next.currentPlayerIndex].id)) break;
+          }
+          if (!endOfTurn && next.currentPlayerIndex <= previousIndex) next.roundNumber += 1;
+          next.remainingDarts = 3;
+        }
+      } else {
+        next.winnerId = winner;
+        next.remainingDarts = 0;
+      }
     }
   }
 
@@ -520,6 +552,7 @@ export function undoLastCricketHit(state: CricketState): CricketState {
   next.turnPoints = entry.prevTurnPoints ?? 0;
   if(entry.prevEliminatedIds) next.eliminatedIds = [...entry.prevEliminatedIds];
   next.wildCard = entry.prevWildCard ?? null;
+  next.finishOrder = [...(entry.prevFinishOrder || [])];
 
   return next;
 }

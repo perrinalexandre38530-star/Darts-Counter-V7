@@ -40,6 +40,12 @@ import type { SavedMatch } from "../lib/history";
 import { History } from "../lib/history";
 import { SCORE_INPUT_LS_KEY } from "../lib/scoreInput/types";
 import { DartIconColorizable, CricketMarkIcon } from "../components/MaskIcon";
+import ShoveActivePlayerCard from "../components/ShoveActivePlayerCard";
+import ShoveFloatingHeader from "../components/ShoveFloatingHeader";
+import CricketShoveMarksBoard from "../components/CricketShoveMarksBoard";
+import "../components/ShoveMatchMidZone.css";
+import shovePlayersTicker from "../assets/tickers/ticker_shove_players.webp";
+import shoveMarksTicker from "../assets/tickers/ticker_shove_marks.webp";
 
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
@@ -52,7 +58,7 @@ import { MssKillerParticipantMode, MssKillerFormat } from "../components/config/
 import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
 import MssCricketAwenaTip from "../components/config/MssCricketAwenaTip";
 import MssSelectorIconButton from "../components/MssSelectorIconButton";
-import { MssInputMethodChoice } from "../components/config/MssPremiumConfig";
+import { MssInputMethodChoice, MssConfigCaption, MssConfigFact } from "../components/config/MssPremiumConfig";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
@@ -77,7 +83,7 @@ import avatarTheHammer from "../assets/avatars/bots-pro/the-hammer.png";
 import avatarVoltage from "../assets/avatars/bots-pro/voltage.png";
 import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
 
-import tickerCricket from "../assets/tickers/ticker_cricket.png";
+import tickerCricket from "../assets/tickers/ticker_cricket.webp";
 import tickerEnculette from "../assets/tickers/ticker_enculette.png";
 import tickerCutThroat from "../assets/tickers/ticker_cricket_cut_throat.png";
 import tickerMaster from "../assets/tickers/ticker_cricket_master.webp";
@@ -256,10 +262,12 @@ function SectionCard({
     <div
       style={{
         borderRadius: 18,
-        background: T.card,
-        border: `1px solid ${T.borderSoft}`,
+        background: "rgba(9,12,24,.96)",
+        border: `1px solid ${T.gold}55`,
         padding: 14,
         marginBottom: 14,
+        minWidth: 0,
+        boxSizing: "border-box",
       }}
     >
       <div
@@ -267,7 +275,8 @@ function SectionCard({
           fontSize: 13,
           textTransform: "uppercase",
           letterSpacing: 1.2,
-          color: T.textSoft,
+          color: T.gold,
+          fontWeight: 950,
           marginBottom: subtitle ? 6 : 10,
         }}
       >
@@ -468,7 +477,8 @@ function CricketPlayCore({ profiles, params, onFinish, go }: Props) {
 
   // ---- Paramètres ----
   const [scoreMode, setScoreMode] = React.useState<ScoreMode>(() => isQuickParty && params?.quickScoreMode === "no-points" ? "no-points" : "points");
-  const [maxRounds, setMaxRounds] = React.useState<number>(() => isQuickParty ? Math.max(1, Math.min(99, Number(params?.quickMaxRounds || 20))) : String(params?.variantId || "").toLowerCase()==="quickie" ? 10 : 20);
+  const [maxRounds, setMaxRounds] = React.useState<number>(() => isQuickParty ? Math.max(0, Math.min(99, Number(params?.quickMaxRounds ?? 0))) : String(params?.variantId || "").toLowerCase()==="quickie" ? 10 : 0);
+  const [continueToLast, setContinueToLast] = React.useState<boolean>(() => !!params?.quickContinueToLast);
   const [rotateFirstPlayer, setRotateFirstPlayer] = React.useState<boolean>(true);
 
   // ---- Variante (2A): Cricket classique / Enculette-Vache ----
@@ -478,10 +488,43 @@ function CricketPlayCore({ profiles, params, onFinish, go }: Props) {
   const isExtendedCricket = ["extended","tactics","mickey_mouse","wild_mouse"].includes(variantId);
   const cricketRule: CricketRuleVariant = variantId === "wild_mouse" ? "wild_mouse" : variantId === "mickey_mouse" ? "mickey_mouse" : isExtendedCricket ? "tactics" : variantId in CRICKET_VARIANT_RULES ? variantId as CricketRuleVariant : "classic";
   const cricketRuleData = CRICKET_VARIANT_RULES[cricketRule];
+  // Source unique pour les tickers des variantes : configuration, Play et modales.
+  // Ne jamais retomber sur le ticker CRICKET classique si l'image dédiée existe.
+  const cricketTickerKey = variantId === "enculette" ? "enculette"
+    : cricketRule === "double_only" ? "cricket_master"
+    : cricketRule === "classic" ? "cricket"
+    : `cricket_${cricketRule}`;
+  const cricketVariantTicker = dartsQuickTicker(cricketTickerKey)
+    || (variantId === "enculette" ? tickerEnculette
+      : cricketRule === "tactics" ? tickerMaster
+      : cricketRule === "cut_throat" ? tickerCutThroat : tickerCricket);
+
   const [pickItNumbers, setPickItNumbers] = React.useState<number[]>(() => Array.isArray(params?.quickPickItNumbers) && params.quickPickItNumbers.length===6 ? params.quickPickItNumbers : [20,19,18,17,16,15]);
   const [masterAllowsTriples, setMasterAllowsTriples] = React.useState(!!params?.quickMasterAllowsTriples);
   const isNoScoreRoute = ["no_score", "no-score", "cricket_no_score"].includes(String((params as any)?.variantId ?? (params as any)?.presetVariantId ?? "").toLowerCase());
 
+  type CricketStartOrderMode = "random" | "alternate" | "manual" | "bull";
+  const [startOrderMode, setStartOrderMode] = React.useState<CricketStartOrderMode>(() => isQuickParty && params?.quickRandomStart ? "random" : "alternate");
+  const [orderedStartIds, setOrderedStartIds] = React.useState<string[]>([]);
+  const cricketOrderOptions: {id: CricketStartOrderMode; icon: "random-order" | "alternate-order" | "manual-pick" | "bull-order"; label: string; detail: string}[] = [
+    {id:"random",icon:"random-order",label:"ALÉATOIRE",detail:"Les participants sont mélangés automatiquement au lancement de la partie."},
+    {id:"alternate",icon:"alternate-order",label:"ALTERNÉ",detail:"Le premier départ respecte l’ordre actuel de sélection des participants."},
+    {id:"manual",icon:"manual-pick",label:"MANUEL",detail:"Définis l’ordre exact des participants à l’aide des flèches ci-dessous."},
+    {id:"bull",icon:"bull-order",label:"BULL",detail:"Effectue le lancer au BULL, puis classe les participants selon les résultats avant de lancer la partie."},
+  ];
+  const selectedStartIds = [...selectedIds, ...selectedBotIds];
+  const resolvedStartIds = [...orderedStartIds.filter(id => selectedStartIds.includes(id)),...selectedStartIds.filter(id => !orderedStartIds.includes(id))];
+  const moveStartParticipant = (id:string, direction:-1|1) => {
+    const copy=[...resolvedStartIds];
+    const index=copy.indexOf(id), next=index+direction;
+    if(index<0||next<0||next>=copy.length)return;
+    [copy[index],copy[next]]=[copy[next],copy[index]];
+    setOrderedStartIds(copy);
+  };
+  const changeStartOrderMode = (mode:CricketStartOrderMode) => {
+    setStartOrderMode(mode);
+    setRandomStart(mode==="random");
+  };
   const [randomStart, setRandomStart] = React.useState<boolean>(() => isQuickParty && params?.quickRandomStart === true);
   const [teamMode, setTeamMode] = React.useState<boolean>(() => isQuickParty && params?.quickTeamMode === true);
   const cricketMaxParticipants = (isExtendedCricket || cricketRule !== "classic") && !teamMode ? Number.MAX_SAFE_INTEGER : 4;
@@ -489,12 +532,23 @@ function CricketPlayCore({ profiles, params, onFinish, go }: Props) {
   const [mssCricketStep, setMssCricketStep] = React.useState(0);
   const [mssCricketView, setMssCricketView] = React.useState<"guided" | "complete">("guided");
   const [mssCricketFormat, setMssCricketFormat] = React.useState<"duel" | "multi">("duel");
+  // La limite du sélecteur doit refléter le format choisi, pas seulement la variante.
+  // Les parties rapides conservent leur propre configuration de participants.
+  const cricketSelectionLimit = teamMode ? 4 : (!isQuickParty && mssCricketFormat === "duel" ? 2 : cricketMaxParticipants);
+  const changeCricketFormat = (next: "duel" | "multi") => {
+    setMssCricketFormat(next);
+    if (next === "duel" && !teamMode && !isQuickParty) {
+      const keep = [...selectedIds.map(id => ({ id, bot: false })), ...selectedBotIds.map(id => ({ id, bot: true }))].slice(0, 2);
+      setSelectedIds(keep.filter(x => !x.bot).map(x => x.id));
+      setSelectedBotIds(keep.filter(x => x.bot).map(x => x.id));
+    }
+  };
   // MSS — étapes dédiées aux règles de chaque variante (sans dupliquer le moteur).
   const hasVariantRulesStep = cricketRule !== "classic" || isNoScoreRoute || variantId === "enculette";
   const cricketSteps = React.useMemo(() => [
     "Awena vous explique", "Joueurs ou équipes", "Format", "Sélection",
     ...(hasVariantRulesStep ? ["Règles de la variante"] : []),
-    "Scoring", "Manches", "Départ et saisie", "Récapitulatif",
+    "Scoring", "Volées", "Départ", "Saisie", "Récapitulatif",
   ], [hasVariantRulesStep]);
   const cricketStepIndex = (label: string) => cricketSteps.indexOf(label);
   React.useEffect(() => {
@@ -590,6 +644,7 @@ React.useEffect(() => {
 }, [inputMethod]);
 const [showHelp, setShowHelp] = React.useState(false);
 const [showEnd, setShowEnd] = React.useState(false);
+const [cricketPanel, setCricketPanel] = React.useState<"players"|"ranking"|"marks"|"stats"|"actions"|null>(null);
 
 // 🕒 timestamp de début de manche (pour createdAt)
 const [legStartAt, setLegStartAt] = React.useState<number | null>(null);
@@ -1117,7 +1172,7 @@ function renderAvatarCircle(
         copy.splice(idx, 1);
         return copy;
       }
-      if (prev.length + selectedBotIds.length >= cricketMaxParticipants) return prev;
+      if (prev.length + selectedBotIds.length >= cricketSelectionLimit) return prev;
       return [...prev, id];
     });
   }
@@ -1130,7 +1185,7 @@ function renderAvatarCircle(
         copy.splice(idx, 1);
         return copy;
       }
-      if (selectedIds.length + prev.length >= cricketMaxParticipants) return prev;
+      if (selectedIds.length + prev.length >= cricketSelectionLimit) return prev;
       return [...prev, id];
     });
   }
@@ -1143,7 +1198,8 @@ function renderAvatarCircle(
   const wantsTeam = teamMode;
   const teamNeedsBot = wantsTeam && selectedCount === 3 && fillWithBots;
   const teamValidCount = wantsTeam ? selectedCount === 4 || teamNeedsBot : true;
-  const canStart = canStartBase && teamValidCount;
+  const formatValid = teamMode || isQuickParty || (mssCricketFormat === "duel" ? selectedCount === 2 : selectedCount >= 3);
+  const canStart = canStartBase && teamValidCount && formatValid;
 
   function handleStartMatch() {
     if (!canStart) return;
@@ -1186,6 +1242,11 @@ function renderAvatarCircle(
     }
 
     finalProfiles = finalProfiles.slice(0, cricketMaxParticipants);
+    // MANUEL et BULL appliquent l'ordre défini avec les commandes du configurateur.
+    if (startOrderMode === "manual" || startOrderMode === "bull") {
+      const order = new Map(resolvedStartIds.map((id, index) => [id, index]));
+      finalProfiles = [...finalProfiles].sort((a,b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+    }
 
     let players = finalProfiles.map((p) => ({ id: p.id, name: p.name }));
 
@@ -1197,6 +1258,7 @@ function renderAvatarCircle(
       withPoints: (scoreMode === "points") || isCutThroatRoute,
       cutThroat: isCutThroatRoute,
       maxRounds: cricketRule === "quickie" ? 10 : maxRounds,
+      continueToLast: cricketRule !== "quickie" && !teamMode && variantId !== "enculette" && continueToLast,
       extended: isExtendedCricket,
       targets: configuredCricketTargets(cricketRule, pickItNumbers),
       doubleOnly: cricketRuleData.doubleOnly,
@@ -1262,7 +1324,7 @@ function renderAvatarCircle(
 
     // Le moteur gère déjà la fin de la dernière volée. Ne jamais arrêter
     // une partie au début de la dernière manche.
-    if (rn >= maxRounds && next.remainingDarts === 0) {
+    if (maxRounds > 0 && rn >= maxRounds && next.remainingDarts === 0) {
       const withPoints = scoreMode === "points";
       const winnerId = decideWinnerAtMaxRounds(next, withPoints, teamMode);
       if (winnerId) return { ...(next as any), winnerId } as any;
@@ -1440,6 +1502,7 @@ function renderAvatarCircle(
         withPoints: scoreMode === "points",
         cutThroat: isCutThroatRoute,
         maxRounds: cricketRule === "quickie" ? 10 : maxRounds,
+      continueToLast: cricketRule !== "quickie" && !teamMode && variantId !== "enculette" && continueToLast,
         extended: isExtendedCricket,
         targets: configuredCricketTargets(cricketRule, pickItNumbers),
         doubleOnly: cricketRuleData.doubleOnly,
@@ -1920,7 +1983,7 @@ return {
   // --------------------------------------------------
 
   if (phase === "setup") {
-    const selectionOrder = [...selectedIds, ...selectedBotIds].slice(0, cricketMaxParticipants);
+    const selectionOrder = [...selectedIds, ...selectedBotIds].slice(0, cricketSelectionLimit);
 
     const labelForId = (id: string) => {
       const idx = selectionOrder.indexOf(id);
@@ -1933,7 +1996,7 @@ return {
     const wantsTeamLocal = teamMode;
     const teamNeedsBotLocal = wantsTeamLocal && selectedCountLocal === 3 && fillWithBots;
     const teamValidCountLocal = wantsTeamLocal ? selectedCountLocal === 4 || teamNeedsBotLocal : true;
-    const cricketFormatValidLocal = teamMode || isQuickParty || (mssCricketFormat === "duel" ? selectedCountLocal === 2 : selectedCountLocal >= 2);
+    const cricketFormatValidLocal = teamMode || isQuickParty || (mssCricketFormat === "duel" ? selectedCountLocal === 2 : selectedCountLocal >= 3);
     const canStartLocal = canStartBaseLocal && teamValidCountLocal && cricketFormatValidLocal;
 
     const ArrowBtn = ({ dir, onClick }: { dir: "left" | "right"; onClick: () => void }) => (
@@ -2014,7 +2077,7 @@ return {
     }}
   >
     <img
-      src={dartsQuickTicker(cricketRule === "double_only" ? "cricket_master" : cricketRule === "classic" ? "cricket" : `cricket_${cricketRule}`) || (variantId === "enculette" ? tickerEnculette : cricketRule === "tactics" ? tickerMaster : cricketRule === "cut_throat" ? tickerCutThroat : tickerCricket)}
+      src={cricketVariantTicker}
       alt={`Configuration · ${cricketRuleData.label}`}
       draggable={false}
       style={{
@@ -2028,7 +2091,7 @@ return {
       }}
     />
 
-    {!['classic','cut_throat'].includes(cricketRule) && <div style={{position:'absolute',bottom:4,left:50,right:50,textAlign:'center',pointerEvents:'none'}}><span style={{fontSize:10,fontWeight:1000,letterSpacing:1.4,color:'#ffe6a1',background:'rgba(5,7,18,.87)',border:'1px solid #f6c25688',padding:'3px 12px',borderRadius:999,textShadow:'0 0 6px #000'}}>{cricketRuleData.label}</span></div>}
+
     {/* Overlay boutons */}
     <div
       style={{
@@ -2087,18 +2150,18 @@ return {
             <DartsRelatedModesPanel gameId={isExtendedCricket ? "cricket_tactics" : variantId === "cut_throat" ? "cricket_cut_throat" : (params?.gameId || "cricket")}
               accent={T.gold} compact onOpenGame={id => { const target=dartsFamilyGameNavigation(id); if(target) go?.(target.tab,target.params); }} />
           </>}
-          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Joueurs ou équipes")) && <SectionCard title="1. JOUEURS / ÉQUIPES">
-            <MssKillerParticipantMode mode={teamMode ? "teams" : "players"} accent={T.gold} onChange={v=>{setTeamMode(v==="teams"); if(v==="teams"){setSelectedIds(prev=>prev.slice(0,4));setSelectedBotIds([]);}}} />
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Joueurs ou équipes")) && <SectionCard title="JOUEURS / ÉQUIPES">
+            <MssKillerParticipantMode mode={teamMode ? "teams" : "players"} accent={T.gold} onChange={v=>{setTeamMode(v==="teams"); if(v==="teams"){setSelectedIds(prev=>prev.slice(0,4));setSelectedBotIds([]);} else if(mssCricketFormat==="duel" && !isQuickParty){const keep=[...selectedIds.map(id=>({id,bot:false})),...selectedBotIds.map(id=>({id,bot:true}))].slice(0,2);setSelectedIds(keep.filter(p=>!p.bot).map(p=>p.id));setSelectedBotIds(keep.filter(p=>p.bot).map(p=>p.id));}}} />
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Format")) && <SectionCard title="2. FORMAT">
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Format")) && <SectionCard title="FORMAT">
             <MssKillerFormat mode={teamMode ? "teams" : "players"} playerFormat={mssCricketFormat}
-              onPlayerFormat={setMssCricketFormat} teamCount={2} onTeamCount={()=>{}} teamSize={2}
+              onPlayerFormat={changeCricketFormat} teamCount={2} onTeamCount={()=>{}} teamSize={2}
               onTeamSize={()=>{}} accent={T.gold} maxPlayers={cricketMaxParticipants > 4 ? 999 : 4} unlimitedPlayers={cricketMaxParticipants > 4} />
             {teamMode && <div style={{textAlign:"center",fontSize:12,color:T.textSoft,marginTop:12}}>Format du moteur CRICKET : deux équipes de deux participants (2v2).</div>}
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Sélection")) && <SectionCard title={teamMode ? "3. CHOIX ÉQUIPES" : "3. CHOIX JOUEURS"}>
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Sélection")) && <SectionCard title={teamMode ? "CHOIX ÉQUIPES" : "CHOIX JOUEURS"}>
             <p style={{fontSize:12,color:T.textSoft,lineHeight:1.45,margin:"0 0 10px"}}>
-              {teamMode ? "Choisis quatre participants. Équipes J1+J3 contre J2+J4." : cricketMaxParticipants > 4 ? "Nombre de joueurs illimité : ajoute les profils et bots nécessaires." : "Choisis deux à quatre joueurs ou bots, avec leurs avatars MSS."}
+              {teamMode ? "Choisis quatre participants. Équipes J1+J3 contre J2+J4." : cricketMaxParticipants > 4 ? "Nombre de joueurs illimité : ajoute les profils et bots nécessaires." : mssCricketFormat === "duel" ? "DUEL : sélectionne exactement deux joueurs ou bots." : "MULTI : sélectionne trois ou quatre joueurs ou bots."}
             </p>
             <MssKillerPlayersShared
               usageMode="cricket"
@@ -2110,7 +2173,7 @@ return {
                 else toggleProfile(id);
               }}
               accent={T.gold}
-              maxSelection={cricketMaxParticipants}
+              maxSelection={cricketSelectionLimit}
               onCreateProfile={(profile:any) => {
                 setCricketCreatedProfiles(prev => [...prev, profile]);
               }}
@@ -2119,7 +2182,7 @@ return {
               }}
             />
             <div style={{marginTop:9,textAlign:"center",fontSize:12,color:selectedCountLocal>=2?T.gold:"#ff929b"}}>
-              {selectedCountLocal}{cricketMaxParticipants > 4 ? "" : "/4"} sélectionnés · minimum 2 {teamMode ? "· 4 en équipes" : ""}
+              {teamMode ? `Sélection : ${selectedCountLocal}/4 participants · ÉQUIPES` : mssCricketFormat === "duel" ? "Sélectionne 2 participants" : `Sélection : ${selectedCountLocal} participants · MULTI (minimum 3)`}
             </div>
           </SectionCard>}
           {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Règles de la variante")) && cricketRuleData.pick && <SectionCard title="CIBLES · PICK-IT">
@@ -2142,7 +2205,7 @@ return {
             {cricketRuleData.exclusiveSpecial && <p style={{color:T.textSoft,fontSize:12,lineHeight:1.5}}>WILD MOUSE : chaque impact valide une seule condition, à choisir lors du lancer. Il n'est jamais compté deux fois.</p>}
             {cricketRuleData.wildCard && <p style={{color:T.textSoft,fontSize:12}}>JOKER : la cible bonus évolue à chaque manche et accorde une marque supplémentaire.</p>}
             {cricketRuleData.suddenDeath != null && <div style={{color:T.gold,fontWeight:900,textAlign:"center",marginTop:8}}>ÉLIMINATION : {cricketRuleData.suddenDeath} POINTS DE RETARD</div>}
-            {cricketRuleData.maxRounds != null && <p style={{color:T.gold,fontWeight:900,textAlign:"center"}}>LIMITE : {cricketRuleData.maxRounds} MANCHES</p>}
+            {cricketRuleData.maxRounds != null && <p style={{color:T.gold,fontWeight:900,textAlign:"center"}}>LIMITE : {cricketRuleData.maxRounds} VOLÉES</p>}
           </SectionCard>}
           {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Scoring")) && <SectionCard title="MODE DE SCORING">
             <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
@@ -2150,40 +2213,76 @@ return {
             </div>
             <p style={{color:T.textSoft,fontSize:12,textAlign:'center',lineHeight:1.5}}>{isNoScoreRoute?'Cricket sans points : la victoire dépend uniquement de la fermeture des objectifs.':(isCutThroatRoute||variantId==='cut_throat')?'Cut-Throat impose le calcul des points.':scoreMode==='points'?'Les secteurs fermés peuvent rapporter des points tant qu’ils restent ouverts chez un adversaire.':'La victoire repose sur la fermeture des secteurs, sans comptabiliser de points.'}</p>
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Manches")) && <SectionCard title="MANCHES MAXIMUM">
-            <div style={{display:'flex',justifyContent:'center',gap:12}}>{(cricketRule === "quickie" ? [10] : [10,15,20]).map(n=><button key={n} type="button" aria-pressed={maxRounds===n} onClick={()=>setMaxRounds(n)} style={{width:62,height:55,borderRadius:15,border:`1px solid ${maxRounds===n?T.gold:'#ffffff30'}`,background:maxRounds===n?'#f6c25622':'#ffffff08',color:maxRounds===n?T.gold:'#fff',fontWeight:950,fontSize:17}}>{n}</button>)}</div>
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Volées")) && <SectionCard title={cricketRule === "quickie" ? "QUICKIE · 10 VOLÉES DE 3 FLÉCHETTES" : "VOLÉES DE 3 FLÉCHETTES"}>
+            <div style={{display:'flex',justifyContent:'center',gap:12}}>{(cricketRule === "quickie" ? [10] : [0,10,15,20]).map(n=><button key={n} type="button" aria-pressed={maxRounds===n} onClick={()=>{setMaxRounds(n);if(n>0)setContinueToLast(false);}} style={{width:62,height:55,borderRadius:15,border:`1px solid ${maxRounds===n?T.gold:'#ffffff30'}`,background:maxRounds===n?'#f6c25622':'#ffffff08',color:maxRounds===n?T.gold:'#fff',fontWeight:950,fontSize:17}}>{n===0?"∞":n}</button>)}</div>
+            <p style={{textAlign:"center",color:T.textSoft,fontSize:12}}> {cricketRule === "quickie" ? "QUICKIE conserve sa limite de 10 volées." : maxRounds===0 ? "Sans limite : jouer jusqu’à la condition de victoire." : `Arrêt après ${maxRounds} volées de 3 fléchettes par joueur.`}</p>
+            {cricketRule !== "quickie" && !teamMode && variantId !== "enculette" && <MssKillerBooleanToggle label="CONTINUER JUSQU’AU DERNIER JOUEUR" checked={continueToLast} accent={T.gold} onChange={(enabled: boolean)=>{setContinueToLast(enabled);if(enabled)setMaxRounds(0);}} />}
+            {continueToLast && cricketRule !== "quickie" && !teamMode && variantId !== "enculette" && <p style={{textAlign:"center",color:T.textSoft,fontSize:12}}>Les joueurs qui terminent quittent la rotation. Le classement se complète jusqu’au dernier.</p>}
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Départ et saisie")) && <SectionCard title="DÉPART ET SAISIE">
-            <div style={{display:'grid',gap:12}}>
-              <div style={{fontSize:12,fontWeight:900,color:T.gold}}>ORDRE DE DÉPART</div>
-              <div style={{display:'flex',justifyContent:'center',gap:10}}>
-                <MssSelectorIconButton icon="alternate-order" label="Ordre de sélection" accent={T.gold} active={!randomStart} onClick={()=>setRandomStart(false)}/>
-                <MssSelectorIconButton icon="random-order" label="Aléatoire" accent={T.gold} active={randomStart} onClick={()=>setRandomStart(true)}/>
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Départ")) && <SectionCard title="ORDRE DE DÉPART">
+            <div style={{display:'grid',gap:12,minWidth:0}}>
+              <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap:10,flexWrap:'nowrap'}}>
+                {cricketOrderOptions.map(option=><MssSelectorIconButton key={option.id} icon={option.icon} label={option.label} accent={T.gold} active={startOrderMode===option.id} onClick={()=>changeStartOrderMode(option.id)}/>)}
               </div>
-              <div style={{textAlign:'center',color:T.gold,fontWeight:950}}>{randomStart?'ALÉATOIRE':'ORDRE DE SÉLECTION'}</div>
-              <p style={{color:T.textSoft,fontSize:12,textAlign:'center',margin:0}}>{randomStart?'Les participants seront mélangés avant le départ.':'L’ordre actuel des profils sélectionnés est conservé.'}</p>
+              {(()=>{const option=cricketOrderOptions.find(item=>item.id===startOrderMode)!;return <div style={{display:'grid',gap:5,textAlign:'center'}}><strong style={{color:T.gold,fontSize:16,fontWeight:950}}>{option.label}</strong><p style={{color:T.textSoft,fontSize:12,lineHeight:1.5,margin:0}}>{option.detail}</p></div>})()}
+              {(startOrderMode==='manual'||startOrderMode==='bull') && <div style={{display:'grid',gap:7,maxWidth:380,width:'100%',margin:'0 auto'}}>
+                {resolvedStartIds.map((id,index)=>{const player=profileById.get(id);return <div key={id} style={{display:'flex',alignItems:'center',gap:9,padding:'6px 9px',border:`1px solid ${T.gold}55`,borderRadius:12,background:'rgba(255,255,255,.035)'}}>
+                  <strong style={{color:T.gold,width:18}}>{index+1}</strong><ProfileAvatar profile={player as any} size={30}/><span style={{flex:1,fontWeight:850,fontSize:12,overflowWrap:'anywhere'}}>{(player as any)?.name||'Participant'}</span>
+                  <button type="button" aria-label={`Monter ${(player as any)?.name||'participant'}`} disabled={index===0} onClick={()=>moveStartParticipant(id,-1)} style={{border:`1px solid ${T.gold}66`,borderRadius:9,background:'#ffffff09',color:T.gold,minWidth:32,minHeight:32,opacity:index===0?.35:1}}>↑</button>
+                  <button type="button" aria-label={`Descendre ${(player as any)?.name||'participant'}`} disabled={index===resolvedStartIds.length-1} onClick={()=>moveStartParticipant(id,1)} style={{border:`1px solid ${T.gold}66`,borderRadius:9,background:'#ffffff09',color:T.gold,minWidth:32,minHeight:32,opacity:index===resolvedStartIds.length-1?.35:1}}>↓</button>
+                </div>})}
+                {resolvedStartIds.length<2 && <p style={{textAlign:'center',color:T.textSoft,fontSize:12}}>Sélectionne d’abord tes participants.</p>}
+              </div>}
               <MssKillerBooleanToggle label="ALTERNANCE DU PREMIER JOUEUR" checked={rotateFirstPlayer} accent={T.gold} onChange={setRotateFirstPlayer} />
               {teamMode && <MssKillerBooleanToggle label="COMPLÉTER L’ÉQUIPE AVEC UN BOT" checked={fillWithBots} accent={T.gold} onChange={setFillWithBots} />}
-              <div style={{color:T.gold,fontSize:12,fontWeight:900}}>MODE DE SAISIE</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:6,maxWidth:340,width:'100%',margin:'0 auto'}}>
+            </div>
+          </SectionCard>}
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Saisie")) && <SectionCard title="MODE DE SAISIE">
+            <div style={{display:"grid",gap:12,minWidth:0}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:6,maxWidth:340,width:'100%',margin:'0 auto',minWidth:0}}>
                 {(['keypad','dartboard','voice','camera','autodarts'] as const).map(method=><div key={method} style={{display:'grid',placeItems:'center'}}>
                   <MssInputMethodChoice icon={method} label={method.toUpperCase()} active={inputMethod===method} accent={T.gold}
                     disabled={method!=='keypad'&&method!=='dartboard'} onClick={()=>setInputMethod(method as InputMethod)}/>
                 </div>)}
               </div>
               <div style={{fontSize:12,color:T.gold,fontWeight:900,textAlign:'center'}}>{inputMethod==='keypad'?'KEYPAD':'CIBLE'}</div>
+              <p style={{margin:0,fontSize:12,color:T.textSoft,textAlign:"center",lineHeight:1.5}}>Les options indisponibles restent désactivées. Les couleurs et icônes sont celles du sélecteur commun MSS.</p>
             </div>
           </SectionCard>}
-          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Récapitulatif")) && <SectionCard title="FICHE DE PARTIE">
-            <div style={{display:'grid',gap:12}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><strong style={{color:T.gold}}>PARAMÈTRES DE LANCEMENT</strong><span style={{color:canStartLocal?T.gold:'#ff929b',fontSize:12,fontWeight:900}}>{canStartLocal?'✓ PRÊT':'À COMPLÉTER'}</span></div>
-              <div style={{color:T.gold,fontSize:12,fontWeight:950}}>JOUEURS EN JEU</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:7}}>{selectionOrder.map((id,i)=>{const player=allProfiles.find((p:any)=>p.id===id)||botProfiles.find((p:any)=>p.id===id);return <div key={id} style={{border:'1px solid #ffffff22',borderRadius:11,padding:7,display:'flex',gap:8,alignItems:'center',minWidth:0}}><ProfileAvatar profile={player as any} size={34}/><span style={{fontSize:12,fontWeight:800,overflow:'hidden',textOverflow:'ellipsis'}}>{(player as any)?.name||`J${i+1}`}</span></div>})}</div>
-              <div style={{color:T.gold,fontSize:12,fontWeight:950}}>RÈGLES ESSENTIELLES</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}}>{[['Format',teamMode?'2 équipes · 2v2':'Individuel'],['Variante',isNoScoreRoute?'Sans points':variantId==='classic'?'Classique':variantId==='cut_throat'?'Cut-Throat':isExtendedCricket?'Tactics':cricketRuleData.label],['Scoring',scoreMode==='points'?'Avec points':'Sans points'],['Tours max',String(cricketRule === 'quickie' ? 10 : maxRounds)],['Départ',randomStart?'Aléatoire':'Sélection'],['Rotation',rotateFirstPlayer?'Oui':'Non']].map(([label,v])=><div key={label} style={{border:'1px solid #ffffff21',background:'#ffffff06',borderRadius:11,padding:9}}><div style={{color:'#aab5cb',fontSize:10,fontWeight:900}}>{label.toUpperCase()}</div><strong style={{color:'#fff',fontSize:12}}>{v}</strong></div>)}</div>
-              <button type="button" disabled={!canStartLocal} onClick={handleStartMatch} style={{border:'none',borderRadius:999,padding:'13px 18px',background:canStartLocal?T.gold:'#555b67',color:canStartLocal?'#1a1408':'#eee',fontWeight:1000,fontSize:15,cursor:canStartLocal?'pointer':'not-allowed'}}>LANCER LE CRICKET</button>
-              {!canStartLocal&&<p style={{margin:0,fontSize:11,color:'#ff9c9c',textAlign:'center'}}>Sélectionne les participants nécessaires avant de lancer.</p>}
+          {(mssCricketView === "complete" || mssCricketStep === cricketStepIndex("Récapitulatif")) && <SectionCard title="RÉCAPITULATIF">
+            {/* Structure et densité identiques à la fiche premium KILLER. */}
+            <div style={{border:`1px solid ${T.gold}55`,borderRadius:16,background:"linear-gradient(155deg,rgba(25,26,37,.9),rgba(9,11,21,.94))",padding:"12px 12px 10px",display:"grid",gap:12,minWidth:0}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <div style={{display:"grid",gap:2,minWidth:0}}>
+                  <strong style={{fontSize:14,fontWeight:1000,letterSpacing:.65,color:T.gold}}>FICHE DE PARTIE</strong>
+                  <span style={{color:"#afb8cb",fontSize:11}}>{teamMode ? "2 équipes · 2 membres / équipe" : `${selectedCountLocal} joueurs · ${mssCricketFormat === "duel" ? "Duel" : "Multi"}`}</span>
+                </div>
+                <span role="status" style={{border:`1px solid ${canStartLocal?T.gold:"#fb7185"}55`,borderRadius:20,padding:"5px 9px",fontWeight:950,fontSize:10,whiteSpace:"nowrap",color:canStartLocal?T.gold:"#fb7185"}}>{canStartLocal?"✓ PRÊT":"À COMPLÉTER"}</span>
+              </div>
+              <div style={{borderTop:"1px solid rgba(255,255,255,.09)",paddingTop:9}}>
+                <MssConfigCaption accent={T.gold}>{teamMode?"ÉQUIPES EN JEU":"JOUEURS EN JEU"}</MssConfigCaption>
+                {teamMode ? <div style={{display:"grid",gap:6}}>{[0,1].map((teamIndex)=><div key={teamIndex} style={{borderLeft:`2px solid ${teamIndex===0?"#f6c256":"#f472b6"}`,borderRadius:10,background:"rgba(255,255,255,.025)",padding:"7px 9px",display:"grid",gap:5}}><strong style={{fontSize:12,color:teamIndex===0?"#f6c256":"#f472b6"}}>ÉQUIPE {teamIndex+1}</strong><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{selectionOrder.filter((_,i)=>i%2===teamIndex).map(id=>{const player=allProfiles.find((p:any)=>p.id===id)||botProfiles.find((p:any)=>p.id===id);return <div key={id} style={{display:"flex",gap:6,alignItems:"center",minWidth:0}}><ProfileAvatar profile={player as any} size={28}/><span style={{fontSize:11,fontWeight:800}}>{(player as any)?.name||id}</span></div>})}</div></div>)}</div> : <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6}}>{selectionOrder.map((id,i)=>{const player=allProfiles.find((p:any)=>p.id===id)||botProfiles.find((p:any)=>p.id===id);return <div key={id} style={{display:"flex",alignItems:"center",minWidth:0,gap:7,padding:5}}><ProfileAvatar profile={player as any} size={29}/><span style={{fontSize:11,fontWeight:850,overflowWrap:"anywhere"}}>{(player as any)?.name||`J${i+1}`}</span></div>})}</div>}
+              </div>
+              <div style={{borderTop:"1px solid rgba(255,255,255,.09)",paddingTop:8}}>
+                <MssConfigCaption accent={T.gold}>RÈGLES ESSENTIELLES</MssConfigCaption>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",columnGap:13}}>
+                  <MssConfigFact label="Format" value={teamMode?"2 équipes · 2v2":mssCricketFormat==="duel"?"DUEL":"MULTI"}/>
+                  <MssConfigFact label="Variante" value={isNoScoreRoute?"Sans points":variantId==="classic"?"Classique":variantId==="cut_throat"?"Cut-Throat":isExtendedCricket?"Tactics":cricketRuleData.label}/>
+                  <MssConfigFact label="Scoring" value={scoreMode==="points"?"Avec points":"Sans points"}/>
+                  <MssConfigFact label="Volées max" value={cricketRule==="quickie"?"10":maxRounds===0?"Sans limite":String(maxRounds)}/>
+                  <MssConfigFact label="Départ" value={cricketOrderOptions.find(option=>option.id===startOrderMode)?.label||"Alterné"}/>
+                  <MssConfigFact label="Rotation" value={rotateFirstPlayer?"ON":"OFF"}/>
+                  <MssConfigFact label="Classement" value={continueToLast && !teamMode && variantId!=="enculette"?"Jusqu’au dernier":"1er gagnant"}/>
+                </div>
+              </div>
+              <div style={{borderTop:"1px solid rgba(255,255,255,.09)",paddingTop:8}}>
+                <MssConfigCaption accent={T.gold}>SAISIE ET AUDIO</MssConfigCaption>
+                <MssConfigFact label="Saisie" value={inputMethod==="dartboard"?"CIBLE":"KEYPAD"}/>
+                <MssConfigFact label="Audio" value="Réglages globaux"/>
+              </div>
             </div>
+            <button type="button" disabled={!canStartLocal} onClick={handleStartMatch} style={{width:"100%",marginTop:14,border:"none",borderRadius:999,padding:"14px 18px",background:canStartLocal?T.gold:"#555b67",color:canStartLocal?"#1a1408":"#eee",fontWeight:1000,fontSize:15,cursor:canStartLocal?"pointer":"not-allowed"}}>LANCER LE CRICKET</button>
+            {!canStartLocal&&<p style={{margin:"8px 0 0",fontSize:11,color:"#ff9c9c",textAlign:"center"}}>{!teamMode&&mssCricketFormat==="duel"?"Le DUEL nécessite exactement 2 participants.":!teamMode&&mssCricketFormat==="multi"?"Le MULTI nécessite au moins 3 participants.":"Sélectionne les participants nécessaires avant de lancer."}</p>}
           </SectionCard>}
           {mssCricketView === "guided" && mssCricketStep > 0 && <MssCricketAwenaTip step={mssCricketStep} stepName={cricketSteps[mssCricketStep]} variant={isNoScoreRoute ? "no_score" : cricketRule} />}
         </div>
@@ -2377,17 +2476,170 @@ return {
       ? `${state.players[0].name} + ${state.players[2].name}`
       : `${state.players[1].name} + ${state.players[3].name}`;
   })();
+  const roundDisplay = Math.max(1, clampRoundNumber(state) || 1);
+  const boardTargets = (state.targets ?? (state.extended ? CRICKET_EXTENDED_UI_TARGETS : CRICKET_UI_TARGETS)) as CricketTarget[];
+  const currentClosedCount = closedCount(currentPlayer, !!state.extended, state.targets);
+  const currentProfileData = profileById.get(currentPlayer.id) ?? ({ id: currentPlayer.id, name: currentPlayer.name } as any);
+  const cricketInputControls = (<>
+
+<section style={{ marginBottom: 12, borderRadius: 16, border: `1px solid ${activeAccent}44`, background: "linear-gradient(180deg, rgba(11,16,28,.98), rgba(5,8,14,.98))", padding: 10, boxShadow: "0 10px 24px rgba(0,0,0,.26)" }}>
+{inputMethod === "dartboard" ? (
+  <div style={{ paddingBottom: 10 }}>
+    <DartboardClickable
+      multiplier={hitMode === "T" ? 3 : hitMode === "D" ? 2 : 1}
+      disabled={finishedFlag || botThinking}
+      onHit={(seg, mul) => {
+        if (finishedFlag || botThinking) return;
+        registerHit(seg === 25 ? 25 : seg, mul as any);
+      }}
+    />
+  </div>
+) : null}
+
+{/* Pavé MSS compact : seules les cibles de la variante et MISS sont proposées. */}
+{inputMethod === "keypad" ? (() => {
+  const raw = (state.targets ?? (state.extended ? CRICKET_EXTENDED_UI_TARGETS : CRICKET_UI_TARGETS)) as number[];
+  // Hidden Cricket exige l'accès aux vingt secteurs pour découvrir les cibles invisibles.
+  const digits = (state.hiddenTargets
+    ? Array.from({ length: 20 }, (_, index) => index + 1)
+    : raw.filter((target) => target >= 1 && target <= 20))
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .sort((a, b) => b - a);
+  const locked = finishedFlag || botThinking;
+  const cell: React.CSSProperties = {
+    minHeight: 48, borderRadius: 12, border: "1px solid rgba(246,194,86,.43)",
+    background: "linear-gradient(180deg,#292114,#100f13)", color: "#f6c256",
+    fontWeight: 1000, fontSize: 19, cursor: locked ? "not-allowed" : "pointer",
+    opacity: locked ? .45 : 1, touchAction: "manipulation",
+  };
+  const modButton = (mode: HitMode, label: string, tone: string) => {
+    const active = hitMode === mode;
+    return <button key={mode} type="button" disabled={locked} aria-pressed={active}
+      onClick={() => setHitMode(mode)} style={{ minHeight: 42, borderRadius: 12,
+        border: `1px solid ${tone}${active ? "" : "88"}`,
+        background: active ? `${tone}42` : `${tone}16`, color: mode === "S" ? "#f2f3f5" : tone,
+        fontSize: 12, fontWeight: 1000, cursor: locked ? "not-allowed" : "pointer",
+        boxShadow: active ? `0 0 12px ${tone}66` : "none", opacity: locked ? .45 : 1,
+      }}>{label}</button>;
+  };
+  const showModeButtons = !state.doubleOnly || !!state.allowTripleMaster;
+  const forcedLabelPrefix = state.doubleOnly ? (hitMode === "T" && state.allowTripleMaster ? "T" : "D") : "";
+  return <div aria-label={state.hiddenTargets ? "Keypad complet Hidden Cricket" : "Pavé Cricket compact"} style={{ display: "grid", gap: 8 }}>
+    {showModeButtons ? <div style={{ display: "grid", gridTemplateColumns: `repeat(${state.doubleOnly ? 2 : 3},minmax(0,1fr))`, gap: 7 }}>
+      {state.doubleOnly ? <>
+        {modButton("D", "DOUBLE", "#28bce9")}
+        {state.allowTripleMaster ? modButton("T", "TRIPLE", "#d946ef") : null}
+      </> : <>
+        {modButton("S", "SIMPLE", "#9ca3af")}
+        {modButton("D", "DOUBLE", "#28bce9")}
+        {modButton("T", "TRIPLE", "#d946ef")}
+      </>}
+    </div> : null}
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${state.hiddenTargets ? 5 : Math.min(3, Math.max(1, digits.length))},minmax(0,1fr))`, gap: state.hiddenTargets ? 6 : 7 }}>
+      {digits.map((value) => <button key={value} type="button" disabled={locked}
+        onClick={() => registerHit(value, state.doubleOnly ? (hitMode === "T" && state.allowTripleMaster ? 3 : 2) : undefined)} style={state.hiddenTargets ? { ...cell, minHeight: 48, fontSize: 18, borderRadius: 12 } : cell}>{state.doubleOnly ? `${forcedLabelPrefix}${value}` : value}</button>)}
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${state.doubleOnly ? 2 : 3},minmax(0,1fr))`, gap: 7 }}>
+      {!state.doubleOnly ? <button type="button" disabled={locked} onClick={() => registerHit(25,1)} style={{ ...cell, minHeight: 43, background: "#075b38", border: "1px solid #22c55e", color: "#fff", fontSize: 12 }}>BULL25</button> : null}
+      <button type="button" disabled={locked} onClick={() => registerHit(25,2)} style={{ ...cell, minHeight: 43, background: "#9b1c25", border: "1px solid #ef4444", color: "#fff", fontSize: 12 }}>{state.doubleOnly ? "DBULL" : "BULL50"}</button>
+      <button type="button" disabled={locked} onClick={() => registerHit(0,1)} style={{ ...cell, minHeight: 43, background: "#bd812d", border: "1px solid #efad46", color: "#422709", fontSize: 12 }}>MISS</button>
+    </div>
+  </div>;
+})() : <div style={{ textAlign: "center", fontSize: 11, color: "#b1bacd", padding: 8 }}>Touche la cible pour enregistrer chaque fléchette, y compris les MISS.</div>}
+
+</section>
+
+{/* BAS : ANNULER / RESUME */}
+<div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+  <button
+    type="button"
+    onClick={handleUndo}
+    disabled={botThinking}
+    style={{
+      flex: 1,
+      padding: "10px 12px",
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,.18)",
+      background: "linear-gradient(180deg,#222733,#121620)",
+      color: "#d7dce6",
+      fontSize: 14,
+      fontWeight: 800,
+      textTransform: "uppercase",
+      letterSpacing: 1.1,
+      cursor: botThinking ? "not-allowed" : "pointer",
+      boxShadow: "none",
+      opacity: botThinking ? 0.55 : 1,
+    }}
+  >
+    Annuler
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setShowEnd(true)}
+    style={{
+      flex: 1,
+      padding: "10px 12px",
+      borderRadius: 999,
+      border: "1px solid rgba(255,205,95,.9)",
+      background: "linear-gradient(180deg,#f6c256,#e9a824)",
+      color: "#211500",
+      fontSize: 14,
+      fontWeight: 900,
+      textTransform: "uppercase",
+      letterSpacing: 1.1,
+      cursor: "pointer",
+      opacity: botThinking ? 0.55 : 1,
+      boxShadow: "0 6px 16px rgba(246,194,86,.16)",
+    }}
+  >
+    {finishedFlag ? "Résumé" : "Valider"}
+  </button>
+</div>
+  </>);
 
   return (
     <div
+      className="mss-cricket-play-root"
       style={{
         minHeight: "100vh",
+        maxWidth: "100%",
+        overflowX: "clip",
         background: `radial-gradient(circle at top, #1c2540 0, #050712 55%, #000 100%)`,
         color: T.text,
         padding: "12px 10px 80px",
         boxSizing: "border-box",
       }}
     >
+      <style>{`
+        .mss-cricket-play-columns { display: block; width: 100%; min-width: 0; }
+        .mss-cricket-play-left, .mss-cricket-play-right { min-width: 0; max-width: 100%; }
+        .mss-cricket-header-band { display: flex; justify-content: center; align-items: center; }
+        .mss-cricket-header-image { max-width: 100%; }
+        @media (orientation: landscape) and (min-width: 650px) {
+          .mss-cricket-play-root { padding: 6px 8px 10px !important; min-height: 0 !important; overflow-x: clip; width: 100%; max-width: 100%; }
+          .mss-cricket-header-band { height: clamp(66px, 15dvh, 112px); width: 100%; max-width: 100%; margin-bottom: 7px !important; box-sizing: border-box; }
+          .mss-cricket-header-image { height: 100% !important; width: auto !important; max-width: calc(100% - 115px); aspect-ratio: auto !important; object-fit: contain !important; }
+          .mss-cricket-play-columns { display: grid; grid-template-columns: minmax(0,1.12fr) minmax(0,.88fr); column-gap: clamp(5px,1vw,12px); align-items: stretch; }
+          .mss-cricket-play-left, .mss-cricket-play-right { display: flex; flex-direction: column; gap: clamp(4px,.7dvh,8px); min-height: 0; width: 100%; }
+          .mss-cricket-play-left > *, .mss-cricket-play-right > * { margin-bottom: 0 !important; max-width: 100%; min-width: 0; box-sizing: border-box; }
+          .mss-cricket-play-left [data-cricket-shove-card] { flex: 1 0 auto; display: flex; flex-direction: column; min-height: 0; }
+          .mss-cricket-play-left [data-cricket-shove-card] > * { flex: 1 1 auto; width: 100%; }
+          .mss-cricket-play-left [data-cricket-shove-tools] { flex: 0 0 auto; }
+          .mss-cricket-play-left [data-cricket-shove-board-trigger] { flex: 0 0 auto; }
+          .mss-cricket-play-right .mss-shove-validated-scroll { min-height: 40px; max-width: 100%; }
+          .mss-cricket-play-right section { padding: clamp(4px,.6dvh,8px) !important; }
+          .mss-cricket-play-right section button { min-height: 32px; }
+          .mss-cricket-play-right [data-cricket-input-controls] { width: 100%; min-width: 0; }
+          .mss-cricket-play-right button { min-width: 0; max-width: 100%; }
+        }
+        @media (orientation: landscape) and (max-height: 530px) and (min-width: 650px) {
+          .mss-cricket-header-band { height: clamp(50px,14dvh,70px); }
+          .mss-cricket-play-right section button { min-height: 29px !important; }
+          .mss-cricket-play-right .mss-shove-validated-case { min-height: 34px; }
+          .mss-cricket-play-left [data-cricket-shove-board-trigger] { height: 53px !important; }
+        }
+      `}</style>
       {pendingWildMouse && state.exclusiveSpecial && (
         <div role="dialog" aria-modal="true" aria-label="Affectation Wild Mouse" style={{position:'fixed',inset:0,zIndex:3200,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.8)',padding:15}}>
           <div style={{maxWidth:440,width:'100%',background:'#0b1020',border:`1px solid ${T.gold}`,borderRadius:20,padding:16,display:'grid',gap:10}}>
@@ -2417,73 +2669,82 @@ return {
       )}
       {state.wildCard != null && <div style={{textAlign:'center',color:T.gold,background:'#f6c2561a',border:'1px solid #f6c25666',borderRadius:10,padding:9,fontWeight:900,fontSize:13,marginBottom:8}}>🃏 JOKER DE LA MANCHE : {state.wildCard} · +1 MARQUE</div>}
       {(state.eliminatedIds?.length||0)>0 && <div style={{fontSize:12,color:'#ff8a93',marginBottom:8}}>ÉLIMINÉS : {state.players.filter(p=>state.eliminatedIds?.includes(p.id)).map(p=>p.name).join(' · ')}</div>}
-      {state.extended ? <div style={{marginBottom:9,position:'relative',borderRadius:8,overflow:'hidden'}}>
-        <img src={cricketRule === "tactics" ? tickerMaster : tickerCricket} alt={cricketRuleData.label} style={{width:'100%',height:'auto',aspectRatio:'800/230',objectFit:'contain',display:'block'}} />
-        <button type="button" aria-label="Actions et quitter" onClick={() => setShowEnd(true)} style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',border:'1px solid #ffbd49',borderRadius:99,background:'#080b12bd',color:'#ffbd49',width:30,height:30,fontSize:19,fontWeight:900,cursor:'pointer'}}>←</button>
-        <button type="button" aria-label="Règles Cricket Master" onClick={() => setShowHelp(true)} style={{position:'absolute',right:8,top:8,border:'1px solid #ffbd49',borderRadius:99,background:'#080b12bd',color:'#ffbd49',width:28,height:28,fontWeight:900}}>i</button>
+      {state.extended ? <div className="mss-cricket-header-band" style={{marginBottom:9,position:'relative',borderRadius:8,overflow:'hidden',background:'#05070d'}}>
+        <img src={cricketVariantTicker} alt={cricketRuleData.label} className="mss-cricket-header-image" style={{width:'100%',height:'auto',aspectRatio:'800/230',objectFit:'contain',display:'block'}} />
+        <div style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',zIndex:4}}><BackDot onClick={handleQuitInternal} color={T.gold} glow="rgba(246,194,86,.55)" title="Retour à la configuration Cricket" size={36} /></div>
       </div> : null}
       {!state.extended ? <>
-      {/* HEADER */}
-      <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 900,
-                letterSpacing: 2,
-                textTransform: "uppercase",
-                color: T.gold,
-                textShadow: "0 0 6px rgba(246,194,86,0.8), 0 0 18px rgba(246,194,86,0.7)",
-              }}
-            >
-              Cricket
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowHelp(true)}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                border: "1px solid rgba(246,194,86,0.6)",
-                background: "rgba(0,0,0,0.4)",
-                color: T.gold,
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-                textShadow: "0 0 6px rgba(246,194,86,0.8)",
-                boxShadow: "0 0 8px rgba(246,194,86,0.5)",
-              }}
-            >
-              i
-            </button>
+        <div data-cricket-shove-header="1" className="mss-cricket-header-band" style={{marginBottom:9,position:"relative",borderRadius:13,overflow:"hidden",background:"#05070d",border:`1px solid ${activeAccent}50`}}>
+          <img src={cricketVariantTicker} alt={cricketRuleData.label} className="mss-cricket-header-image" style={{width:"100%",aspectRatio:"800 / 230",display:"block",objectFit:"contain"}} />
+          <div style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",zIndex:4}}><BackDot onClick={handleQuitInternal} color={T.gold} glow="rgba(246,194,86,.55)" title="Retour à la configuration Cricket" size={36} /></div>
+        </div>
+        <div className="mss-cricket-play-columns">
+          <div className="mss-cricket-play-left">
+        <div data-cricket-shove-card="1" style={{marginBottom:7}}>
+          <ShoveActivePlayerCard
+            profile={currentProfileData}
+            name={currentPlayer.name}
+            closedCases={currentClosedCount}
+            totalCases={boardTargets.length}
+            ruleSet="electronic"
+            round={roundDisplay}
+            maxRounds={maxRounds}
+            darts={[]}
+            dartsPlayed={thrown}
+            score={state.withPoints ? currentPlayer.score : undefined}
+            accent={activeAccent}
+            objectiveTitle="15 À BULL"
+            objectiveSubtitle={state.withPoints ? "FERMER · MARQUER" : "FERMER LES CIBLES"}
+            onObjective={()=>setShowHelp(true)}
+          />
+        </div>
+        <div data-cricket-shove-tools="1" style={{display:"grid",gridTemplateColumns:".85fr 1fr 2fr .85fr",gap:5,marginBottom:7}}>
+          {([
+            {id:"stats",label:"STATS",symbol:"▥"},
+            {id:"ranking",label:"CLASSEMENT",symbol:"🏆"},
+            {id:"players",label:"JOUEURS",symbol:""},
+            {id:"actions",label:"ACTIONS",symbol:"↺"},
+          ] as const).map(b=><button key={b.id} type="button" onClick={()=>setCricketPanel(b.id)} aria-label={b.label} title={b.label} style={{position:"relative",overflow:"hidden",minHeight:48,borderRadius:13,border:`1px solid ${activeAccent}60`,background:b.id==="players"?`url(${shovePlayersTicker}) center/100% 100% no-repeat`:`linear-gradient(180deg,${activeAccent}0b,rgba(7,10,16,.96))`,color:activeAccent,display:"grid",placeItems:"center",cursor:"pointer",padding:4,minWidth:0}}>
+            {b.id==="players"?<><span aria-hidden="true" style={{position:"absolute",inset:0,background:"linear-gradient(180deg,rgba(5,8,14,.18),rgba(5,8,14,.58))"}}/><b style={{position:"relative",fontSize:"clamp(10px,2.5vw,16px)",letterSpacing:.6,textShadow:"0 1px 5px #000"}}>JOUEURS</b></>:<><span style={{fontSize:18,lineHeight:1}}>{b.symbol}</span><small style={{fontSize:8,fontWeight:950}}>{b.label}</small></>}
+          </button>)}
+        </div>
+        <button type="button" data-cricket-shove-board-trigger="1" onClick={()=>setCricketPanel("marks")} aria-label="Ouvrir le tableau des marques de tous les joueurs" style={{position:"relative",width:"100%",height:67,borderRadius:12,border:`1px solid ${activeAccent}85`,background:"#0a0c13",padding:0,overflow:"hidden",cursor:"pointer",marginBottom:7}}>
+          <img src={shoveMarksTicker} alt="TABLEAU DES MARQUES" style={{display:"block",width:"100%",height:"100%",objectFit:"fill"}}/>
+          <span aria-hidden="true" style={{position:"absolute",inset:0,background:"linear-gradient(180deg,rgba(4,7,13,.08),rgba(4,7,13,.34))"}}/>
+          <span style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",whiteSpace:"nowrap",fontSize:"clamp(12px,2.7vw,18px)",fontWeight:1000,letterSpacing:.7,color:activeAccent,textShadow:"0 2px 7px #000"}}>TABLEAU DES MARQUES</span>
+        </button>
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {Array.from({ length: totalDartsPerTurn }).map((_, i) => {
-              const active = i < thrown;
-              return (
-                <div
-                  key={i}
-                  style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <DartIconColorizable color={activeAccent} active={active} size={30} />
-                </div>
-              );
+          <div className="mss-cricket-play-right">
+        <div data-cricket-shove-marks="1" className="mss-shove-validated-band" style={{"--shove-mid-accent":activeAccent,marginBottom:9} as React.CSSProperties}>
+          <div className="mss-shove-validated-scroll is-electronic" tabIndex={0} aria-label="Marques validées : fais défiler les objectifs">
+            {boardTargets.map(target=>{
+              const count=Number(currentPlayer.marks[target]||0);
+              const discovered = !state.hiddenTargets || target === 25 || state.players.some(p => Number(p.marks[target] || 0) > 0);
+              const targetLabel = discovered ? (target===25?"BULL":target===26?"D":target===27?"T":target) : "?";
+              return <div key={target} className={`mss-shove-validated-case${count>=3?" is-closed":""}`} aria-label={discovered ? `${targetLabel}: ${count} marques sur trois` : "Objectif encore caché"}>
+                <b className="mss-shove-validated-value">{targetLabel}</b>
+                <span className="mss-shove-validated-symbol">
+                  {count>0?<CricketMarkIcon marks={Math.min(3,count)} size={26} color={activeAccent} glow={count>=3}/>:<span className="mss-shove-validated-empty">—</span>}
+                </span>
+              </div>;
             })}
           </div>
         </div>
-
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-          Manche: <strong style={{ color: "#fff" }}>{Math.max(1, clampRoundNumber(state) || 1)}</strong> /{" "}
-          <strong style={{ color: T.gold }}>{maxRounds}</strong>
-          {teamMode && state.players.length === 4 ? <span style={{ marginLeft: 10, opacity: 0.85 }}>• 2v2</span> : null}
+            {cricketInputControls}
+          </div>
         </div>
-      </div>
-
       </> : null}
+      {cricketPanel && !state.extended ? <div role="dialog" aria-modal="true" aria-label={`Cricket · ${cricketPanel}`} onClick={()=>setCricketPanel(null)} style={{position:"fixed",inset:0,zIndex:3100,background:"rgba(0,0,0,.76)",backdropFilter:"blur(8px)",display:"grid",placeItems:"center",padding:14}}>
+        <div onClick={e=>e.stopPropagation()} style={{width:"min(560px,96vw)",maxHeight:"78dvh",overflow:"auto",background:"linear-gradient(155deg,rgba(14,18,29,.99),rgba(5,7,13,.99))",border:`1px solid ${activeAccent}66`,borderRadius:20,padding:13,boxShadow:`0 22px 70px rgba(0,0,0,.7),0 0 34px ${activeAccent}20`}}>
+          <ShoveFloatingHeader title={({players:"LISTE DES JOUEURS",ranking:"CLASSEMENT LIVE",marks:"TABLEAU DES MARQUES",stats:"STATISTIQUES DE LA PARTIE",actions:"ACTIONS"} as const)[cricketPanel]} accent={activeAccent} onClose={()=>setCricketPanel(null)} tickerSrc={cricketVariantTicker} tickerAlt={cricketRuleData.label} />
+          <div style={{height:12}} />
+          {cricketPanel==="marks"?<CricketShoveMarksBoard players={state.players as any} targets={boardTargets} activeId={currentPlayer.id} accent={activeAccent} profiles={[...allProfiles,...botProfiles]} hiddenTargets={!!state.hiddenTargets}/>:null}
+          {cricketPanel==="players"?<div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>{state.players.map((p,idx)=>{const prof=profileById.get(p.id)??p;return <div key={p.id} style={{border:`1px solid ${p.id===currentPlayer.id?activeAccent:"#ffffff25"}`,borderRadius:12,padding:12,display:"grid",justifyItems:"center",gap:6,background:p.id===currentPlayer.id?`${activeAccent}18`:"rgba(255,255,255,.035)"}}>{renderAvatarCircle(prof as any,{selected:p.id===currentPlayer.id,size:58,mode:"play"})}<b style={{fontSize:13}}>{p.name}</b><strong style={{fontSize:20,color:ACCENTS[idx%ACCENTS.length]}}>{p.score}</strong><small>{closedCount(p,!!state.extended,state.targets)}/{boardTargets.length} cibles fermées</small></div>})}</div>:null}
+          {cricketPanel==="ranking"?<div style={{display:"grid",gap:7}}>{[...state.players].sort((a,b)=>closedCount(b,!!state.extended,state.targets)-closedCount(a,!!state.extended,state.targets)|| (state.withPoints?b.score-a.score:0)).map((p,i)=><div key={p.id} style={{border:`1px solid ${activeAccent}35`,borderRadius:12,padding:10,background:"rgba(255,255,255,.035)",display:"grid",gridTemplateColumns:"32px minmax(0,1fr) auto",gap:8,alignItems:"center"}}><b style={{color:activeAccent}}>{i+1}</b><strong>{p.name}</strong><small>{closedCount(p,!!state.extended,state.targets)} fermées · {p.score} pts</small></div>)}</div>:null}
+          {cricketPanel==="stats"?<div style={{display:"grid",gap:8}}>{state.players.map(p=><div key={p.id} style={{border:`1px solid ${activeAccent}35`,borderRadius:12,padding:11,background:"rgba(255,255,255,.035)"}}><b style={{color:activeAccent}}>{p.name}</b><div style={{marginTop:5,fontSize:12,color:"#dce3f1"}}>Score : {p.score} · Cibles fermées : {closedCount(p,!!state.extended,state.targets)}/{boardTargets.length} · Marques : {marksTotal(p,!!state.extended,state.targets)}</div></div>)}</div>:null}
+          {cricketPanel==="actions"?<div style={{display:"grid",gap:8}}><button type="button" onClick={()=>{setCricketPanel(null);setShowHelp(true)}} style={{border:`1px solid ${activeAccent}88`,borderRadius:12,background:"#161b29",color:"#fff",minHeight:42,fontWeight:900}}>RÈGLES / OBJECTIFS</button><button type="button" onClick={()=>{setCricketPanel(null);setShowEnd(true)}} style={{border:`1px solid ${activeAccent}88`,borderRadius:12,background:"#161b29",color:"#fff",minHeight:42,fontWeight:900}}>FIN DE PARTIE / QUITTER</button></div>:null}
+        </div>
+      </div>:null}
       {/* MODAL AIDE */}
       {showHelp && (
         <div
@@ -2493,8 +2754,8 @@ return {
             top: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(6px)",
+            background: "rgba(0,0,0,0.76)",
+            backdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2505,26 +2766,27 @@ return {
         >
           <div
             style={{
-              background: "#111827",
-              borderRadius: 18,
-              padding: 20,
-              border: "1px solid rgba(246,194,86,0.4)",
-              boxShadow: "0 0 20px rgba(246,194,86,0.4)",
-              maxWidth: 340,
+              background: "linear-gradient(155deg,rgba(14,18,29,.99),rgba(5,7,13,.99))",
+              borderRadius: 20,
+              padding: 13,
+              border: `1px solid ${activeAccent}66`,
+              boxShadow: `0 22px 70px rgba(0,0,0,.7),0 0 34px ${activeAccent}20`,
+              width: "min(560px,96vw)",
+              maxHeight:"78dvh",
+              overflowY:"auto",
               color: "#fff",
               fontSize: 14,
               lineHeight: 1.45,
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10, color: T.gold, textAlign: "center" }}>
-              Règles du Cricket
-            </div>
+            <ShoveFloatingHeader title="RÈGLES DU CRICKET" accent={activeAccent} onClose={() => setShowHelp(false)} tickerSrc={cricketVariantTicker} tickerAlt={cricketRuleData.label} />
+            <div style={{ height: 12 }} />
             <div>
               • Fermer <strong>15,16,17,18,19,20 & Bull</strong>
               <br />• Fermer = <strong>3 marques</strong>
               <br />• Sur-marques = <strong>points</strong> si les autres n’ont pas fermé
-              <br />• À <strong>{maxRounds}</strong> manches : fin forcée + tie-break (fermés → marques → points)
+              <br />• À <strong>{maxRounds===0?"∞":maxRounds}</strong> manches : fin forcée + tie-break (fermés → marques → points)
             </div>
 
             <button
@@ -2557,8 +2819,8 @@ return {
             top: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(0,0,0,0.68)",
-            backdropFilter: "blur(7px)",
+            background: "rgba(0,0,0,0.76)",
+            backdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2570,29 +2832,19 @@ return {
           <div
             style={{
               width: "100%",
-              maxWidth: 380,
-              borderRadius: 18,
-              background: "#111827",
-              border: "1px solid rgba(246,194,86,0.45)",
-              boxShadow: "0 0 24px rgba(246,194,86,0.25)",
-              padding: 16,
+              maxWidth: 560,
+              maxHeight: "78dvh",
+              overflowY: "auto",
+              borderRadius: 20,
+              background: "linear-gradient(155deg,rgba(14,18,29,.99),rgba(5,7,13,.99))",
+              border: `1px solid ${activeAccent}66`,
+              boxShadow: `0 22px 70px rgba(0,0,0,.7),0 0 34px ${activeAccent}20`,
+              padding: 13,
               color: "#fff",
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 900,
-                letterSpacing: 1.2,
-                color: T.gold,
-                textAlign: "center",
-                textShadow: "0 0 10px rgba(246,194,86,0.65)",
-                marginBottom: 6,
-              }}
-            >
-              Fin de partie
-            </div>
+            <ShoveFloatingHeader title="FIN DE PARTIE" accent={activeAccent} onClose={() => setShowEnd(false)} tickerSrc={cricketVariantTicker} tickerAlt={cricketRuleData.label} />
 
             <div style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,0.75)" }}>
               {teamWinnerLabel ? (
@@ -2606,11 +2858,16 @@ return {
               ) : (
                 "Égalité"
               )}
-              {((state as any).forcedFinished || clampRoundNumber(state) >= maxRounds) && (
-                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>Fin au max de manches ({maxRounds})</div>
+              {((state as any).forcedFinished || (maxRounds>0 && clampRoundNumber(state) >= maxRounds)) && (
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>Fin après {maxRounds} volées</div>
               )}
             </div>
 
+            {Array.isArray((state as any).finishOrder) && (state as any).finishOrder.length > 0 && (
+              <div style={{marginTop:10,display:"grid",gap:5}}>
+                {(state as any).finishOrder.map((id:string,index:number)=><div key={id} style={{padding:"6px 10px",border:"1px solid rgba(246,194,86,.3)",borderRadius:9,fontWeight:800}}>{index+1}ᵉ · {state.players.find(p=>p.id===id)?.name||id}</div>)}
+              </div>
+            )}
             <div
               style={{
                 marginTop: 12,
@@ -2766,506 +3023,11 @@ return {
         onObjective={() => setShowHelp(true)}
         onActions={() => setShowEnd(true)}
       /> : <>
-      {/* CARTES JOUEURS */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 5 }}>
-        {state.players.map((p, idx) => {
-          const isActive = p.id === currentPlayer.id;
-          const isWinnerPlayer = p.id === state.winnerId;
-          const prof = profileById.get(p.id) ?? ({ id: p.id, name: p.name } as any);
-          const accent = ACCENTS[idx % ACCENTS.length];
-          const baseColor = playerCardColors[idx % playerCardColors.length];
-
-          const bg = isActive ? "linear-gradient(135deg,#111827,#020617)" : baseColor;
-          const border = isActive ? `1px solid ${accent}` : `1px solid ${T.borderSoft}`;
-          const glow = isActive ? `0 0 22px ${accent}80` : "0 0 6px rgba(0,0,0,0.7)";
-
-          const scoreColor = isActive ? "#fef9c3" : isWinnerPlayer ? accent : T.text;
-          const scoreShadow = isActive
-            ? `0 0 10px ${accent}cc, 0 0 25px ${accent}80`
-            : isWinnerPlayer
-            ? `0 0 10px ${accent}aa`
-            : "none";
-
-          const totalPlayers = state.players.length;
-          const avatarSize = totalPlayers === 2 ? 58 : totalPlayers === 4 ? 40 : 48;
-          const layout4Players = totalPlayers >= 4;
-
-          return (
-            <div
-              key={p.id}
-              style={{
-                flex: totalPlayers > 4 ? "0 0 102px" : 1,
-                minWidth: totalPlayers > 4 ? 102 : 0,
-                padding: layout4Players ? "8px 6px" : "10px",
-                borderRadius: 16,
-                background: bg,
-                border,
-                boxShadow: glow,
-                display: "flex",
-                flexDirection: layout4Players ? "column" : "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: layout4Players ? 6 : 8,
-                transition: "all 0.15s ease",
-              }}
-            >
-              {renderAvatarCircle(prof as any, { selected: isActive || isWinnerPlayer, size: avatarSize, mode: "play" })}
-
-              {layout4Players ? (
-                <div style={{ fontSize: 22, fontWeight: 900, color: scoreColor, textShadow: scoreShadow, marginTop: 2 }}>
-                  {p.score}
-                </div>
-              ) : (
-                <div style={{ flex: 1, textAlign: "right", fontSize: 26, fontWeight: 900, color: scoreColor, textShadow: scoreShadow }}>
-                  {p.score}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* TABLEAU MARQUES */}
-<div
-  style={{
-    borderRadius: 16,
-    background: T.card,
-    border: `1px solid ${T.borderSoft}`,
-    padding: 10,
-    marginBottom: 12,
-  }}
->
-  {state.extended || !!state.targets || state.players.length > 4 ? (
-    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-      <div style={{minWidth:Math.max(360,state.players.length*68+68)}}>
-        <div style={{display:"grid",gridTemplateColumns:`68px repeat(${state.players.length}, minmax(68px,1fr))`,gap:4,marginBottom:8}}>
-          <strong style={{color:T.gold,fontSize:10,textAlign:"center"}}>CIBLE</strong>
-          {state.players.map((p:any)=><strong key={p.id} title={p.name} style={{fontSize:10,textAlign:"center",whiteSpace:"nowrap",textOverflow:"ellipsis",overflow:"hidden",color:p.id===currentPlayer.id?T.gold:"#bdc6d6"}}>{p.name}</strong>)}
-        </div>
-        {(state.targets ?? (state.extended?CRICKET_EXTENDED_UI_TARGETS:CRICKET_UI_TARGETS)).map(target=><div key={target} style={{display:"grid",gridTemplateColumns:`68px repeat(${state.players.length}, minmax(68px,1fr))`,alignItems:"center",gap:4,borderTop:"1px solid #ffffff12",minHeight:43}}>
-          <strong style={{fontSize:target===26||target===27?11:15,color:getTargetColor(target),textAlign:"center"}}>{state.hiddenTargets && target!==25 && !state.players.some(p=>Number(p.marks[target]||0)>0) ? "?" : target===25?"BULL":target===26?"DOUBLE":target===27?"TRIPLE":target}</strong>
-          {state.players.map((p:any,idx:number)=><MarkCell key={p.id} marks={Number(p.marks[target]||0)} playerIndex={idx} isActive={p.id===currentPlayer.id}/>)}
-        </div>)}
-      </div>
-    </div>
-  ) : state.players.length === 2 ? (
-    <>
-      {CRICKET_UI_TARGETS.map((target) => {
-        const label = target === 25 ? "Bull" : String(target);
-        const colColor = getTargetColor(target);
-        return (
-          <div
-            key={target}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 40px 1fr",
-              gap: 8,
-              alignItems: "center",
-              padding: "5px 0",
-              borderTop: `1px solid rgba(255,255,255,0.04)`,
-            }}
-          >
-            <MarkCell
-              marks={(state.players[0].marks as any)[target]}
-              playerIndex={0}
-              isActive={state.players[0].id === currentPlayer.id}
-            />
-
-            <div
-              style={{
-                fontSize: label === "Bull" ? 16 : 18,
-                fontWeight: 900,
-                textAlign: "center",
-                color: colColor,
-                textShadow: `0 0 8px ${colColor}cc, 0 0 18px ${colColor}80`,
-                letterSpacing: 1,
-                padding: "2px 0",
-                borderLeft: `1px solid rgba(148,163,184,0.5)`,
-                borderRight: `1px solid rgba(148,163,184,0.5)`,
-              }}
-            >
-              {label}
-            </div>
-
-            <MarkCell
-              marks={(state.players[1].marks as any)[target]}
-              playerIndex={1}
-              isActive={state.players[1].id === currentPlayer.id}
-            />
-          </div>
-        );
-      })}
-    </>
-  ) : state.players.length === 4 ? (
-    <>
-      {CRICKET_UI_TARGETS.map((target) => {
-        const label = target === 25 ? "Bull" : String(target);
-        const colColor = getTargetColor(target);
-        return (
-          <div
-            key={target}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 40px 1fr 1fr",
-              gap: 8,
-              alignItems: "center",
-              padding: "5px 0",
-              borderTop: `1px solid rgba(255,255,255,0.04)`,
-            }}
-          >
-            <MarkCell
-              marks={(state.players[0].marks as any)[target]}
-              playerIndex={0}
-              isActive={state.players[0].id === currentPlayer.id}
-            />
-            <MarkCell
-              marks={(state.players[1].marks as any)[target]}
-              playerIndex={1}
-              isActive={state.players[1].id === currentPlayer.id}
-            />
-
-            <div
-              style={{
-                fontSize: label === "Bull" ? 16 : 18,
-                fontWeight: 900,
-                textAlign: "center",
-                color: colColor,
-                textShadow: `0 0 8px ${colColor}cc, 0 0 18px ${colColor}80`,
-                letterSpacing: 1,
-                padding: "2px 0",
-                borderLeft: `1px solid rgba(148,163,184,0.5)`,
-                borderRight: `1px solid rgba(148,163,184,0.5)`,
-              }}
-            >
-              {label}
-            </div>
-
-            <MarkCell
-              marks={(state.players[2].marks as any)[target]}
-              playerIndex={2}
-              isActive={state.players[2].id === currentPlayer.id}
-            />
-            <MarkCell
-              marks={(state.players[3].marks as any)[target]}
-              playerIndex={3}
-              isActive={state.players[3].id === currentPlayer.id}
-            />
-          </div>
-        );
-      })}
-    </>
-  ) : (
-    <>
-      {CRICKET_UI_TARGETS.map((target) => {
-        const label = target === 25 ? "Bull" : String(target);
-        const colColor = getTargetColor(target);
-        return (
-          <div
-            key={target}
-            style={{
-              display: "grid",
-              gridTemplateColumns: `40px repeat(${state.players.length}, 1fr)`,
-              gap: 8,
-              alignItems: "center",
-              padding: "5px 0",
-              borderTop: `1px solid rgba(255,255,255,0.04)`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: label === "Bull" ? 16 : 18,
-                fontWeight: 900,
-                textAlign: "center",
-                color: colColor,
-                textShadow: `0 0 8px ${colColor}cc, 0 0 18px ${colColor}80`,
-                letterSpacing: 1,
-                padding: "2px 0",
-                borderRight: `1px solid rgba(148,163,184,0.5)`,
-              }}
-            >
-              {label}
-            </div>
-
-            {state.players.map((p, idx) => (
-              <MarkCell
-                key={p.id}
-                marks={(p.marks as any)[target]}
-                playerIndex={idx}
-                isActive={p.id === currentPlayer.id}
-              />
-            ))}
-          </div>
-        );
-      })}
-    </>
-  )}
-</div>
-
-
-
+      {/* SHOVE: les joueurs et la grille intégrale sont accessibles via les boutons flottants. */}
       </>}
 
-{/* Cricket — méthode de saisie */}
-<div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-  <button
-    type="button"
-    onClick={() => setInputMethod("keypad")}
-    disabled={finishedFlag || botThinking}
-    style={{
-      flex: 1,
-      height: 36,
-      borderRadius: 14,
-      border:
-        inputMethod === "keypad"
-          ? "1px solid rgba(255,198,58,.65)"
-          : "1px solid rgba(255,255,255,.10)",
-      background:
-        inputMethod === "keypad"
-          ? "linear-gradient(180deg, rgba(255,198,58,.18), rgba(0,0,0,.12))"
-          : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.10))",
-      color: inputMethod === "keypad" ? "#ffe8a3" : "rgba(226,232,240,.90)",
-      fontWeight: 900,
-      letterSpacing: 1.0,
-      cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
-      opacity: finishedFlag || botThinking ? 0.45 : 1,
-    }}
-  >
-    KEYPAD
-  </button>
+      {state.extended ? cricketInputControls : null}
 
-  <button
-    type="button"
-    onClick={() => setInputMethod("dartboard")}
-    disabled={finishedFlag || botThinking}
-    style={{
-      flex: 1,
-      height: 36,
-      borderRadius: 14,
-      border:
-        inputMethod === "dartboard"
-          ? "1px solid rgba(56,189,248,.55)"
-          : "1px solid rgba(255,255,255,.10)",
-      background:
-        inputMethod === "dartboard"
-          ? "linear-gradient(180deg, rgba(56,189,248,.18), rgba(0,0,0,.12))"
-          : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.10))",
-      color: inputMethod === "dartboard" ? "#7dd3fc" : "rgba(226,232,240,.90)",
-      fontWeight: 900,
-      letterSpacing: 1.0,
-      cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
-      opacity: finishedFlag || botThinking ? 0.45 : 1,
-    }}
-  >
-    CIBLE
-  </button>
-</div>
-
-{inputMethod === "dartboard" ? (
-  <div style={{ paddingBottom: 10 }}>
-    <DartboardClickable
-      multiplier={hitMode === "T" ? 3 : hitMode === "D" ? 2 : 1}
-      disabled={finishedFlag || botThinking}
-      onHit={(seg, mul) => {
-        if (finishedFlag || botThinking) return;
-        registerHit(seg === 25 ? 25 : seg, mul as any);
-      }}
-    />
-  </div>
-) : null}
-
-{state.extended ? (
-  <section aria-label="Saisie Cricket Master" style={{marginTop:10,marginBottom:10,background:'#070a13',border:'1px solid #ffbf4655',borderRadius:18,padding:9,display:'grid',gap:8}}>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
-      {(['S','D','T'] as const).map(mode=>{
-        const selected=hitMode===mode;
-        const color=mode==='D'?'#06b6d4':mode==='T'?'#d946ef':'#aab1ba';
-        return <button key={mode} type="button" aria-pressed={selected} disabled={finishedFlag||botThinking} onClick={()=>setHitMode(mode)} style={{minHeight:39,borderRadius:12,border:`1px solid ${color}`,background:selected?`${color}36`:'#111521',boxShadow:selected?`0 0 11px ${color}55`:'none',color:mode==='S'?'#ffffff':'#ffffff',fontWeight:950,cursor:'pointer'}}>{mode==='S'?'SIMPLE':mode==='D'?'DOUBLE':'TRIPLE'}</button>;
-      })}
-    </div>
-    {inputMethod === 'keypad' ? <>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
-        {[15,16,17,18,19,20].map(value=><button type="button" key={value} disabled={finishedFlag||botThinking} onClick={()=>registerHit(value)} style={{minHeight:53,borderRadius:13,border:'1px solid #ffb93380',background:'linear-gradient(160deg,#35200c,#120f10)',color:'#ffbf46',fontSize:25,fontWeight:1000,cursor:'pointer'}}>{value}</button>)}
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>
-        <button type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(25,1)} style={{minHeight:42,borderRadius:12,border:'1px solid #22c55e',background:'#064e3b',color:'#fff',fontWeight:950,cursor:'pointer'}}>BULL25</button>
-        <button type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(25,2)} style={{minHeight:42,borderRadius:12,border:'1px solid #ef4444',background:'#991b1b',color:'#fff',fontWeight:950,cursor:'pointer'}}>DBULL50</button>
-        <button type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(0,1)} style={{minHeight:42,borderRadius:12,border:'1px solid #d58a18',background:'#b97720',color:'#382008',fontWeight:950,cursor:'pointer'}}>MISS</button>
-      </div>
-      <button type="button" aria-expanded={showMasterOtherSectors} onClick={()=>setShowMasterOtherSectors(v=>!v)} style={{fontSize:11,letterSpacing:.3,color:'#b7bfce',border:'1px solid #ffffff26',background:'#101521',borderRadius:10,minHeight:34,cursor:'pointer'}}>AUTRES SECTEURS (1–14) · {showMasterOtherSectors?'MASQUER':'AFFICHER'}</button>
-      {showMasterOtherSectors && <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:5}}>{Array.from({length:14},(_,index)=>index+1).map(value=><button key={value} type="button" disabled={finishedFlag||botThinking} onClick={()=>registerHit(value)} style={{border:'1px solid #ffffff27',borderRadius:9,background:'#141a27',minHeight:38,fontWeight:900,color:'#fff',cursor:'pointer'}}>{value}</button>)}</div>}
-    </> : <div style={{textAlign:'center',fontSize:11,color:'#b1bacd'}}>Touche directement la cible pour enregistrer un impact.</div>}
-  </section>
-) : <>
-{/* DOUBLE / TRIPLE / BULL */}
-<div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-  <button
-    type="button"
-    onClick={() => setHitMode("D")}
-    disabled={finishedFlag || botThinking}
-    style={{
-      flex: 1,
-      padding: "9px 12px",
-      borderRadius: 999,
-      border: "none",
-      cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
-      fontSize: 13,
-      fontWeight: 700,
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
-      background: "linear-gradient(135deg,#0f766e,#0b3b4b)",
-      color: "#7dd3fc",
-      boxShadow: hitMode === "D" ? "0 0 20px rgba(56,189,248,0.8)" : "0 0 8px rgba(15,23,42,0.9)",
-      transition: "all 0.12s ease",
-      opacity: finishedFlag || botThinking ? 0.45 : 1,
-    }}
-  >
-    Double
-  </button>
-
-  <button
-    type="button"
-    onClick={() => setHitMode("T")}
-    disabled={finishedFlag || botThinking}
-    style={{
-      flex: 1,
-      padding: "9px 12px",
-      borderRadius: 999,
-      border: "none",
-      cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
-      fontSize: 13,
-      fontWeight: 700,
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
-      background: "linear-gradient(135deg,#7e22ce,#4c1d95)",
-      color: "#f9a8d4",
-      boxShadow: hitMode === "T" ? "0 0 20px rgba(244,114,182,0.8)" : "0 0 8px rgba(15,23,42,0.9)",
-      transition: "all 0.12s ease",
-      opacity: finishedFlag || botThinking ? 0.45 : 1,
-    }}
-  >
-    Triple
-  </button>
-
-  <button
-    type="button"
-    onClick={handleBull}
-    disabled={finishedFlag || botThinking}
-    style={{
-      flex: 1,
-      padding: "9px 12px",
-      borderRadius: 999,
-      border: "none",
-      cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
-      fontSize: 13,
-      fontWeight: 700,
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
-      background: "linear-gradient(135deg,#059669,#065f46)",
-      color: "#bbf7d0",
-      boxShadow: "0 0 16px rgba(34,197,94,0.8)",
-      transition: "all 0.12s ease",
-      opacity: finishedFlag || botThinking ? 0.45 : 1,
-    }}
-  >
-    Bull
-  </button>
-</div>
-
-{/* CLAVIER 0–20 — masqué quand la saisie CIBLE est active */}
-{inputMethod === "keypad" ? (
-<div
-  style={{
-    borderRadius: 20,
-    background: "#050816",
-    border: `1px solid ${T.borderSoft}`,
-    padding: 10,
-    marginBottom: 10,
-    boxShadow: "0 0 24px rgba(0,0,0,0.6)",
-    opacity: finishedFlag || botThinking ? 0.55 : 1,
-    pointerEvents: finishedFlag || botThinking ? "none" : "auto",
-  }}
->
-  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 8 }}>
-    {Array.from({ length: 21 }).map((_, value) => {
-      const isCricketNumber = value >= 15 && value <= 20;
-      const accent = isCricketNumber ? getTargetColor(value as CricketTarget) : "#111827";
-
-      return (
-        <button
-          key={value}
-          type="button"
-          onClick={() => handleKeyPress(value)}
-          disabled={finishedFlag || botThinking}
-          style={{
-            padding: "11px 0",
-            borderRadius: 16,
-            border: isCricketNumber ? `1px solid ${accent}dd` : "none",
-            cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
-            fontSize: 16,
-            fontWeight: 700,
-            background: "linear-gradient(135deg,#111827,#020617)",
-            color: isCricketNumber ? accent : "#f9fafb",
-            boxShadow: isCricketNumber ? `0 0 12px ${accent}66` : "0 0 14px rgba(0,0,0,0.65)",
-            transition: "all 0.1s ease",
-            opacity: finishedFlag || botThinking ? 0.65 : 1,
-          }}
-        >
-          {value}
-        </button>
-      );
-    })}
-  </div>
-</div>
-) : null}
-
-</>}
-
-{/* BAS : ANNULER / RESUME */}
-<div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-  <button
-    type="button"
-    onClick={handleUndo}
-    disabled={botThinking}
-    style={{
-      flex: 1,
-      padding: "10px 12px",
-      borderRadius: 999,
-      border: "none",
-      background: "linear-gradient(135deg,#dc2626,#7f1d1d)",
-      color: "#fee2e2",
-      fontSize: 14,
-      fontWeight: 800,
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
-      cursor: botThinking ? "not-allowed" : "pointer",
-      boxShadow: "0 0 16px rgba(248,113,113,0.8)",
-      opacity: botThinking ? 0.55 : 1,
-    }}
-  >
-    Annuler
-  </button>
-
-  <button
-    type="button"
-    onClick={() => setShowEnd(true)}
-    style={{
-      flex: 1,
-      padding: "10px 12px",
-      borderRadius: 999,
-      border: "none",
-      background: finishedFlag ? "linear-gradient(135deg,#ffc63a,#ffaf00)" : "rgba(255,255,255,0.12)",
-      color: finishedFlag ? "#211500" : "rgba(255,255,255,0.9)",
-      fontSize: 14,
-      fontWeight: 900,
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
-      cursor: "pointer",
-      opacity: botThinking ? 0.7 : 1,
-    }}
-  >
-    {finishedFlag ? "Résumé" : "Valider"}
-  </button>
-</div>
     </div>
   );
 }

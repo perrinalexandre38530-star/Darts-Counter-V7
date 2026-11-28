@@ -57,6 +57,8 @@ export default function MssCricketAwenaTip({step,stepName,quick=false,variant="c
     "Règles de la variante": rule?.description || "Vérifie les règles spécifiques de cette variante.",
     "Scoring": variant==="cut_throat" ? "En CUT-THROAT, les points vont aux adversaires encore ouverts." : variant==="sudden_death" ? "En mort subite, le retard de points peut provoquer une élimination." : variant==="no_score" ? "Sans points, seules les fermetures des objectifs décident du résultat." : "Avec points, une cible fermée rapporte tant qu'un adversaire l'a encore ouverte.",
     "Manches":variant==="quickie" ? "QUICKIE : la partie est limitée à dix manches." : "Adapte la limite des manches à la durée souhaitée.",
+    "Départ":"Choisis l'ordre de départ et l'alternance des premiers joueurs, puis vérifie les équipes.",
+    "Saisie":"Choisis le clavier ou la cible interactive ; les autres méthodes indisponibles restent grisées.",
     "Départ et saisie":"Vérifie l'ordre de départ et le mode de saisie avant de lancer.",
     "Récapitulatif":"Contrôle le nombre de participants, les cibles et les paramètres avant de jouer.",
     "Choix joueurs":"Choisis exactement deux joueurs : l'un bat, l'autre lance.",

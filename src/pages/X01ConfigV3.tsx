@@ -3039,7 +3039,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       // de places dans le format. Le sélecteur de joueurs reste strictement humain.
       const pool = participantMode === "teams" ? prev.filter((id) => humanProfiles.some((p: any) => String(p.id) === String(id))) : prev;
       const exists = pool.includes(pid);
-      if (!exists && configViewMode === "guided") {
+      if (!exists) {
         const capacity = participantMode === "teams" ? teamFormatCount * teamFormatSize : matchMode === "solo" ? 2 : 20;
         if (pool.length >= capacity) return pool;
       }
@@ -4234,11 +4234,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       {configViewMode === "complete" && <div style={{ marginBottom: 14, display: "grid", gap: 12 }}>
         <div style={{ color: primary, fontSize: 12, fontWeight: 950, letterSpacing: .8 }}>PARTICIPANTS</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
-          <MssParticipantTypeChoice kind="players" active={!group} accent={primary} onClick={() => { setParticipantMode("players"); setMatchMode("solo"); setPremiumTeamsOpen(false); }}/>
+          <MssParticipantTypeChoice kind="players" active={!group} accent={primary} onClick={() => { setParticipantMode("players"); setMatchMode("solo"); setSelectedIds(prev => prev.slice(0, 2)); setPremiumTeamsOpen(false); }}/>
           <MssParticipantTypeChoice kind="teams" active={group} accent={primary} onClick={() => { setParticipantMode("teams"); setMatchMode("teams"); }}/>
         </div>
         {!group ? <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
-          <PillButton label="DUEL 1V1" active={matchMode === "solo"} primary={primary} primarySoft={primarySoft} onClick={() => setMatchMode("solo")} compact />
+          <PillButton label="DUEL 1V1" active={matchMode === "solo"} primary={primary} primarySoft={primarySoft} onClick={() => { setMatchMode("solo"); setSelectedIds(prev => prev.slice(0, 2)); }} compact />
           <PillButton label="MULTI" active={matchMode === "multi"} primary={primary} primarySoft={primarySoft} onClick={() => setMatchMode("multi")} compact />
         </div> : <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
           {([[2,2],[2,3],[2,4],[3,2],[4,2]] as const).map(([count,size]) => <PillButton key={`${count}x${size}`} label={`${count}×${size}`} active={teamFormatCount === count && teamFormatSize === size} primary={primary} primarySoft={primarySoft} compact onClick={() => { setTeamFormatCount(count); setTeamFormatSize(size); }} />)}

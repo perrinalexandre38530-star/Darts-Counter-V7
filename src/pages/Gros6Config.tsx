@@ -913,7 +913,7 @@ export default function Gros6Config({ store, go }: any) {
     return <Section title="FICHE DE PARTIE" primary={primary}>
       <div style={{display:"grid",gap:13,minWidth:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:9}}>
-          <div style={{color:"#aeb8cc",fontSize:11}}>{participantMode==="teams"?`${teams.length} équipes · ${autoTeamSize} membres`:`${selectedPlayers.length} joueurs · ${playerFormat.toUpperCase()}`}</div>
+          <div style={{color:"#aeb8cc",fontSize:11}}>{participantMode==="teams"?`${teams.length} équipes · ${autoTeamSize} membres`:playerFormat === "duel" ? "Sélectionne 2 participants" : `Sélection : ${selectedPlayers.length} participants · MULTI`}</div>
           <span role="status" style={{flexShrink:0,borderRadius:999,border:`1px solid ${canStart?primary:"#fb7185"}77`,color:canStart?primary:"#fb7185",fontSize:10,fontWeight:950,padding:"5px 9px"}}>{canStart?"✓ PRÊT":"À COMPLÉTER"}</span>
         </div>
         <div style={{borderTop:"1px solid rgba(255,255,255,.08)",paddingTop:9}}>

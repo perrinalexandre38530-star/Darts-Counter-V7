@@ -5,6 +5,8 @@ type Props = {
   title: string;
   accent: string;
   onClose: () => void;
+  tickerSrc?: string;
+  tickerAlt?: string;
 };
 
 /**
@@ -12,13 +14,13 @@ type Props = {
  * Le bouton fermer est superposé en haut à droite du ticker,
  * et le titre du panneau est centré juste en dessous.
  */
-export default function ShoveFloatingHeader({ title, accent, onClose }: Props) {
+export default function ShoveFloatingHeader({ title, accent, onClose, tickerSrc = shoveTicker, tickerAlt = "SHOVE A PENNY" }: Props) {
   return (
     <header data-shove-floating-header="1" style={{ display: "grid", gap: 10 }}>
       <div style={{ position: "relative" }}>
         <img
-          src={shoveTicker}
-          alt="SHOVE A PENNY"
+          src={tickerSrc}
+          alt={tickerAlt}
           style={{
             display: "block",
             width: "100%",

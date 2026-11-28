@@ -677,7 +677,11 @@ export default function GolfConfig(props: any) {
             }}
           >
             <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, marginBottom: 8 }}>
-              Sélection : {selectedIds.length}/8 — min 2
+              {teamsEnabled
+                ? `Sélection : ${selectedIds.length}/${requiredMaxTeamPlayers} participants · ${teamCount} équipes de ${teamSize}`
+                : playerFormat === "duel"
+                  ? "Sélectionne 2 participants"
+                  : `Sélection : ${selectedIds.length}/8 participants · MULTI`}
             </div>
 
             {teamsEnabled ? (

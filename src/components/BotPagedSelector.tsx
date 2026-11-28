@@ -120,6 +120,7 @@ export default function BotPagedSelector({
   bots,
   selectedIds,
   onToggle,
+  maxSelection,
   accent = "#22dfff",
   pageSize = 4,
   showCheckbox = true,
@@ -135,6 +136,7 @@ export default function BotPagedSelector({
   bots: BotPagedSelectorItem[];
   selectedIds: string[];
   onToggle: (id: string) => void;
+  maxSelection?: number;
   accent?: string;
   pageSize?: number;
   showCheckbox?: boolean;
@@ -330,7 +332,7 @@ export default function BotPagedSelector({
                     <button
                       key={bot.id}
                       type="button"
-                      onClick={() => onToggle(bot.id)}
+                      onClick={() => { if (!selectedIds.includes(String(bot.id)) && Number.isFinite(maxSelection) && selectedIds.length >= (maxSelection as number)) return; onToggle(bot.id); }}
                       style={{
                         minWidth: 0,
                         borderRadius: 18,

@@ -191,7 +191,7 @@ export default function CricketPlayScreen({ state, setState, onQuit, onFinish }:
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, color: T.textSoft, textTransform: "uppercase", letterSpacing: 1 }}>
-            Tour {state.roundNumber}/{state.maxRounds} • {state.withPoints ? "Points" : "Sans points"}
+            Volée {state.roundNumber}/{state.maxRounds === 0 ? "∞" : state.maxRounds} • {state.withPoints ? "Points" : "Sans points"}
           </div>
           <div style={{ marginTop: 2, fontSize: 16, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {currentPlayer?.name ?? "—"}{" "}

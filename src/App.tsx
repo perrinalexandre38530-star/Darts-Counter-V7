@@ -8240,7 +8240,7 @@ case "babyfoot_team_edit":
   // Règle paysage globale : la BottomNav devient normalement une rail verticale pendant PLAY.
   // P’TIT 1 fait exception : son écran de jeu exploite toute la largeur disponible en paysage,
   // comme en portrait, afin de préserver le couple panneau joueur + keypad sans débordement.
-  const forceFullscreenPlay = tab === "ptit_hun_play" || (tab === "cricket" && ["arcade", "quick_play"].includes(String(routeParams?.launchMode || "")) && (String(routeParams?.variantId || "").toLowerCase() === "extended" || routeParams?.quickExtended === true)) || (tab === "bss_king_play" && isLandscapeViewport);
+  const forceFullscreenPlay = (tab === "cricket" && isGamePlayRoute) || tab === "ptit_hun_play" || (tab === "cricket" && ["arcade", "quick_play"].includes(String(routeParams?.launchMode || "")) && (String(routeParams?.variantId || "").toLowerCase() === "extended" || routeParams?.quickExtended === true)) || (tab === "bss_king_play" && isLandscapeViewport);
   const showBottomNav = tab !== "live" && appChromeAllowed && !forceFullscreenPlay &&
     !(isSamsungTvNativeApp && isGamePlayRoute) &&
     (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));

@@ -5776,3 +5776,17 @@ html[data-msc-orientation="landscape"]
     max-width: 100%;
   }
 }
+
+/* CRICKET PLAY V7(21) — navigation absente : aucun rail vide ne doit rester.
+   Ciblage strict : n'affecte ni les configurations ni les autres jeux. */
+@media (orientation: landscape) and (min-width: 650px) {
+  html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-route="cricket"][data-msc-game-screen="play"][data-mss-bottom-nav-visible="0"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    overflow-x: clip !important;
+  }
+}

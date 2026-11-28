@@ -17,7 +17,7 @@ import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
 import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
-import OptionToggle from "../components/OptionToggle";
+import MssKillerBooleanToggle from "../components/config/MssKillerBooleanToggle";
 import PageHeader from "../components/PageHeader";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import Section from "../components/Section";
@@ -697,7 +697,7 @@ export default function ScramConfig(props: any) {
       <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "12px 12px 0", overflowX: "hidden" }}>
         <MssClassicConfigFlow title="SCRAM" steps={["Awena vous explique", "Participants", "Règles", "Fiche de partie"]}
           step={scramStep} view={scramView} accent={primary} progressiveSingleLine summary={`${selectedIds.length} joueur(s) · ${participantMode === "teams" ? "équipes" : "individuel"}`}
-          onStep={setScramStep} onView={setScramView} onHelp={() => setScramHelpOpen(true)} progressiveSingleLine />
+          onStep={setScramStep} onView={setScramView} onHelp={() => setScramHelpOpen(true)} />
         {(scramView === "complete" || scramStep === 0) && <>
           <MssClassicOverview title="SCRAM · AWENA VOUS EXPLIQUE"
             description="SCRAM est une variante à rôles : un camp ferme les cibles (bloqueur), l'autre marque (scoreur). À la deuxième phase, les rôles s'inversent."
@@ -782,9 +782,7 @@ export default function ScramConfig(props: any) {
 
         {(scramView === "complete" || scramStep === 2) && <Section title="RÈGLES">
           <div style={panel}>
-            <OptionRow label="Bull inclus">
-              <OptionToggle value={useBull} onChange={setUseBull} />
-            </OptionRow>
+            <MssKillerBooleanToggle label="BULL INCLUS" checked={useBull} accent={primary} onChange={setUseBull} />
             <OptionRow label="Premier bloqueur">
               <OptionSelect
                 value={firstStopper}

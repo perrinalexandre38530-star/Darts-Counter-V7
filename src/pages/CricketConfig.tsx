@@ -177,7 +177,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
           CRICKET
         </div>
         <div style={{ fontSize: 13, marginTop: 4, color: T.textSoft }}>
-          Sélectionne les joueurs et les options pour cette manche.
+          Sélectionne les joueurs et les options pour cette partie.
         </div>
       </div>
 
@@ -185,7 +185,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
         accent={accent} summary={`${selectedCount} profils / bots`} onStep={setConfigStep}
         onView={setConfigView} onHelp={() => setHelpOpen(v => !v)} />
       {guided && configStep === 0 && <MssClassicOverview title="CRICKET · AWENA VOUS EXPLIQUE" onHelp={() => setHelpOpen(v => !v)}
-        description="Ferme les secteurs 15 à 20 et la BULL avant tes adversaires. Choisis ensuite les joueurs, le score et les manches." accent={accent} />}
+        description="Ferme les secteurs 15 à 20 et la BULL avant tes adversaires. Choisis ensuite les joueurs, le score et la limite éventuelle des volées." accent={accent} />}
       {helpOpen && <section style={{ border: `1px solid ${accent}55`, padding: 12, borderRadius: 14,
         color: "#dbe3f6", marginBottom: 12, fontSize: 12 }}>
         Chaque secteur demande trois marques pour être fermé. Le jeu reste contrôlé par les règles CRICKET d'origine.
@@ -357,9 +357,9 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
 
         {/* maxRounds */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 13, color: T.textSoft }}>Nombre max de tours</span>
+          <span style={{ fontSize: 13, color: T.textSoft }}>Volées de 3 fléchettes</span>
           <div style={{ display: "inline-flex", gap: 6 }}>
-            {[10, 15, 20].map((n) => {
+            {[0, 10, 15, 20].map((n) => {
               const active = value.maxRounds === n;
               return (
                 <button
@@ -377,7 +377,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
                     cursor: "pointer",
                   }}
                 >
-                  {n}
+                  {n === 0 ? "∞" : n}
                 </button>
               );
             })}
@@ -387,7 +387,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
         {/* rotate first player */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 13, color: T.textSoft }}>
-            Premier joueur tourne <span style={{ opacity: 0.7 }}>(à chaque nouvelle manche)</span>
+            Premier joueur tourne <span style={{ opacity: 0.7 }}>(à chaque nouvelle partie)</span>
           </span>
           <button
             type="button"
@@ -453,7 +453,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
         ["Participants", `${selectedCount} joueurs / bots`],
         ["Mode", value.mode === "teams" ? "Équipes · 2v2" : "Multi joueurs"],
         ["Score", value.scoreMode === "points" ? "Avec points" : "Sans points"],
-        ["Manches maximum", String(value.maxRounds)],
+        ["Volées maximum", value.maxRounds === 0 ? "Sans limite" : String(value.maxRounds)],
         ["Départ", value.startOrder === "random" ? "Aléatoire" : "Ordre sélectionné"],
       ]} />}
       {/* START */}
